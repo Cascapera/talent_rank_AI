@@ -1,0 +1,128 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}Relatórios — Talent Rank AI{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .reports-intro { color: var(--muted); margin-bottom: 24px; }
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .report-card {
+      padding: 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.92);
+      box-shadow: 0 4px 16px rgba(15, 52, 65, 0.06);
+    }
+    .report-card .value { font-size: 24px; font-weight: 700; color: var(--primary); margin: 0 0 4px; }
+    .report-card .label { font-size: 13px; color: var(--muted); margin: 0; }
+    .report-section { margin-bottom: 32px; }
+    .report-section h2 { font-size: 18px; margin: 0 0 14px; }
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .report-table th, .report-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .report-table th { color: var(--muted); font-weight: 600; }
+    .report-table a { color: var(--primary); text-decoration: none; }
+    .report-table a:hover { text-decoration: underline; }
+    .funnel-cell { text-align: center; min-width: 28px; }
+    .funnel-cell.has-value { color: var(--primary); font-weight: 600; }
+    @media (max-width: 900px) {
+      .report-table { display: block; }
+      .report-table thead { display: none; }
+      .report-table tr { display: block; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; }
+      .report-table td { display: block; border: none; padding: 4px 0; }
+      .report-table td::before { content: attr(data-label); font-weight: 600; color: var(--muted); margin-right: 8px; }
+      .funnel-cell { text-align: left; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1>Relatórios</h1>
+  <p class="reports-intro" style="color: #000;">Visão de métricas e desempenho: vagas, banco de talentos e funil por vaga.</p>
+
+  <section class="report-section">
+    <h2>Resumo geral</h2>
+    <div class="reports-grid">
+      <div class="report-card">
+        <p class="value">{{ total_jobs }}</p>
+        <p class="label">Vagas no sistema</p>
+      </div>
+      <div class="report-card">
+        <p class="value">{{ total_candidates }}</p>
+        <p class="label">Candidatos no banco</p>
+      </div>
+      <div class="report-card">
+        <p class="value">{{ candidates_ready }}</p>
+        <p class="label">Candidatos prontos</p>
+      </div>
+      <div class="report-card">
+        <p class="value">{{ total_links }}</p>
+        <p class="label">Vínculos vaga–candidato</p>
+      </div>
+      <div class="report-card">
+        <p class="value">{{ candidates_hired }}</p>
+        <p class="label">Contratações</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Vagas por status</h2>
+    <div class="reports-grid">
+      {% for label, count in jobs_by_status_display %}
+        <div class="report-card">
+          <p class="value">{{ count }}</p>
+          <p class="label">{{ label }}</p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="report-section">
+    <h2>Funil por vaga</h2>
+    <div class="card">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Vaga</th>
+            <th>Status</th>
+            <th>Total</th>
+            {% for label in funnel_headers %}
+              <th class="funnel-cell" title="{{ label }}">{{ label|truncatechars:10 }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in jobs_with_funnel %}
+            <tr>
+              <td data-label="Vaga">
+                <a href="{% url 'job_detail' row.job.id %}">{{ row.job.title }}</a>
+              </td>
+              <td data-label="Status">{{ row.job.get_status_display }}</td>
+              <td data-label="Total">{{ row.total_candidates }}</td>
+              {% for item in row.funnel %}
+                <td class="funnel-cell {% if item.count %}has-value{% endif %}" data-label="{{ item.label }}">{{ item.count }}</td>
+              {% endfor %}
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="11" style="text-align: center; color: var(--muted); padding: 20px;">Nenhuma vaga cadastrada.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -1,0 +1,1136 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}{{ job.title }} — Talent Rank AI{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .header-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .meta{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .meta-item{
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.9);
+    }
+    .meta-item b{display:block; font-size:12px; color: var(--muted); margin-bottom:4px;}
+    .section{margin-top: 16px;}
+    .section h2{margin: 0 0 6px; font-size: 18px;}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.9);
+      font-size: 12px;
+      color: var(--muted);
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+    .grid-2{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 980px){
+      .meta{grid-template-columns: 1fr;}
+      .grid-2{grid-template-columns: 1fr;}
+    }
+    .text-tooltip {
+      cursor: help;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 3px;
+      color: var(--primary);
+      max-width: 200px;
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .text-tooltip:hover {
+      color: var(--primary-2);
+    }
+    .table th, .table td {
+      font-size: 12px;
+      padding: 6px 4px;
+      white-space: nowrap;
+    }
+    .table th {
+      font-size: 11px;
+    }
+    .table {
+      table-layout: auto;
+      width: 100%;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="header-row">
+    <div>
+      <h1>{{ job.title }}</h1>
+      <p>{{ job.summary|default:"Sem descrição resumida." }}</p>
+    </div>
+    <div class="actions" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label for="job-status-select" style="font-size: 13px; color: var(--muted); margin: 0;">Status:</label>
+        <select 
+          id="job-status-select"
+          class="job-status-select" 
+          data-job-id="{{ job.id }}"
+          style="padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: white; min-width: 150px;"
+        >
+          {% for value, label in job_status_choices %}
+            <option value="{{ value }}" {% if job.status == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <a class="btn primary" href="#import">Importar ZIP</a>
+      <button class="btn" id="searchInPoolBtn" data-job-id="{{ job.id }}">Buscar no banco</button>
+      <a class="btn" href="{% url 'job_edit' job.id %}">Editar vaga</a>
+    </div>
+  </div>
+
+  <!-- Modal de Filtros para Busca no Banco -->
+  <div id="searchFiltersModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="card" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <h2 style="margin-top: 0;">Filtros de Busca no Banco de Talentos</h2>
+      <p style="color: var(--muted); margin-bottom: 20px;">Use os filtros abaixo para criar um funil de candidatos. Você poderá revisar os resultados antes de analisar e vincular.</p>
+      
+      <form id="searchFiltersForm" method="post" action="{% url 'preview_candidates_search' job.id %}">
+        {% csrf_token %}
+        <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+          <div>
+            <label for="search_name">Nome</label>
+            <input type="text" id="search_name" name="name" placeholder="Buscar por nome" />
+          </div>
+          <div>
+            <label for="search_location">Localização</label>
+            <input type="text" id="search_location" name="location" placeholder="Ex: São Paulo, Campinas" />
+          </div>
+          <div>
+            <label for="search_seniority">Senioridade</label>
+            <input type="text" id="search_seniority" name="seniority" placeholder="Ex: Senior, Pleno" />
+          </div>
+          <div>
+            <label for="search_company">Empresa</label>
+            <input type="text" id="search_company" name="company" placeholder="Nome da empresa" />
+          </div>
+          <div>
+            <label for="search_skills">Skills</label>
+            <input type="text" id="search_skills" name="skills" placeholder="Ex: Python, Azure, AWS" />
+          </div>
+          <div>
+            <label for="search_technologies">Tecnologias</label>
+            <input type="text" id="search_technologies" name="technologies" placeholder="Ex: Docker, Kubernetes" />
+          </div>
+          <div>
+            <label for="search_languages">Idiomas</label>
+            <input type="text" id="search_languages" name="languages" placeholder="Ex: Inglês, Português" />
+          </div>
+          <div>
+            <label for="search_certifications">Certificações</label>
+            <input type="text" id="search_certifications" name="certifications" placeholder="Ex: AWS Certified" />
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="search_ready_only" name="ready_only" />
+            <span>Apenas candidatos prontos (com data em "Pronto em")</span>
+          </label>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn" id="cancelSearchFiltersBtn" style="background: var(--muted);">Cancelar</button>
+          <button type="submit" class="btn primary">Buscar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Preview dos Candidatos Encontrados -->
+  <div id="previewCandidatesModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
+    <div class="card" style="max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto;">
+      <h2 style="margin-top: 0;">Candidatos Encontrados</h2>
+      <div id="previewTotal" style="margin-bottom: 15px; color: var(--primary); font-weight: bold;"></div>
+      
+      <div id="previewCandidatesList" style="margin-bottom: 20px;">
+        <!-- Lista será preenchida via JavaScript -->
+      </div>
+      
+      <div id="previewPagination" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;">
+        <!-- Paginação será preenchida via JavaScript -->
+      </div>
+      
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button type="button" class="btn" id="newSearchBtn" style="background: var(--muted);">Fazer Nova Busca</button>
+        <button type="button" class="btn primary" id="analyzeAndLinkBtn">Analisar e Vincular</button>
+      </div>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-item">
+      <b>Senioridade</b>
+      {{ job.seniority|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Localização</b>
+      {{ job.location|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Área</b>
+      {{ job.department|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Stack principal</b>
+      {{ job.stack|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Tipo de contratação</b>
+      {{ job.contract_type|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Prioridade</b>
+      {{ job.priority|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Idioma</b>
+      {{ job.language|default:"-" }}
+    </div>
+    <div class="meta-item">
+      <b>Data de criação</b>
+      {{ job.created_at|date:"d/m/Y" }}
+    </div>
+  </div>
+
+  <div class="grid-2 section">
+    <div class="card">
+      <h2>Skills obrigatórias</h2>
+      {% if must_have_list %}
+        {% for item in must_have_list %}
+          <span class="pill">{{ item }}</span>
+        {% endfor %}
+      {% else %}
+        <p>Nenhuma skill obrigatória informada.</p>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h2>Skills desejáveis</h2>
+      {% if nice_to_have_list %}
+        {% for item in nice_to_have_list %}
+          <span class="pill">{{ item }}</span>
+        {% endfor %}
+      {% else %}
+        <p>Nenhuma skill desejável informada.</p>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h2>Não desejáveis</h2>
+      {% if undesirable_list %}
+        {% for item in undesirable_list %}
+          <span class="pill">{{ item }}</span>
+        {% endfor %}
+      {% else %}
+        <p>Nenhum item informado.</p>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h2>Observações internas</h2>
+      <p>{{ job.notes|default:"Sem observações." }}</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Busca booleana</h2>
+    <div class="card">
+      <p style="margin-bottom:8px;">{{ job.boolean_search|default:"Nenhuma busca definida." }}</p>
+      <div class="actions">
+        <a class="btn" href="{% url 'job_edit' job.id %}">Editar busca</a>
+        <a class="btn primary" href="{% url 'job_edit' job.id %}">Criar busca</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Candidatos da vaga</h2>
+    <div class="card">
+      <div id="searchStatus" data-status-url="{% url 'job_search_status' job.id %}" style="margin-bottom: 12px; min-height: 20px;">
+        {% if search_status and search_status.status == "running" %}
+          <div style="color: var(--primary);">
+            <strong>Busca em andamento:</strong> {{ search_status.processed|default:0 }}/{{ search_status.total|default:"?" }}
+            {% if search_status.errors %}
+              <span style="color: #d32f2f;">({{ search_status.errors }} erro(s))</span>
+            {% endif %}
+          </div>
+        {% elif search_status and search_status.status == "completed" %}
+          <div style="color: var(--primary);">
+            <strong>Busca concluída.</strong>
+            {% if search_status.result %}
+              <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
+                {{ search_status.result.linked }} candidatos vinculados
+                {% if search_status.result.errors %}
+                  <span style="color: #d32f2f;">, {{ search_status.result.errors }} erro(s)</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% elif search_status and search_status.status == "error" %}
+          <div style="color: #d32f2f;">
+            <strong>Falha na busca:</strong> {{ search_status.message|default:"Erro desconhecido" }}
+          </div>
+        {% endif %}
+      </div>
+      <form method="get" style="margin-bottom: 12px;">
+        <div class="grid-2" style="margin-bottom: 10px;">
+          <div>
+            <label for="candidate_name">Nome</label>
+            <input id="candidate_name" name="candidate_name" value="{{ candidate_filters.candidate_name }}" placeholder="Buscar por nome" />
+          </div>
+          <div>
+            <label for="candidate_location">Localização</label>
+            <input id="candidate_location" name="candidate_location" value="{{ candidate_filters.candidate_location }}" placeholder="Buscar por local" />
+          </div>
+          <div>
+            <label for="candidate_seniority">Senioridade</label>
+            <input id="candidate_seniority" name="candidate_seniority" value="{{ candidate_filters.candidate_seniority }}" placeholder="Ex: Sênior" />
+          </div>
+          <div>
+            <label for="pipeline_status">Status</label>
+            <select id="pipeline_status" name="pipeline_status">
+              <option value="">Todos</option>
+              {% for value, label in pipeline_status_choices %}
+                <option value="{{ value }}" {% if candidate_filters.pipeline_status == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="min_adherence">Aderência mínima</label>
+            <input id="min_adherence" name="min_adherence" value="{{ candidate_filters.min_adherence }}" placeholder="Ex: 70" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" type="submit">Filtrar</button>
+          <a class="btn" href="{% url 'job_detail' job.id %}">Limpar</a>
+        </div>
+      </form>
+
+      {% if candidate_links %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Candidato</th>
+              <th>Cargo</th>
+              <th>Empresa</th>
+              <th>Local</th>
+              <th>Senioridade</th>
+              <th>Média perm.</th>
+              <th>Aderência</th>
+              <th>Just.</th>
+              <th>Skills</th>
+              <th>Tecnologias</th>
+              <th>Idiomas</th>
+              <th>Certificações</th>
+              <th>Status</th>
+              <th>Pronto em</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for link in candidate_links %}
+              <tr>
+                <td>
+                  {% if link.candidate.linkedin_url %}
+                    <a href="{{ link.candidate.linkedin_url }}" target="_blank" rel="noopener noreferrer">
+                      {{ link.candidate.name }}
+                    </a>
+                  {% else %}
+                    {{ link.candidate.name }}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.current_title %}
+                    <span class="text-tooltip" title="{{ link.candidate.current_title|escape }}">
+                      {% if link.candidate.current_title|length > 10 %}
+                        {{ link.candidate.current_title|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.current_title }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.current_company %}
+                    <span class="text-tooltip" title="{{ link.candidate.current_company|escape }}">
+                      {% if link.candidate.current_company|length > 10 %}
+                        {{ link.candidate.current_company|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.current_company }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.location %}
+                    <span class="text-tooltip" title="{{ link.candidate.location|escape }}">
+                      {% if link.candidate.location|length > 10 %}
+                        {{ link.candidate.location|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.location }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>{{ link.candidate.seniority|default:"-" }}</td>
+                <td>{{ link.candidate.average_tenure|default:"-" }}</td>
+                <td>{{ link.adherence_score|default:"-" }}</td>
+                <td>
+                  {% if link.technical_justification %}
+                    <span class="text-tooltip" title="{{ link.technical_justification|escape }}">
+                      {% if link.technical_justification|length > 10 %}
+                        {{ link.technical_justification|slice:":10" }}...
+                      {% else %}
+                        {{ link.technical_justification }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.skills %}
+                    <span class="text-tooltip" title="{{ link.candidate.skills|escape }}">
+                      {% if link.candidate.skills|length > 10 %}
+                        {{ link.candidate.skills|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.skills }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.technologies %}
+                    <span class="text-tooltip" title="{{ link.candidate.technologies|escape }}">
+                      {% if link.candidate.technologies|length > 10 %}
+                        {{ link.candidate.technologies|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.technologies }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.languages %}
+                    <span class="text-tooltip" title="{{ link.candidate.languages|escape }}">
+                      {% if link.candidate.languages|length > 10 %}
+                        {{ link.candidate.languages|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.languages }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.certifications %}
+                    <span class="text-tooltip" title="{{ link.candidate.certifications|escape }}">
+                      {% if link.candidate.certifications|length > 10 %}
+                        {{ link.candidate.certifications|slice:":10" }}...
+                      {% else %}
+                        {{ link.candidate.certifications }}
+                      {% endif %}
+                    </span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  <select 
+                    class="status-select" 
+                    data-candidate-job-id="{{ link.id }}"
+                    data-job-id="{{ job.id }}"
+                    style="width: 100%; padding: 4px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; background: white;"
+                  >
+                    <option value="">-</option>
+                    {% for value, label in pipeline_status_choices %}
+                      <option value="{{ value }}" {% if link.pipeline_status == value %}selected{% endif %}>
+                        {{ label }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="ready-at-cell">{{ link.ready_at|date:"d/m/Y"|default:"-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        
+        {% if page_obj.has_other_pages %}
+          <div class="pagination" style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;">
+            {% if page_obj.has_previous %}
+              <a href="?page=1{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                « Primeira
+              </a>
+              <a href="?page={{ page_obj.previous_page_number }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                ‹ Anterior
+              </a>
+            {% else %}
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">« Primeira</span>
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">‹ Anterior</span>
+            {% endif %}
+            
+            <span style="padding: 6px 12px; font-size: 13px; color: var(--muted);">
+              Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+              <a href="?page={{ page_obj.next_page_number }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                Próxima ›
+              </a>
+              <a href="?page={{ page_obj.paginator.num_pages }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                Última »
+              </a>
+            {% else %}
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">Próxima ›</span>
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">Última »</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="empty">Nenhum candidato vinculado à vaga ainda.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="section" id="import">
+    <h2>Importar candidatos (ZIP ou PDF)</h2>
+    <div class="card">
+      <p style="margin-bottom: 10px; color: var(--muted);">
+        Envie um ZIP ou PDFs de Candidatos. Nossa Inteligência Artificial fará a leitura, determinará aderência e Justificativa para seus candidatos.
+      </p>
+      {% if import_message %}
+        <div class="muted" style="margin-bottom: 10px;">{{ import_message }}</div>
+      {% endif %}
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label for="candidates_zip">Arquivo ZIP/PDF</label>
+        <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" required />
+        <div class="actions" style="margin-top: 10px;">
+          <button class="btn primary" type="submit">Importar e analisar</button>
+        </div>
+      </form>
+      <div id="importStatus" data-status-url="{% url 'job_import_status' job.id %}" style="margin-top: 12px; min-height: 20px;">
+        {% if import_status and import_status.status == "running" %}
+          <div style="color: var(--primary);">
+            <strong>Importação em andamento:</strong> {{ import_status.processed|default:0 }}/{{ import_status.total|default:"?" }}
+            {% if import_status.errors %}
+              <span style="color: #d32f2f;">({{ import_status.errors }} erro(s))</span>
+            {% endif %}
+          </div>
+        {% elif import_status and import_status.status == "completed" %}
+          <div style="color: var(--primary);">
+            <strong>Importação concluída.</strong>
+            {% if import_status.result %}
+              <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
+                {{ import_status.result.created }} criados, {{ import_status.result.updated }} atualizados, {{ import_status.result.skipped }} ignorados
+                {% if import_status.result.errors %}
+                  <span style="color: #d32f2f;">, {{ import_status.result.errors }} erro(s)</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% elif import_status and import_status.status == "error" %}
+          <div style="color: #d32f2f;">
+            <strong>Falha na importação:</strong> {{ import_status.message|default:"Erro desconhecido" }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_script %}
+  <script>
+    const importStatusEl = document.getElementById('importStatus');
+    if (importStatusEl) {
+      const statusUrl = importStatusEl.getAttribute('data-status-url');
+      const poll = async () => {
+        try {
+          const resp = await fetch(statusUrl, { cache: 'no-store' });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (data.status === 'running') {
+            const total = data.total ?? '?';
+            const processed = data.processed ?? 0;
+            const errors = data.errors ?? 0;
+            let html = `<strong style="color: var(--primary);">Importação em andamento:</strong> ${processed}/${total}`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
+            }
+            importStatusEl.innerHTML = html;
+            importStatusEl.style.color = 'var(--text)';
+            setTimeout(poll, 2000);
+          } else if (data.status === 'completed') {
+            const result = data.result || {};
+            const created = result.created || 0;
+            const updated = result.updated || 0;
+            const skipped = result.skipped || 0;
+            const errors = result.errors || 0;
+            let html = `<strong style="color: var(--primary);">Importação concluída.</strong>`;
+            html += `<div style="margin-top: 6px; font-size: 12px; color: var(--muted);">`;
+            html += `${created} criados, ${updated} atualizados, ${skipped} ignorados`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
+            }
+            html += `</div>`;
+            importStatusEl.innerHTML = html;
+            importStatusEl.style.color = 'var(--text)';
+          } else if (data.status === 'error') {
+            const message = data.message || 'Erro desconhecido';
+            importStatusEl.innerHTML = `<strong style="color: #d32f2f;">Falha na importação:</strong> ${message}`;
+            importStatusEl.style.color = 'var(--text)';
+          }
+        } catch (err) {
+          // silêncio
+        }
+      };
+      poll();
+    }
+
+    // Função para obter CSRF token
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+    
+    // Tenta obter CSRF token do cookie ou do input hidden
+    function getCSRFToken() {
+      let token = getCookie('csrftoken');
+      if (!token) {
+        const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (csrfInput) {
+          token = csrfInput.value;
+        }
+      }
+      return token;
+    }
+
+    // Atualização de status do candidato
+    document.querySelectorAll('.status-select').forEach(select => {
+      select.addEventListener('change', async function() {
+        const candidateJobId = this.getAttribute('data-candidate-job-id');
+        const jobId = this.getAttribute('data-job-id');
+        const newStatus = this.value;
+        const originalValue = this.getAttribute('data-original-value') || '';
+        
+        // Desabilita o select durante a requisição
+        this.disabled = true;
+        this.style.opacity = '0.6';
+        
+        try {
+          const formData = new FormData();
+          formData.append('pipeline_status', newStatus);
+          const csrftoken = getCSRFToken();
+          
+          if (!csrftoken) {
+            throw new Error('Token CSRF não encontrado. Recarregue a página.');
+          }
+          
+          formData.append('csrfmiddlewaretoken', csrftoken);
+          
+          const response = await fetch(`/vagas/${jobId}/candidatos/${candidateJobId}/status/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'X-CSRFToken': csrftoken
+            },
+            credentials: 'same-origin'
+          });
+          
+          const responseData = await response.json().catch(() => ({}));
+          
+          if (!response.ok) {
+            throw new Error(responseData.error || `Erro ${response.status}: ${response.statusText}`);
+          }
+          
+          // Atualiza o valor original para o novo status
+          this.setAttribute('data-original-value', newStatus);
+          
+          // Se o status for CANDIDATO_PRONTO e houver ready_at, atualiza a coluna
+          if (responseData.ready_at) {
+            const row = this.closest('tr');
+            const readyAtCell = row.querySelector('.ready-at-cell');
+            if (readyAtCell) {
+              readyAtCell.textContent = responseData.ready_at;
+            }
+          }
+          
+          // Feedback visual de sucesso
+          this.style.borderColor = 'var(--primary)';
+          setTimeout(() => {
+            this.style.borderColor = 'var(--border)';
+          }, 1000);
+          
+        } catch (error) {
+          console.error('Erro ao atualizar status:', error);
+          // Reverte para o valor original
+          this.value = originalValue;
+          alert('Erro ao atualizar status: ' + error.message);
+        } finally {
+          this.disabled = false;
+          this.style.opacity = '1';
+        }
+      });
+      
+      // Salva o valor original ao carregar
+      select.setAttribute('data-original-value', select.value);
+    });
+
+    // Atualização de status da vaga
+    document.querySelectorAll('.job-status-select').forEach(select => {
+      select.addEventListener('change', async function() {
+        const jobId = this.getAttribute('data-job-id');
+        const newStatus = this.value;
+        const originalValue = this.getAttribute('data-original-value') || '';
+        
+        // Desabilita o select durante a requisição
+        this.disabled = true;
+        this.style.opacity = '0.6';
+        
+        try {
+          const formData = new FormData();
+          formData.append('status', newStatus);
+          const csrftoken = getCSRFToken();
+          
+          if (!csrftoken) {
+            throw new Error('Token CSRF não encontrado. Recarregue a página.');
+          }
+          
+          formData.append('csrfmiddlewaretoken', csrftoken);
+          
+          const response = await fetch(`/vagas/${jobId}/status/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'X-CSRFToken': csrftoken
+            },
+            credentials: 'same-origin'
+          });
+          
+          const responseData = await response.json().catch(() => ({}));
+          
+          if (!response.ok) {
+            throw new Error(responseData.error || `Erro ${response.status}: ${response.statusText}`);
+          }
+          
+          // Atualiza o valor original para o novo status
+          this.setAttribute('data-original-value', newStatus);
+          
+          // Feedback visual de sucesso
+          this.style.borderColor = 'var(--primary)';
+          setTimeout(() => {
+            this.style.borderColor = 'var(--border)';
+          }, 1000);
+          
+        } catch (error) {
+          console.error('Erro ao atualizar status da vaga:', error);
+          // Reverte para o valor original
+          this.value = originalValue;
+          alert('Erro ao atualizar status da vaga: ' + error.message);
+        } finally {
+          this.disabled = false;
+          this.style.opacity = '1';
+        }
+      });
+      select.setAttribute('data-original-value', select.value);
+    });
+
+    // Busca no banco de talentos - Sistema de preview
+    const searchInPoolBtn = document.getElementById('searchInPoolBtn');
+    const searchFiltersModal = document.getElementById('searchFiltersModal');
+    const previewCandidatesModal = document.getElementById('previewCandidatesModal');
+    const cancelSearchFiltersBtn = document.getElementById('cancelSearchFiltersBtn');
+    const searchFiltersForm = document.getElementById('searchFiltersForm');
+    const newSearchBtn = document.getElementById('newSearchBtn');
+    const analyzeAndLinkBtn = document.getElementById('analyzeAndLinkBtn');
+    
+    let currentFilters = null;
+    
+    if (searchInPoolBtn && searchFiltersModal) {
+      // Abre modal de filtros ao clicar no botão
+      searchInPoolBtn.addEventListener('click', function() {
+        searchFiltersModal.style.display = 'flex';
+      });
+      
+      // Fecha modal ao clicar em cancelar ou fora
+      if (cancelSearchFiltersBtn) {
+        cancelSearchFiltersBtn.addEventListener('click', function() {
+          searchFiltersModal.style.display = 'none';
+        });
+      }
+      
+      searchFiltersModal.addEventListener('click', function(e) {
+        if (e.target === searchFiltersModal) {
+          searchFiltersModal.style.display = 'none';
+        }
+      });
+      
+      // Botão "Fazer Nova Busca" no preview
+      if (newSearchBtn) {
+        newSearchBtn.addEventListener('click', function() {
+          previewCandidatesModal.style.display = 'none';
+          searchFiltersModal.style.display = 'flex';
+        });
+      }
+      
+      // Fecha preview ao clicar fora
+      if (previewCandidatesModal) {
+        previewCandidatesModal.addEventListener('click', function(e) {
+          if (e.target === previewCandidatesModal) {
+            previewCandidatesModal.style.display = 'none';
+          }
+        });
+      }
+      
+      // Função para renderizar preview
+      function renderPreview(data) {
+        const totalEl = document.getElementById('previewTotal');
+        const listEl = document.getElementById('previewCandidatesList');
+        const paginationEl = document.getElementById('previewPagination');
+        
+        if (totalEl) {
+          totalEl.textContent = `${data.total} candidato(s) encontrado(s)`;
+        }
+        
+        if (listEl) {
+          if (data.candidates.length === 0) {
+            listEl.innerHTML = '<p style="color: var(--muted); text-align: center; padding: 20px;">Nenhum candidato encontrado com os filtros aplicados.</p>';
+          } else {
+            let html = '<table class="table" style="width: 100%; font-size: 13px;"><thead><tr>';
+            html += '<th>Nome</th><th>Empresa</th><th>Skills</th><th>Idiomas</th><th>Pronto em</th>';
+            html += '</tr></thead><tbody>';
+            
+            data.candidates.forEach(candidate => {
+              html += '<tr>';
+              html += `<td>${candidate.name}</td>`;
+              html += `<td>${candidate.company}</td>`;
+              html += `<td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.skills}">${candidate.skills}</td>`;
+              html += `<td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.languages}">${candidate.languages}</td>`;
+              html += `<td>${candidate.ready_at}</td>`;
+              html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            listEl.innerHTML = html;
+          }
+        }
+        
+        if (paginationEl && data.num_pages > 1) {
+          let pagHtml = '';
+          if (data.has_previous) {
+            pagHtml += `<button class="btn" onclick="loadPreviewPage(${data.page - 1})" style="font-size: 12px;">Anterior</button>`;
+          }
+          pagHtml += `<span style="margin: 0 10px; color: var(--muted);">Página ${data.page} de ${data.num_pages}</span>`;
+          if (data.has_next) {
+            pagHtml += `<button class="btn" onclick="loadPreviewPage(${data.page + 1})" style="font-size: 12px;">Próxima</button>`;
+          }
+          paginationEl.innerHTML = pagHtml;
+        } else if (paginationEl) {
+          paginationEl.innerHTML = '';
+        }
+      }
+      
+      // Função para carregar página do preview
+      window.loadPreviewPage = function(page) {
+        if (!currentFilters) return;
+        
+        const jobId = searchInPoolBtn.getAttribute('data-job-id');
+        const formData = new FormData();
+        const csrftoken = getCSRFToken();
+        
+        Object.keys(currentFilters).forEach(key => {
+          if (key === 'ready_only') {
+            if (currentFilters[key]) {
+              formData.append(key, 'on');
+            }
+          } else {
+            formData.append(key, currentFilters[key]);
+          }
+        });
+        formData.append('page', page);
+        formData.append('csrfmiddlewaretoken', csrftoken);
+        
+        fetch(`/vagas/${jobId}/preview-search/`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRFToken': csrftoken,
+          },
+          credentials: 'same-origin'
+        })
+        .then(resp => resp.json())
+        .then(data => {
+          if (data.success) {
+            renderPreview(data);
+          }
+        })
+        .catch(err => console.error('Erro ao carregar página:', err));
+      };
+      
+      // Submete formulário de busca (preview)
+      if (searchFiltersForm) {
+        searchFiltersForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          const jobId = searchInPoolBtn.getAttribute('data-job-id');
+          searchInPoolBtn.disabled = true;
+          searchInPoolBtn.style.opacity = '0.6';
+          searchInPoolBtn.textContent = 'Buscando...';
+          
+          try {
+            const formData = new FormData(this);
+            const csrftoken = getCSRFToken();
+            
+            if (!csrftoken) {
+              throw new Error('Token CSRF não encontrado. Recarregue a página.');
+            }
+            
+            formData.append('csrfmiddlewaretoken', csrftoken);
+            
+            // Salva filtros atuais
+            currentFilters = {};
+            for (let [key, value] of formData.entries()) {
+              if (key !== 'csrfmiddlewaretoken' && key !== 'page') {
+                if (key === 'ready_only') {
+                  currentFilters[key] = value === 'on';
+                } else {
+                  currentFilters[key] = value;
+                }
+              }
+            }
+            
+            const response = await fetch(`/vagas/${jobId}/preview-search/`, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'X-CSRFToken': csrftoken,
+              },
+              credentials: 'same-origin'
+            });
+            
+            const responseData = await response.json().catch(() => ({}));
+            
+            if (!response.ok) {
+              throw new Error(responseData.error || `Erro ${response.status}: ${response.statusText}`);
+            }
+            
+            if (responseData.success) {
+              searchFiltersModal.style.display = 'none';
+              previewCandidatesModal.style.display = 'flex';
+              renderPreview(responseData);
+            }
+            
+          } catch (error) {
+            console.error('Erro ao buscar no banco:', error);
+            alert('Erro ao buscar no banco: ' + error.message);
+          } finally {
+            searchInPoolBtn.disabled = false;
+            searchInPoolBtn.style.opacity = '1';
+            searchInPoolBtn.textContent = 'Buscar no banco';
+          }
+        });
+      }
+      
+      // Botão "Analisar e Vincular"
+      if (analyzeAndLinkBtn) {
+        analyzeAndLinkBtn.addEventListener('click', async function() {
+          if (!currentFilters) {
+            alert('Nenhum filtro aplicado. Faça uma busca primeiro.');
+            return;
+          }
+          
+          const jobId = searchInPoolBtn.getAttribute('data-job-id');
+          this.disabled = true;
+          this.style.opacity = '0.6';
+          this.textContent = 'Analisando...';
+          previewCandidatesModal.style.display = 'none';
+          
+          try {
+            const formData = new FormData();
+            const csrftoken = getCSRFToken();
+            
+            if (!csrftoken) {
+              throw new Error('Token CSRF não encontrado. Recarregue a página.');
+            }
+            
+            Object.keys(currentFilters).forEach(key => {
+              if (key === 'ready_only') {
+                if (currentFilters[key]) {
+                  formData.append(key, 'on');
+                }
+              } else {
+                formData.append(key, currentFilters[key]);
+              }
+            });
+            formData.append('csrfmiddlewaretoken', csrftoken);
+            
+            const response = await fetch(`/vagas/${jobId}/search-pool/`, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'X-CSRFToken': csrftoken,
+              },
+              credentials: 'same-origin'
+            });
+            
+            const responseData = await response.json().catch(() => ({}));
+            
+            if (!response.ok) {
+              throw new Error(responseData.error || `Erro ${response.status}: ${response.statusText}`);
+            }
+            
+            // Inicia polling do status
+            const searchStatusEl = document.getElementById('searchStatus');
+            if (searchStatusEl) {
+              const statusUrl = searchStatusEl.getAttribute('data-status-url');
+              const poll = async () => {
+                try {
+                  const resp = await fetch(statusUrl, { cache: 'no-store' });
+                  if (!resp.ok) return;
+                  const data = await resp.json();
+                  if (data.status === 'running') {
+                    const total = data.total ?? '?';
+                    const processed = data.processed ?? 0;
+                    const errors = data.errors ?? 0;
+                    let html = `<strong style="color: var(--primary);">Análise em andamento:</strong> ${processed}/${total}`;
+                    if (errors > 0) {
+                      html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
+                    }
+                    searchStatusEl.innerHTML = html;
+                    searchStatusEl.style.color = 'var(--text)';
+                    setTimeout(poll, 2000);
+                  } else if (data.status === 'completed') {
+                    const result = data.result || {};
+                    const linked = result.linked || 0;
+                    const errors = result.errors || 0;
+                    let html = `<strong style="color: var(--primary);">Análise concluída.</strong>`;
+                    html += `<div style="margin-top: 6px; font-size: 12px; color: var(--muted);">`;
+                    html += `${linked} candidatos vinculados`;
+                    if (errors > 0) {
+                      html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
+                    }
+                    html += `</div>`;
+                    searchStatusEl.innerHTML = html;
+                    searchStatusEl.style.color = 'var(--text)';
+                    // Recarrega a página para mostrar os novos candidatos
+                    setTimeout(() => {
+                      window.location.reload();
+                    }, 2000);
+                  } else if (data.status === 'error') {
+                    const message = data.message || 'Erro desconhecido';
+                    searchStatusEl.innerHTML = `<strong style="color: #d32f2f;">Falha na análise:</strong> ${message}`;
+                    searchStatusEl.style.color = 'var(--text)';
+                  }
+                } catch (err) {
+                  // silêncio
+                }
+              };
+              poll();
+            }
+            
+          } catch (error) {
+            console.error('Erro ao analisar candidatos:', error);
+            alert('Erro ao analisar candidatos: ' + error.message);
+          } finally {
+            this.disabled = false;
+            this.style.opacity = '1';
+            this.textContent = 'Analisar e Vincular';
+          }
+        });
+      }
+    }
+
+    // Polling do status da busca (se já estiver rodando)
+    const searchStatusEl = document.getElementById('searchStatus');
+    if (searchStatusEl) {
+      const statusUrl = searchStatusEl.getAttribute('data-status-url');
+      const pollSearch = async () => {
+        try {
+          const resp = await fetch(statusUrl, { cache: 'no-store' });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (data.status === 'running') {
+            const total = data.total ?? '?';
+            const processed = data.processed ?? 0;
+            const errors = data.errors ?? 0;
+            let html = `<strong style="color: var(--primary);">Busca em andamento:</strong> ${processed}/${total}`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
+            }
+            searchStatusEl.innerHTML = html;
+            searchStatusEl.style.color = 'var(--text)';
+            setTimeout(pollSearch, 2000);
+          } else if (data.status === 'completed') {
+            const result = data.result || {};
+            const linked = result.linked || 0;
+            const errors = result.errors || 0;
+            let html = `<strong style="color: var(--primary);">Busca concluída.</strong>`;
+            html += `<div style="margin-top: 6px; font-size: 12px; color: var(--muted);">`;
+            html += `${linked} candidatos vinculados`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
+            }
+            html += `</div>`;
+            searchStatusEl.innerHTML = html;
+            searchStatusEl.style.color = 'var(--text)';
+          } else if (data.status === 'error') {
+            const message = data.message || 'Erro desconhecido';
+            searchStatusEl.innerHTML = `<strong style="color: #d32f2f;">Falha na busca:</strong> ${message}`;
+            searchStatusEl.style.color = 'var(--text)';
+          }
+        } catch (err) {
+          // silêncio
+        }
+      };
+      pollSearch();
+    }
+  </script>
+{% endblock %}

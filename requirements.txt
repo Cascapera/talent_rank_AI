@@ -1,0 +1,7 @@
+Django>=5.2
+psycopg[binary]
+python-dotenv
+pypdf
+google-genai
+gunicorn
+whitenoise

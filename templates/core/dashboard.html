@@ -1,0 +1,69 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}Dashboard — Talent Rank AI{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .dashboard-grid{
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+    .dashboard-grid .card{
+      margin-top: 0;
+      padding: 22px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.95);
+      box-shadow: 0 8px 32px rgba(15, 52, 65, 0.12);
+      transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+    }
+    .dashboard-grid .card:hover{
+      box-shadow: 0 12px 40px rgba(15, 52, 65, 0.15);
+      border-color: rgba(13, 148, 136, 0.35);
+    }
+    .dashboard-grid a.card:hover{
+      transform: translateY(-2px);
+    }
+    .dashboard-grid .card h3{
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .dashboard-grid .card p{
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0;
+    }
+    @media (max-width: 980px){
+      .dashboard-grid{ grid-template-columns: 1fr; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1>Dashboard</h1>
+  <p style="color: #000;">Use nossas ferramentas para acelerar seu processo de recrutamento com análise de aderência feita por IA.</p>
+
+  <div class="dashboard-grid">
+    <a href="{% url 'jobs' %}" class="card">
+      <h3>Vagas</h3>
+      <p>Crie e acompanhe vagas com pipeline e status.</p>
+    </a>
+    <a href="{% url 'search' %}" class="card">
+      <h3>Busca</h3>
+      <p>Pesquise candidatos por skills, senioridade e localização.</p>
+    </a>
+    <a href="{% url 'talent_pool' %}" class="card">
+      <h3>Banco de talentos</h3>
+      <p>Reaproveite candidatos e visualize histórico.</p>
+    </a>
+    <a href="{% url 'reports' %}" class="card">
+      <h3>Relatórios</h3>
+      <p>Veja métricas de performance e funil por vaga.</p>
+    </a>
+  </div>
+{% endblock %}

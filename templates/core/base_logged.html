@@ -1,0 +1,201 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{% block title %}Talent Rank AI{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{% static 'img/fav.png' %}" />
+  <style>
+    :root{
+      --bg: #e0f2f7;
+      --surface: #ffffff;
+      --border: rgba(30, 111, 140, 0.18);
+      --text: #0f3441;
+      --muted: #446b7a;
+      --primary: #0d9488;
+      --primary-2: #2dd4bf;
+      --radius: 16px;
+      --max: 1600px;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        url("{% static 'img/back.png' %}") center top / cover no-repeat,
+        var(--bg);
+      background-attachment: fixed;
+    }
+    a{color:inherit; text-decoration:none}
+    .container{max-width: var(--max); margin:0 auto; padding:0 22px;}
+
+    header{
+      position:sticky; top:0; z-index: 50;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .header-inner{
+      display:flex; align-items:center; justify-content:space-between;
+      height: 70px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px;
+      font-weight: 700;
+    }
+    .brand img{height:63px; width:auto}
+    .nav{
+      display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+    }
+    .nav a{
+      padding:8px 10px;
+      border-radius: 10px;
+      color: var(--text);
+      border: 1px solid transparent;
+    }
+    .nav a:hover{
+      border-color: var(--border);
+      background: rgba(13, 148, 136, 0.08);
+    }
+    .nav .logout{
+      border: 1px solid rgba(13, 148, 136, 0.4);
+      background: linear-gradient(135deg, rgba(13, 148, 136, 0.15), rgba(45, 212, 191, 0.12));
+      color: #0f3441;
+    }
+    .nav .logout:hover{
+      background: linear-gradient(135deg, rgba(13, 148, 136, 0.22), rgba(45, 212, 191, 0.18));
+    }
+
+    main{padding: 26px 0 40px;}
+    h1{margin: 0 0 8px; font-size: 26px;}
+    p{margin: 0; color: var(--muted)}
+    .card{
+      margin-top: 16px;
+      padding: 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.92);
+      box-shadow: 0 8px 32px rgba(15, 52, 65, 0.1);
+    }
+    label{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 12px 0 6px;
+    }
+    input, select, textarea{
+      width: 100%;
+      height: 40px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.95);
+      color: var(--text);
+      padding: 0 10px;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(13, 148, 136, 0.5);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+    }
+    textarea{
+      height: auto;
+      padding: 10px;
+      resize: vertical;
+    }
+    .actions{
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .btn{
+      height: 40px;
+      padding: 0 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.95);
+      color: var(--text);
+      cursor:pointer;
+      font-weight: 600;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      line-height: 1;
+    }
+    .btn:hover{
+      background: rgba(255,255,255,1);
+      border-color: rgba(13, 148, 136, 0.25);
+    }
+    .btn.primary{
+      border: 1px solid rgba(13, 148, 136, 0.4);
+      background: linear-gradient(135deg, rgba(13, 148, 136, 0.2), rgba(45, 212, 191, 0.16));
+      color: #0f3441;
+    }
+    .btn.primary:hover{
+      background: linear-gradient(135deg, rgba(13, 148, 136, 0.28), rgba(45, 212, 191, 0.22));
+      border-color: rgba(13, 148, 136, 0.5);
+    }
+    .table{
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    .table th, .table td{
+      text-align:left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table th{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .empty{
+      margin-top: 12px;
+      color: var(--muted);
+    }
+    .alert-message{
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      border: 2px solid;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .alert-message:last-child{ margin-bottom: 0; }
+    .alert-message.warning,
+    .alert-message.error{
+      background: #fef2f2;
+      border-color: #dc2626;
+      color: #991b1b;
+    }
+    .alert-message.success{ background: #f0fdf4; border-color: #22c55e; color: #166534; }
+    .alert-message.info{ background: #eff6ff; border-color: #3b82f6; color: #1e40af; }
+    @media (max-width: 980px){
+      .nav{gap:8px;}
+    }
+  </style>
+  {% block extra_style %}{% endblock %}
+</head>
+<body>
+  {% include 'partials/logged_header.html' %}
+  <main class="container">
+    {% if messages %}
+      <div class="alert-messages" style="margin-bottom: 14px;">
+        {% for message in messages %}
+          <div class="alert-message {% if message.tags %}{{ message.tags }}{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  {% block extra_script %}{% endblock %}
+</body>
+</html>

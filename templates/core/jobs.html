@@ -1,0 +1,102 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}Vagas — Talent Rank AI{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .filters{
+      display:grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      align-items:end;
+    }
+    @media (max-width: 1100px){
+      .filters{grid-template-columns: repeat(2, minmax(0, 1fr));}
+      .actions{grid-column: 1 / -1;}
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1>Vagas</h1>
+  <p style="color: #000;">Crie, acompanhe e organize suas vagas ativas.</p>
+
+  <div class="card">
+    <div class="actions" style="margin-bottom: 12px;">
+      <a class="btn primary" href="{% url 'job_create' %}">Nova vaga</a>
+    </div>
+    <form class="filters" method="get">
+      <div>
+        <label for="id_title">Título</label>
+        <input id="id_title" name="title" value="{{ filters.title }}" placeholder="Ex.: Backend Java" />
+      </div>
+      <div>
+        <label for="id_status">Status</label>
+        <select id="id_status" name="status">
+          <option value="">Todos</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="id_seniority">Senioridade</label>
+        <input id="id_seniority" name="seniority" value="{{ filters.seniority }}" placeholder="Ex.: Sênior" />
+      </div>
+      <div>
+        <label for="id_location">Localização</label>
+        <input id="id_location" name="location" value="{{ filters.location }}" placeholder="Ex.: São Paulo" />
+      </div>
+      <div>
+        <label for="id_department">Área</label>
+        <input id="id_department" name="department" value="{{ filters.department }}" placeholder="Ex.: Engenharia" />
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="submit">Filtrar</button>
+        <a class="btn" href="{% url 'jobs' %}">Limpar</a>
+      </div>
+    </form>
+
+    {% if jobs %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Status</th>
+            <th>Senioridade</th>
+            <th>Localização</th>
+            <th>Área</th>
+            <th>Stack</th>
+            <th>Contratação</th>
+            <th>Prioridade</th>
+            <th>Data de criação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in jobs %}
+            <tr>
+              <td>
+                <a href="{% url 'job_detail' job.id %}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   onclick="window.open(this.href, '_blank', 'noopener'); return false;">
+                  {{ job.title }}
+                </a>
+              </td>
+              <td>{{ job.get_status_display }}</td>
+              <td>{{ job.seniority|default:"-" }}</td>
+              <td>{{ job.location|default:"-" }}</td>
+              <td>{{ job.department|default:"-" }}</td>
+              <td>{{ job.stack|default:"-" }}</td>
+              <td>{{ job.contract_type|default:"-" }}</td>
+              <td>{{ job.priority|default:"-" }}</td>
+              <td>{{ job.created_at|date:"d/m/Y" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Nenhuma vaga encontrada com os filtros atuais.</div>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Ambiente e secrets
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Static coletado (gerado em deploy)
+staticfiles/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# EB
+.elasticbeanstalk/*.cfg.yml
+.elasticbeanstalk/*.cfg.yaml

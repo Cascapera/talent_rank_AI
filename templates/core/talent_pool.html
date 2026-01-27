@@ -1,0 +1,459 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}Banco de Talentos — Talent Rank AI{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .text-tooltip {
+      cursor: help;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 3px;
+      color: var(--primary);
+      max-width: 200px;
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .text-tooltip:hover {
+      color: var(--primary-2);
+    }
+    .table th, .table td {
+      font-size: 12px;
+      padding: 6px 4px;
+      white-space: nowrap;
+    }
+    .table th {
+      font-size: 11px;
+    }
+    .table {
+      table-layout: auto;
+      width: 100%;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .form-grid-full {
+      grid-column: 1 / -1;
+    }
+    .form-grid-2 {
+      grid-column: span 2;
+    }
+    .form-grid-3 {
+      grid-column: span 3;
+    }
+    .form-grid-small {
+      grid-column: span 1;
+    }
+    @media (max-width: 980px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .form-grid-full,
+      .form-grid-2,
+      .form-grid-3,
+      .form-grid-small {
+        grid-column: 1;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1 style="color: #000;">Banco de talentos</h1>
+  <p style="color: #000;">Reaproveite candidatos do seu banco para novas vagas.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Cadastro de candidato</h2>
+    <p style="margin-bottom: 10px; color: var(--muted);">
+      Se o candidato já existir (mesmo LinkedIn), os campos diferentes serão atualizados.
+    </p>
+    {% if message %}
+      <div style="margin-bottom: 10px; color: var(--muted);">{{ message }}</div>
+    {% endif %}
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+
+      <div class="form-grid">
+        <div class="form-grid-small">
+          <label for="{{ form.name.id_for_label }}">Nome</label>
+          {{ form.name }}
+          {{ form.name.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.current_title.id_for_label }}">Cargo atual</label>
+          {{ form.current_title }}
+          {{ form.current_title.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.current_company.id_for_label }}">Empresa atual</label>
+          {{ form.current_company }}
+          {{ form.current_company.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.location.id_for_label }}">Localização</label>
+          {{ form.location }}
+          {{ form.location.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.linkedin_url.id_for_label }}">LinkedIn</label>
+          {{ form.linkedin_url }}
+          {{ form.linkedin_url.errors }}
+        </div>
+
+        <div class="form-grid-3">
+          <label for="{{ form.summary.id_for_label }}">Resumo</label>
+          {{ form.summary }}
+          {{ form.summary.errors }}
+        </div>
+
+        <div class="form-grid-3">
+          <label for="{{ form.skills.id_for_label }}">Skills</label>
+          {{ form.skills }}
+          {{ form.skills.errors }}
+        </div>
+
+        <div class="form-grid-3">
+          <label for="{{ form.technologies.id_for_label }}">Tecnologias</label>
+          {{ form.technologies }}
+          {{ form.technologies.errors }}
+        </div>
+
+        <div class="form-grid-3">
+          <label for="{{ form.languages.id_for_label }}">Idiomas</label>
+          {{ form.languages }}
+          {{ form.languages.errors }}
+        </div>
+
+        <div class="form-grid-3">
+          <label for="{{ form.certifications.id_for_label }}">Certificações</label>
+          {{ form.certifications }}
+          {{ form.certifications.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.seniority.id_for_label }}">Senioridade</label>
+          {{ form.seniority }}
+          {{ form.seniority.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.experience_time.id_for_label }}">Tempo de experiência (anos)</label>
+          {{ form.experience_time }}
+          {{ form.experience_time.errors }}
+        </div>
+
+        <div class="form-grid-small">
+          <label for="{{ form.average_tenure.id_for_label }}">Média de permanência (anos)</label>
+          {{ form.average_tenure }}
+          {{ form.average_tenure.errors }}
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 14px;">
+        <button class="btn primary" type="submit">Salvar candidato</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Importar candidatos (ZIP ou PDF)</h2>
+    <p style="margin-bottom: 10px; color: var(--muted);">
+      Envie um ZIP com PDFs ou um PDF individual. Os candidatos serão adicionados ao banco sem vinculação a vagas.
+    </p>
+    {% if import_message %}
+      <div class="muted" style="margin-bottom: 10px;">{{ import_message }}</div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <label for="candidates_zip">Arquivo ZIP/PDF</label>
+      <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" required />
+      <div class="actions" style="margin-top: 10px;">
+        <button class="btn primary" type="submit">Importar e analisar</button>
+      </div>
+    </form>
+    <div id="importStatus" data-status-url="{% url 'talent_pool_import_status' %}" style="margin-top: 12px; min-height: 20px;">
+      {% if import_status and import_status.status == "running" %}
+        <div style="color: var(--primary);">
+          <strong>Importação em andamento:</strong> {{ import_status.processed|default:0 }}/{{ import_status.total|default:"?" }}
+          {% if import_status.errors %}
+            <span style="color: #d32f2f;">({{ import_status.errors }} erro(s))</span>
+          {% endif %}
+        </div>
+      {% elif import_status and import_status.status == "completed" %}
+        <div style="color: var(--primary);">
+          <strong>Importação concluída.</strong>
+          {% if import_status.result %}
+            <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
+              {{ import_status.result.created }} criados, {{ import_status.result.updated }} atualizados, {{ import_status.result.skipped }} ignorados
+              {% if import_status.result.errors %}
+                <span style="color: #d32f2f;">, {{ import_status.result.errors }} erro(s)</span>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% elif import_status and import_status.status == "error" %}
+        <div style="color: #d32f2f;">
+          <strong>Falha na importação:</strong> {{ import_status.message|default:"Erro desconhecido" }}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Candidatos cadastrados</h2>
+    
+    <form method="get" style="margin-bottom: 16px;">
+      <div class="form-grid" style="grid-template-columns: repeat(5, 1fr);">
+        <div>
+          <label for="name">Nome</label>
+          <input id="name" name="name" value="{{ filters.name }}" placeholder="Buscar por nome" />
+        </div>
+        <div>
+          <label for="location">Localização</label>
+          <input id="location" name="location" value="{{ filters.location }}" placeholder="Buscar por local" />
+        </div>
+        <div>
+          <label for="seniority">Senioridade</label>
+          <input id="seniority" name="seniority" value="{{ filters.seniority }}" placeholder="Ex: Sênior" />
+        </div>
+        <div>
+          <label for="company">Empresa</label>
+          <input id="company" name="company" value="{{ filters.company }}" placeholder="Buscar por empresa" />
+        </div>
+        <div>
+          <label for="technologies">Tecnologias</label>
+          <input id="technologies" name="technologies" value="{{ filters.technologies }}" placeholder="Buscar por tecnologia" />
+        </div>
+      </div>
+      <div class="actions" style="margin-top: 10px;">
+        <button class="btn" type="submit">Filtrar</button>
+        <a class="btn" href="{% url 'talent_pool' %}">Limpar</a>
+      </div>
+    </form>
+
+    {% if candidates %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Cargo</th>
+            <th>Empresa</th>
+            <th>Local</th>
+            <th>Senioridade</th>
+            <th>Exp.</th>
+            <th>Média perm.</th>
+            <th>Pronto em</th>
+            <th>Skills</th>
+            <th>Tecnologias</th>
+            <th>Idiomas</th>
+            <th>Certificações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for candidate in candidates %}
+            <tr>
+              <td>
+                {% if candidate.linkedin_url %}
+                  <a href="{{ candidate.linkedin_url }}" target="_blank" rel="noopener noreferrer">
+                    {{ candidate.name }}
+                  </a>
+                {% else %}
+                  {{ candidate.name }}
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.current_title %}
+                  <span class="text-tooltip" title="{{ candidate.current_title|escape }}">
+                    {% if candidate.current_title|length > 10 %}
+                      {{ candidate.current_title|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.current_title }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.current_company %}
+                  <span class="text-tooltip" title="{{ candidate.current_company|escape }}">
+                    {% if candidate.current_company|length > 10 %}
+                      {{ candidate.current_company|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.current_company }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.location %}
+                  <span class="text-tooltip" title="{{ candidate.location|escape }}">
+                    {% if candidate.location|length > 10 %}
+                      {{ candidate.location|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.location }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>{{ candidate.seniority|default:"-" }}</td>
+              <td>{{ candidate.experience_time|default:"-" }}</td>
+              <td>{{ candidate.average_tenure|default:"-" }}</td>
+              <td>{{ candidate.ready_at|date:"d/m/Y"|default:"-" }}</td>
+              <td>
+                {% if candidate.skills %}
+                  <span class="text-tooltip" title="{{ candidate.skills|escape }}">
+                    {% if candidate.skills|length > 10 %}
+                      {{ candidate.skills|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.skills }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.technologies %}
+                  <span class="text-tooltip" title="{{ candidate.technologies|escape }}">
+                    {% if candidate.technologies|length > 10 %}
+                      {{ candidate.technologies|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.technologies }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.languages %}
+                  <span class="text-tooltip" title="{{ candidate.languages|escape }}">
+                    {% if candidate.languages|length > 10 %}
+                      {{ candidate.languages|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.languages }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.certifications %}
+                  <span class="text-tooltip" title="{{ candidate.certifications|escape }}">
+                    {% if candidate.certifications|length > 10 %}
+                      {{ candidate.certifications|slice:":10" }}...
+                    {% else %}
+                      {{ candidate.certifications }}
+                    {% endif %}
+                  </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        
+        {% if page_obj.has_other_pages %}
+          <div class="pagination" style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;">
+            {% if page_obj.has_previous %}
+              <a href="?page=1{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                « Primeira
+              </a>
+              <a href="?page={{ page_obj.previous_page_number }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                ‹ Anterior
+              </a>
+            {% else %}
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">« Primeira</span>
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">‹ Anterior</span>
+            {% endif %}
+            
+            <span style="padding: 6px 12px; font-size: 13px; color: var(--muted);">
+              Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+              <a href="?page={{ page_obj.next_page_number }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                Próxima ›
+              </a>
+              <a href="?page={{ page_obj.paginator.num_pages }}{{ query_string }}" class="btn" style="padding: 6px 12px; font-size: 13px;">
+                Última »
+              </a>
+            {% else %}
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">Próxima ›</span>
+              <span class="btn" style="padding: 6px 12px; font-size: 13px; opacity: 0.5; cursor: not-allowed;">Última »</span>
+            {% endif %}
+          </div>
+        {% endif %}
+    {% else %}
+      <p class="empty">Nenhum candidato cadastrado ainda.</p>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block extra_script %}
+  <script>
+    const importStatusEl = document.getElementById('importStatus');
+    if (importStatusEl) {
+      const statusUrl = importStatusEl.getAttribute('data-status-url');
+      const poll = async () => {
+        try {
+          const resp = await fetch(statusUrl, { cache: 'no-store' });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (data.status === 'running') {
+            const total = data.total ?? '?';
+            const processed = data.processed ?? 0;
+            const errors = data.errors ?? 0;
+            let html = `<strong style="color: var(--primary);">Importação em andamento:</strong> ${processed}/${total}`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
+            }
+            importStatusEl.innerHTML = html;
+            importStatusEl.style.color = 'var(--text)';
+            setTimeout(poll, 2000);
+          } else if (data.status === 'completed') {
+            const result = data.result || {};
+            const created = result.created || 0;
+            const updated = result.updated || 0;
+            const skipped = result.skipped || 0;
+            const errors = result.errors || 0;
+            let html = `<strong style="color: var(--primary);">Importação concluída.</strong>`;
+            html += `<div style="margin-top: 6px; font-size: 12px; color: var(--muted);">`;
+            html += `${created} criados, ${updated} atualizados, ${skipped} ignorados`;
+            if (errors > 0) {
+              html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
+            }
+            html += `</div>`;
+            importStatusEl.innerHTML = html;
+            importStatusEl.style.color = 'var(--text)';
+          } else if (data.status === 'error') {
+            const message = data.message || 'Erro desconhecido';
+            importStatusEl.innerHTML = `<strong style="color: #d32f2f;">Falha na importação:</strong> ${message}`;
+            importStatusEl.style.color = 'var(--text)';
+          }
+        } catch (err) {
+          // silêncio
+        }
+      };
+      poll();
+    }
+  </script>
+{% endblock %}

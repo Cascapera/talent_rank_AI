@@ -1,0 +1,14 @@
+{% load static %}
+<header>
+  <div class="container header-inner">
+    <a class="brand" href="{% url 'dashboard' %}" aria-label="Talent Rank AI">
+      <img src="{% static 'img/logo.png' %}" alt="Talent Rank AI" />
+    </a>
+    <nav class="nav" aria-label="Menu do recrutador">
+      <a href="{% url 'jobs' %}">Vagas</a>
+      <a href="{% url 'talent_pool' %}">Banco de talentos</a>
+      <a href="{% url 'reports' %}">Relatórios</a>
+      <a class="logout" href="{% url 'logout' %}">Logout</a>
+    </nav>
+  </div>
+</header>

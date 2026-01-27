@@ -1,0 +1,113 @@
+{% extends 'core/base_logged.html' %}
+
+{% block title %}Editar vaga — {{ job.title }}{% endblock %}
+
+{% block extra_style %}
+  <style>
+    .form-wrap{max-width: 760px;}
+    .errorlist{
+      list-style:none;
+      padding: 0;
+      margin: 6px 0 0;
+      color: #fecaca;
+      font-size: 12px;
+    }
+    .hint{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="form-wrap">
+    <h1>Editar vaga</h1>
+    <p>Atualize as informações da vaga e gere a busca booleana.</p>
+
+    <div class="card">
+      <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <label for="{{ form.title.id_for_label }}">Título</label>
+        {{ form.title }}
+        {{ form.title.errors }}
+
+        <label for="{{ form.summary.id_for_label }}">Descrição resumida</label>
+        {{ form.summary }}
+        {{ form.summary.errors }}
+
+        <label for="{{ form.department.id_for_label }}">Área</label>
+        {{ form.department }}
+        {{ form.department.errors }}
+
+        <label for="{{ form.seniority.id_for_label }}">Senioridade</label>
+        {{ form.seniority }}
+        {{ form.seniority.errors }}
+
+        <label for="{{ form.location.id_for_label }}">Localização</label>
+        {{ form.location }}
+        {{ form.location.errors }}
+
+        <label for="{{ form.stack.id_for_label }}">Stack principal</label>
+        {{ form.stack }}
+        {{ form.stack.errors }}
+
+        <label for="{{ form.contract_type.id_for_label }}">Tipo de contratação</label>
+        {{ form.contract_type }}
+        {{ form.contract_type.errors }}
+
+        <label for="{{ form.salary_min.id_for_label }}">Salário mínimo</label>
+        {{ form.salary_min }}
+        {{ form.salary_min.errors }}
+
+        <label for="{{ form.salary_max.id_for_label }}">Salário máximo</label>
+        {{ form.salary_max }}
+        {{ form.salary_max.errors }}
+
+        <label for="{{ form.language.id_for_label }}">Idioma</label>
+        {{ form.language }}
+        {{ form.language.errors }}
+
+        <label for="{{ form.priority.id_for_label }}">Prioridade</label>
+        {{ form.priority }}
+        {{ form.priority.errors }}
+
+        <label>Data de criação</label>
+        <input value="{{ job.created_at|date:'d/m/Y' }}" readonly />
+
+        <label for="{{ form.must_have.id_for_label }}">Skills obrigatórias</label>
+        {{ form.must_have }}
+        {{ form.must_have.errors }}
+
+        <label for="{{ form.nice_to_have.id_for_label }}">Skills desejáveis</label>
+        {{ form.nice_to_have }}
+        {{ form.nice_to_have.errors }}
+
+        <label for="{{ form.undesirable.id_for_label }}">Não desejáveis</label>
+        {{ form.undesirable }}
+        {{ form.undesirable.errors }}
+
+        <label for="{{ form.boolean_search.id_for_label }}">Busca booleana</label>
+        {{ form.boolean_search }}
+        {{ form.boolean_search.errors }}
+        <div class="hint">Ao clicar em “Criar busca”, a busca atual será sobrescrita.</div>
+
+        <label for="{{ form.notes.id_for_label }}">Observações internas</label>
+        {{ form.notes }}
+        {{ form.notes.errors }}
+
+        <label for="{{ form.status.id_for_label }}">Status</label>
+        {{ form.status }}
+        {{ form.status.errors }}
+
+        <div class="actions">
+          <button class="btn primary" type="submit" name="action" value="save">Salvar</button>
+          <button class="btn" type="submit" name="action" value="generate">Criar busca</button>
+          <a class="btn" href="{% url 'job_detail' job.id %}">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

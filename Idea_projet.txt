@@ -1,0 +1,176 @@
+╔══════════════════════════════════════════════════════╗
+║ 🧠 TALENT POOL INTELIGENTE (PDFs LinkedIn Recruiter) ║
+╚══════════════════════════════════════════════════════╝
+
+🎯 RESUMO EXECUTIVO
+✅ Transformar PDFs exportados em um Talent Pool interno pesquisável.
+✅ Reaproveitar conhecimento de buscas anteriores para reduzir retrabalho.
+✅ Priorizar candidatos com score objetivo e planilha pronta para abordagem.
+
+──────────────────────────────────────────────────────
+1) 🧭 CONTEXTO E MOTIVAÇÃO
+──────────────────────────────────────────────────────
+O recrutamento técnico exige alto volume de leitura, comparação e priorização de perfis. Mesmo com o LinkedIn Recruiter, grande parte do trabalho continua manual.
+
+🔴 Problema central
+➡️ Não é falta de candidatos, e sim falta de estrutura e reaproveitamento do conhecimento gerado a cada busca.
+
+Hoje, a cada nova vaga:
+• Uma nova busca booleana é criada
+• Novos perfis são exportados em PDF
+• O recrutador volta a ler tudo do zero
+• Candidatos bons ficam “perdidos” em pastas antigas
+• A priorização é subjetiva e difícil de repetir
+
+✅ Resultado desejado
+Transformar PDFs exportados em um banco pesquisável, estruturado e reutilizável para filtrar, classificar e priorizar candidatos de forma objetiva e rápida.
+
+──────────────────────────────────────────────────────
+2) 🎯 OBJETIVO DO SISTEMA
+──────────────────────────────────────────────────────
+Criar um sistema interno que:
+- O recruiter abra uma vaga
+• Receba ZIPs com PDFs exportados (processo já permitido e utilizado hoje)
+• Extraia automaticamente as informações relevantes
+• Construa um Talent Pool para a vaga especifica e ao mesmo tempo salve em um talent poll interno (Postgres)
+• Permita consultas por filtros e palavras‑chave
+• Ranquear candidatos por aderência a uma vaga (Job Profile) feito com llm
+• Gere planilha/tabela web ordenada por prioridade e filtros
+- A vaga aberta tem seu campo de acompanhamento ( aberta, busca feita, candidato enviado, vaga finalizada)
+- Os candidatos tem que ter um campo de acompanhamento para aquela vaga, primeiro contato, respondeu, entrevista, entrevista_tecnica, enviado_gestor, enviado_cliente, contratado.
+ 
+ Escopo de como o recruiter vai trabalhar:
+  O recruiter abre uma nova vaga, e preenche os requisitos e topicos de skill que deseja ou não e tudo mais. 
+  Ele vai ter um campo para gerar a busca boleana com ajuda no llm ou não , caso queira clica no botão gerar busca, o llm vai criar com base nas informações
+  da vaga a busca boleada ideal e prencher no campo busca boleana, então a recruiter vai copiar essa busca e fazer a mesma no linkedin.
+  Quando o linkedin retornar a busca o recruiter vai exportar um zip com os canditados que vem em formato pdf. São varios zips pois o linkedin limita o numero
+  de candidatos por zip, o recruiter pode upar varios zips de uma x ou adicioanr posteriormente novos arquivos zip. 
+  Apos a importação o sistema deve transpor os dados do candidato para o banco de dados, automaticamente os candidatos ficarão atrelados a essa vaga
+  e tambem ficaram salvos no banco de dados. 
+  Ele podera tambem fazer uma busca no banco de dados com base nos skills da vaga e o sistema ja traz uma lista dos candidados que podem aderir a vaga e então clica no botão incluir candidatos filtrados.
+  Apos o processamento dos candidatos, o sistema deve apresentar uma tabela web dos candidatos importados para a vaga. apos o termino dessa importação
+  o recruiter tera que clicar num botão e acionar a llm para então com base nos dados da vaga e os dados dos candidatos, ranquear por aderencia a vaga. Esse rank pode ser por nota de 0 a 10.
+  Apos o rankeamento a recruiter entra em contato com o candidato, e vai atualizando o status dos candidatos dentro da vaga, e tambem o status da vaga. 
+  Quando finaliza o processo a vaga é encerrada, ela vai para uma lista de vagas finalizadas, para consulta posterior. 
+  
+
+🔎 Observação
+O sistema não automatiza nada dentro do LinkedIn. Ele atua após a exportação oficial.
+
+──────────────────────────────────────────────────────
+3) 🧩 ESCOPO E LIMITES
+──────────────────────────────────────────────────────
+✅ Inclui
+• Ingestão de ZIPs com PDFs exportados
+• Extração de dados, normalização e ranking
+• Busca e exportação para tabela web
+
+🚫 Não inclui
+• Scraping, automações ou integrações não permitidas com o LinkedIn
+• Ações dentro da plataforma (mensagens, convites, etc.)
+
+──────────────────────────────────────────────────────
+4) ⚖️ PROBLEMA RESOLVIDO NA PRÁTICA
+──────────────────────────────────────────────────────
+Sem o sistema:
+❌ PDFs em pastas
+❌ Releitura massiva a cada vaga
+❌ Sem reaproveitamento inteligente
+❌ Priorização manual e subjetiva
+❌ Tempo gasto em tarefas operacionais
+
+Com o sistema:
+✅ Cada PDF vira registro estruturado
+✅ Busca interna tipo “Google”
+✅ Filtros por skills, senioridade, localização, empresa, idiomas +
+✅ Ranking automático por vaga
+✅ Planilha ordenada para abordagem imediata
+
+──────────────────────────────────────────────────────
+5) 📥 ENTRADAS DO SISTEMA
+──────────────────────────────────────────────────────
+• Um arquivo ZIP com PDFs exportados do LinkedIn Recruiter
+• Opcionalmente, Job Profile com:
+  - Skills obrigatórias (must‑have)
+  - Skills desejáveis (nice‑to‑have)
+  - Senioridade alvo
+  - Regras de localização/idioma
+  - Pesos de ranqueamento
+
+🔒 Observação
+Insumo sempre legítimo, sem scraping ou automações não permitidas.
+
+──────────────────────────────────────────────────────
+6) ⚙️ PROCESSAMENTO
+──────────────────────────────────────────────────────
+O sistema deve:
+• Extrair texto de cada PDF (OCR apenas se necessário)
+• Identificar automaticamente:
+  - Nome
+  - Cargo atual
+  - Empresa atual
+  - Localização
+  - Link do LinkedIn
+  - Skills técnicas
+  - Senioridade estimada
+  - Anos de experiência
+• Armazenar no banco estruturado
+• Indexar texto completo para busca
+• Normalizar skills (ex.: K8s = Kubernetes)
+• Evitar duplicidades
+• Permitir filtros e busca textual
+• Calcular score de aderência por vaga
+• Gerar ranking explicável
+
+──────────────────────────────────────────────────────
+7) 📤 SAÍDAS DO SISTEMA
+──────────────────────────────────────────────────────
+🅰️ Talent Pool pesquisável
+• Busca por termos (ex.: “React Node AWS”)
+• Filtros por localização, senioridade, empresa e skills
+• Reaproveitamento de candidatos
+• Status de pipeline (abordado, respondeu, em processo)
+
+🅱️ Planilha/tabela por vaga
+• Prioridade (ranking)
+• Score de aderência
+• Nome, cargo, empresa, localização
+• Link do LinkedIn
+• Skills principais
+• Senioridade e anos de experiência
+• Resumo do perfil
+• Skills obrigatórias faltantes
+• Campo de status
+
+✅ Planilha já ordenada pelos mais aderentes
+
+──────────────────────────────────────────────────────
+8) 🚀 BENEFÍCIO DIRETO
+──────────────────────────────────────────────────────
+Antes:
+❌ Ler 100 PDFs por vaga
+
+Depois:
+✅ Ler apenas 20–30 mais aderentes
+
+Impacto:
+⭐ Mais tempo, melhor decisão e reaproveitamento de conhecimento
+
+──────────────────────────────────────────────────────
+9) 🤖 PAPEL DO LLM
+──────────────────────────────────────────────────────
+• Usado apenas na ingestão, por candidato
+• Transforma texto não estruturado em dados organizados
+• Ranking é determinístico (SQL), barato e reproduzível
+
+──────────────────────────────────────────────────────
+10) 🌟 VISÃO FINAL
+──────────────────────────────────────────────────────
+Transformar um processo manual e subjetivo em um sistema:
+✅ Estruturado
+✅ Pesquisável
+✅ Reutilizável
+✅ Orientado a prioridade
+
+Na prática:
+➡️ Um “LinkedIn Recruiter interno”, privado e inteligente, construído com os próprios dados exportados.
