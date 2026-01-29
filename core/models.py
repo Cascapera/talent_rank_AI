@@ -28,6 +28,11 @@ class Profile(models.Model):
         blank=True,
         help_text='Quando preenchido, o acesso é bloqueado após esta data. Deixe em branco para plano sem vencimento (manual). Na renovação da assinatura, esta data será atualizada.',
     )
+    last_session_key = models.CharField(
+        'Ultima sessao ativa',
+        max_length=40,
+        blank=True,
+    )
 
     def __str__(self) -> str:
         return str(self.user)
