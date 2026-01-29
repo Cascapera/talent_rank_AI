@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 import threading
 import zipfile
@@ -200,6 +201,7 @@ def talent_pool(request):
 
 def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
+    temp_root = uploaded_path.parent
     try:
         def progress_callback(**kwargs):
             _set_talent_pool_import_status(kwargs)
@@ -222,6 +224,8 @@ def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int):
         _set_talent_pool_import_status({"status": "completed", "result": result})
     except Exception as exc:
         _set_talent_pool_import_status({"status": "error", "message": str(exc)})
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 @login_required
@@ -419,6 +423,7 @@ def _set_talent_pool_import_status(payload: dict) -> None:
 
 
 def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_description: str, role_title: str, user_id: int):
+    temp_root = uploaded_path.parent
     try:
         def progress_callback(**kwargs):
             _set_import_status(job_id, kwargs)
@@ -449,6 +454,8 @@ def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_descript
         _set_import_status(job_id, {"status": "completed", "result": result})
     except Exception as exc:
         _set_import_status(job_id, {"status": "error", "message": str(exc)})
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 @login_required
