@@ -18,6 +18,9 @@ staticfiles/
 # Backups
 backups/
 
+# Cache local
+cache/
+
 # IDE / OS
 .idea/
 .vscode/

@@ -20,6 +20,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env', override=True)
 
+CACHE_DIR = BASE_DIR / 'cache'
+CACHE_DIR.mkdir(exist_ok=True)
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -93,6 +96,15 @@ DATABASES = {
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'talent_query'),
         'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
+    }
+}
+
+# Cache compartilhado entre workers (importação/progresso)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': str(CACHE_DIR),
+        'TIMEOUT': 60 * 60,
     }
 }
 

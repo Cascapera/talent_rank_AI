@@ -14,6 +14,7 @@ urlpatterns = [
     path('vagas/<int:job_id>/search-pool/', views.search_candidates_in_pool, name='search_candidates_in_pool'),
     path('vagas/<int:job_id>/candidatos/<int:candidate_job_id>/status/', views.update_candidate_status, name='update_candidate_status'),
     path('vagas/<int:job_id>/status/', views.update_job_status, name='update_job_status'),
+    path('vagas/<int:job_id>/gerar-busca/', views.generate_boolean_search, name='generate_boolean_search'),
     path('vagas/<int:job_id>/editar/', views.job_edit, name='job_edit'),
     path('vagas/nova/', views.job_create, name='job_create'),
     path('busca/', views.search, name='search'),

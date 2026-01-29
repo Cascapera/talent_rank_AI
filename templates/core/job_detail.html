@@ -44,6 +44,26 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 14px;
     }
+    .filters-form{
+      margin-top: 0;
+    }
+    .filters-grid{
+      gap: 6px 12px;
+      margin-bottom: 4px;
+    }
+    .filters-form label{
+      margin: 4px 0 3px;
+    }
+    .filters-form input,
+    .filters-form select{
+      height: 36px;
+    }
+    .candidates-section .card{
+      padding-top: 10px;
+    }
+    .candidates-section h2{
+      margin-bottom: 4px;
+    }
     @media (max-width: 980px){
       .meta{grid-template-columns: 1fr;}
       .grid-2{grid-template-columns: 1fr;}
@@ -75,6 +95,16 @@
       table-layout: auto;
       width: 100%;
     }
+    .job-summary{
+      color: var(--text);
+      font-weight: 700;
+    }
+    .status-label{
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 700;
+      margin: 0;
+    }
   </style>
 {% endblock %}
 
@@ -82,11 +112,11 @@
   <div class="header-row">
     <div>
       <h1>{{ job.title }}</h1>
-      <p>{{ job.summary|default:"Sem descrição resumida." }}</p>
+      <p class="job-summary">{{ job.summary|default:"Sem descrição resumida." }}</p>
     </div>
     <div class="actions" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
       <div style="display: flex; align-items: center; gap: 6px;">
-        <label for="job-status-select" style="font-size: 13px; color: var(--muted); margin: 0;">Status:</label>
+        <label for="job-status-select" class="status-label">Status:</label>
         <select 
           id="job-status-select"
           class="job-status-select" 
@@ -259,14 +289,15 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section candidates-section">
     <h2>Busca booleana</h2>
     <div class="card">
-      <p style="margin-bottom:8px;">{{ job.boolean_search|default:"Nenhuma busca definida." }}</p>
+      <p id="booleanSearchText" style="margin-bottom:8px;">{{ job.boolean_search|default:"Nenhuma busca definida." }}</p>
       <div class="actions">
         <a class="btn" href="{% url 'job_edit' job.id %}">Editar busca</a>
-        <a class="btn primary" href="{% url 'job_edit' job.id %}">Criar busca</a>
+        <button class="btn primary" id="generateBooleanBtn" data-url="{% url 'generate_boolean_search' job.id %}" type="button">Criar busca</button>
       </div>
+      <div id="booleanSearchStatus" style="margin-top: 8px; font-size: 12px; color: var(--muted);"></div>
     </div>
   </div>
 
@@ -299,8 +330,8 @@
           </div>
         {% endif %}
       </div>
-      <form method="get" style="margin-bottom: 12px;">
-        <div class="grid-2" style="margin-bottom: 10px;">
+      <form method="get" class="filters-form" style="margin-bottom: 8px;">
+        <div class="grid-2 filters-grid">
           <div>
             <label for="candidate_name">Nome</label>
             <input id="candidate_name" name="candidate_name" value="{{ candidate_filters.candidate_name }}" placeholder="Buscar por nome" />
@@ -312,6 +343,18 @@
           <div>
             <label for="candidate_seniority">Senioridade</label>
             <input id="candidate_seniority" name="candidate_seniority" value="{{ candidate_filters.candidate_seniority }}" placeholder="Ex: Sênior" />
+          </div>
+          <div>
+            <label for="candidate_language">Idioma</label>
+            <input id="candidate_language" name="candidate_language" value="{{ candidate_filters.candidate_language }}" placeholder="Ex: Inglês" />
+          </div>
+          <div>
+            <label for="candidate_must_have">Skills obrigatórias</label>
+            <input id="candidate_must_have" name="candidate_must_have" value="{{ candidate_filters.candidate_must_have }}" placeholder="Ex: Python, SQL" />
+          </div>
+          <div>
+            <label for="candidate_technologies">Tecnologias</label>
+            <input id="candidate_technologies" name="candidate_technologies" value="{{ candidate_filters.candidate_technologies }}" placeholder="Ex: Docker, AWS" />
           </div>
           <div>
             <label for="pipeline_status">Status</label>
@@ -329,7 +372,7 @@
         </div>
         <div class="actions">
           <button class="btn" type="submit">Filtrar</button>
-          <a class="btn" href="{% url 'job_detail' job.id %}">Limpar</a>
+          <a class="btn" href="{% url 'job_detail' job.id %}?clear_filters=1">Limpar</a>
         </div>
       </form>
 
@@ -639,6 +682,48 @@
         }
       }
       return cookieValue;
+    }
+
+
+    const generateBooleanBtn = document.getElementById('generateBooleanBtn');
+    if (generateBooleanBtn) {
+      const booleanTextEl = document.getElementById('booleanSearchText');
+      const booleanStatusEl = document.getElementById('booleanSearchStatus');
+      generateBooleanBtn.addEventListener('click', async () => {
+        const url = generateBooleanBtn.getAttribute('data-url');
+        generateBooleanBtn.disabled = true;
+        generateBooleanBtn.textContent = 'Criando...';
+        if (booleanStatusEl) {
+          booleanStatusEl.textContent = 'Gerando busca booleana...';
+        }
+        try {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': getCookie('csrftoken'),
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+          });
+          const data = await resp.json();
+          if (!resp.ok || data.error) {
+            throw new Error(data.error || 'Erro ao gerar busca booleana.');
+          }
+          if (booleanTextEl) {
+            booleanTextEl.textContent = data.boolean_search || 'Nenhuma busca definida.';
+          }
+          if (booleanStatusEl) {
+            booleanStatusEl.textContent = 'Busca booleana atualizada.';
+          }
+        } catch (err) {
+          if (booleanStatusEl) {
+            booleanStatusEl.textContent = err.message || 'Falha ao gerar busca booleana.';
+          }
+        } finally {
+          generateBooleanBtn.disabled = false;
+          generateBooleanBtn.textContent = 'Criar busca';
+        }
+      });
     }
     
     // Tenta obter CSRF token do cookie ou do input hidden

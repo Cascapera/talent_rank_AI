@@ -76,10 +76,7 @@
           {% for job in jobs %}
             <tr>
               <td>
-                <a href="{% url 'job_detail' job.id %}"
-                   target="_blank"
-                   rel="noopener noreferrer"
-                   onclick="window.open(this.href, '_blank', 'noopener'); return false;">
+                <a href="{% url 'job_detail' job.id %}">
                   {{ job.title }}
                 </a>
               </td>

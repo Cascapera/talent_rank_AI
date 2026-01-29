@@ -4,7 +4,36 @@
 
 {% block extra_style %}
   <style>
-    .form-wrap{max-width: 760px;}
+    .form-wrap{
+      max-width: 100%;
+      width: 100%;
+    }
+    .form-helper{
+      color: #0f3441;
+    }
+    .form-grid{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px 18px;
+    }
+    .form-grid .full{
+      grid-column: 1 / -1;
+    }
+    .form-grid .span-2{
+      grid-column: span 2;
+    }
+    .form-grid .span-3{
+      grid-column: span 3;
+    }
+    .field label{
+      font-weight: 700;
+    }
+    .field input,
+    .field select,
+    .field textarea{
+      width: 100%;
+      max-width: 100%;
+    }
     .errorlist{
       list-style:none;
       padding: 0;
@@ -18,85 +47,116 @@
 {% block content %}
   <div class="form-wrap">
     <h1>Nova vaga</h1>
-    <p>Preencha os dados básicos para criar a vaga.</p>
+    <p class="form-helper">Preencha os dados para criar a vaga, quanto mais detalhada a vaga melhor será a análise dos candidatos pela IA.</p>
 
     <div class="card">
-      <form method="post">
+      <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.non_field_errors }}
 
-        <label for="{{ form.title.id_for_label }}">Título</label>
-        {{ form.title }}
-        {{ form.title.errors }}
+        <div class="field full">
+          <label for="{{ form.title.id_for_label }}">Título</label>
+          {{ form.title }}
+          {{ form.title.errors }}
+        </div>
 
-        <label for="{{ form.summary.id_for_label }}">Descrição resumida</label>
-        {{ form.summary }}
-        {{ form.summary.errors }}
+        <div class="field full">
+          <label for="{{ form.summary.id_for_label }}">Descrição resumida</label>
+          {{ form.summary }}
+          {{ form.summary.errors }}
+        </div>
 
-        <label for="{{ form.department.id_for_label }}">Área</label>
-        {{ form.department }}
-        {{ form.department.errors }}
+        <div class="field">
+          <label for="{{ form.department.id_for_label }}">Área</label>
+          {{ form.department }}
+          {{ form.department.errors }}
+        </div>
 
-        <label for="{{ form.seniority.id_for_label }}">Senioridade</label>
-        {{ form.seniority }}
-        {{ form.seniority.errors }}
+        <div class="field">
+          <label for="{{ form.seniority.id_for_label }}">Senioridade</label>
+          {{ form.seniority }}
+          {{ form.seniority.errors }}
+        </div>
 
-        <label for="{{ form.location.id_for_label }}">Localização</label>
-        {{ form.location }}
-        {{ form.location.errors }}
+        <div class="field">
+          <label for="{{ form.location.id_for_label }}">Localização</label>
+          {{ form.location }}
+          {{ form.location.errors }}
+        </div>
 
-        <label for="{{ form.stack.id_for_label }}">Stack principal</label>
-        {{ form.stack }}
-        {{ form.stack.errors }}
+        <div class="field">
+          <label for="{{ form.stack.id_for_label }}">Stack principal</label>
+          {{ form.stack }}
+          {{ form.stack.errors }}
+        </div>
 
-        <label for="{{ form.contract_type.id_for_label }}">Tipo de contratação</label>
-        {{ form.contract_type }}
-        {{ form.contract_type.errors }}
+        <div class="field">
+          <label for="{{ form.contract_type.id_for_label }}">Tipo de contratação</label>
+          {{ form.contract_type }}
+          {{ form.contract_type.errors }}
+        </div>
 
-        <label for="{{ form.salary_min.id_for_label }}">Salário mínimo</label>
-        {{ form.salary_min }}
-        {{ form.salary_min.errors }}
+        <div class="field">
+          <label for="{{ form.salary_min.id_for_label }}">Salário mínimo</label>
+          {{ form.salary_min }}
+          {{ form.salary_min.errors }}
+        </div>
 
-        <label for="{{ form.salary_max.id_for_label }}">Salário máximo</label>
-        {{ form.salary_max }}
-        {{ form.salary_max.errors }}
+        <div class="field">
+          <label for="{{ form.salary_max.id_for_label }}">Salário máximo</label>
+          {{ form.salary_max }}
+          {{ form.salary_max.errors }}
+        </div>
 
-        <label for="{{ form.language.id_for_label }}">Idioma</label>
-        {{ form.language }}
-        {{ form.language.errors }}
+        <div class="field">
+          <label for="{{ form.language.id_for_label }}">Idioma</label>
+          {{ form.language }}
+          {{ form.language.errors }}
+        </div>
 
-        <label for="{{ form.priority.id_for_label }}">Prioridade</label>
-        {{ form.priority }}
-        {{ form.priority.errors }}
+        <div class="field">
+          <label for="{{ form.priority.id_for_label }}">Prioridade</label>
+          {{ form.priority }}
+          {{ form.priority.errors }}
+        </div>
 
-        <label>Data de criação</label>
-        <input value="Será definida automaticamente" readonly />
+        <div class="field full">
+          <label for="{{ form.must_have.id_for_label }}">Skills obrigatórias</label>
+          {{ form.must_have }}
+          {{ form.must_have.errors }}
+        </div>
 
-        <label for="{{ form.must_have.id_for_label }}">Skills obrigatórias</label>
-        {{ form.must_have }}
-        {{ form.must_have.errors }}
+        <div class="field full">
+          <label for="{{ form.nice_to_have.id_for_label }}">Skills desejáveis</label>
+          {{ form.nice_to_have }}
+          {{ form.nice_to_have.errors }}
+        </div>
 
-        <label for="{{ form.nice_to_have.id_for_label }}">Skills desejáveis</label>
-        {{ form.nice_to_have }}
-        {{ form.nice_to_have.errors }}
+        <div class="field span-2">
+          <label for="{{ form.undesirable.id_for_label }}">Não desejáveis</label>
+          {{ form.undesirable }}
+          {{ form.undesirable.errors }}
+        </div>
 
-        <label for="{{ form.undesirable.id_for_label }}">Não desejáveis</label>
-        {{ form.undesirable }}
-        {{ form.undesirable.errors }}
+        <div class="field span-3">
+          <label for="{{ form.boolean_search.id_for_label }}">Busca booleana</label>
+          {{ form.boolean_search }}
+          {{ form.boolean_search.errors }}
+        </div>
 
-        <label for="{{ form.boolean_search.id_for_label }}">Busca booleana</label>
-        {{ form.boolean_search }}
-        {{ form.boolean_search.errors }}
+        <div class="field full">
+          <label for="{{ form.notes.id_for_label }}">Observações internas</label>
+          {{ form.notes }}
+          {{ form.notes.errors }}
+        </div>
 
-        <label for="{{ form.notes.id_for_label }}">Observações internas</label>
-        {{ form.notes }}
-        {{ form.notes.errors }}
+        <div class="field">
+          <label for="{{ form.status.id_for_label }}">Status</label>
+          {{ form.status }}
+          {{ form.status.errors }}
+        </div>
 
-        <label for="{{ form.status.id_for_label }}">Status</label>
-        {{ form.status }}
-        {{ form.status.errors }}
-
-        <div class="actions">
+        <div class="actions full">
           <button class="btn primary" type="submit">Salvar</button>
           <a class="btn" href="{% url 'jobs' %}">Cancelar</a>
         </div>

@@ -458,10 +458,35 @@ def job_detail(request, job_id: int):
     def split_list(value: str):
         return [item.strip() for item in value.split(',') if item.strip()]
 
+    filter_keys = {
+        'pipeline_status',
+        'candidate_seniority',
+        'candidate_location',
+        'candidate_name',
+        'candidate_language',
+        'candidate_must_have',
+        'candidate_technologies',
+        'min_adherence',
+    }
+    filters_storage_key = f"job_filters_{job.id}"
+    if request.GET.get("clear_filters") == "1":
+        request.session.pop(filters_storage_key, None)
+    else:
+        current_params = {k: request.GET.get(k, '').strip() for k in filter_keys}
+        if any(v for v in current_params.values()):
+            request.session[filters_storage_key] = current_params
+        else:
+            saved_filters = request.session.get(filters_storage_key, {})
+            if saved_filters:
+                return redirect(f"{request.path}?{urlencode(saved_filters)}")
+
     status_filter = request.GET.get('pipeline_status', '').strip()
     seniority_filter = request.GET.get('candidate_seniority', '').strip()
     location_filter = request.GET.get('candidate_location', '').strip()
     name_filter = request.GET.get('candidate_name', '').strip()
+    language_filter = request.GET.get('candidate_language', '').strip()
+    must_have_filter = request.GET.get('candidate_must_have', '').strip()
+    technologies_filter = request.GET.get('candidate_technologies', '').strip()
     min_adherence_raw = request.GET.get('min_adherence', '').strip()
 
     import_message = ""
@@ -495,6 +520,12 @@ def job_detail(request, job_id: int):
         candidate_links = candidate_links.filter(candidate__location__icontains=location_filter)
     if name_filter:
         candidate_links = candidate_links.filter(candidate__name__icontains=name_filter)
+    if language_filter:
+        candidate_links = candidate_links.filter(candidate__languages__icontains=language_filter)
+    if must_have_filter:
+        candidate_links = candidate_links.filter(candidate__skills__icontains=must_have_filter)
+    if technologies_filter:
+        candidate_links = candidate_links.filter(candidate__technologies__icontains=technologies_filter)
     if min_adherence_raw.isdigit():
         candidate_links = candidate_links.filter(adherence_score__gte=int(min_adherence_raw))
     candidate_links = candidate_links.order_by(F('adherence_score').desc(nulls_last=True))
@@ -514,6 +545,12 @@ def job_detail(request, job_id: int):
         query_params['candidate_location'] = location_filter
     if name_filter:
         query_params['candidate_name'] = name_filter
+    if language_filter:
+        query_params['candidate_language'] = language_filter
+    if must_have_filter:
+        query_params['candidate_must_have'] = must_have_filter
+    if technologies_filter:
+        query_params['candidate_technologies'] = technologies_filter
     if min_adherence_raw and min_adherence_raw.strip():
         query_params['min_adherence'] = min_adherence_raw
     query_string = urlencode(query_params)
@@ -533,6 +570,9 @@ def job_detail(request, job_id: int):
             'candidate_seniority': seniority_filter,
             'candidate_location': location_filter,
             'candidate_name': name_filter,
+            'candidate_language': language_filter,
+            'candidate_must_have': must_have_filter,
+            'candidate_technologies': technologies_filter,
             'min_adherence': min_adherence_raw,
         },
         'query_string': query_string,
@@ -796,6 +836,24 @@ def update_job_status(request, job_id: int):
             "success": True,
             "status": job.status,
             "status_display": job.get_status_display(),
+        })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@login_required
+@required_plan('BASIC')
+def generate_boolean_search(request, job_id: int):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Método não permitido"}, status=405)
+
+    try:
+        job = get_object_or_404(Job, id=job_id, user=request.user)
+        job.boolean_search = _build_boolean_search(job)
+        job.save(update_fields=["boolean_search"])
+        return JsonResponse({
+            "success": True,
+            "boolean_search": job.boolean_search or "",
         })
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
