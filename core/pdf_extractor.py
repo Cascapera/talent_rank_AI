@@ -965,6 +965,7 @@ def import_candidates_from_folder(
     role_title: str | None = None,
     job_id: int | None = None,
     user_id=None,
+    shared_pool: bool = False,
     progress_callback=None,
 ) -> dict:
     folder = Path(folder_path)
@@ -1037,7 +1038,10 @@ def import_candidates_from_folder(
                         "seniority": data.get("seniority") or "",
                     }
 
-                    qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                    if shared_pool:
+                        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                    else:
+                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                     candidate = qs.first()
                     if candidate:
                         changed = False
@@ -1145,7 +1149,10 @@ def import_candidates_from_folder(
                             "seniority": data.get("seniority") or "",
                         }
 
-                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        if shared_pool:
+                            qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        else:
+                            qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                         candidate = qs.first()
                         if candidate:
                             changed = False
@@ -1234,6 +1241,7 @@ def import_candidates_from_folder(
 def import_candidates_from_folder_no_ranking(
     folder_path: str,
     user_id=None,
+    shared_pool: bool = False,
     progress_callback=None,
 ) -> dict:
     """Importa candidatos sem rankeamento (para banco de talentos). Candidatos ficam vinculados ao user_id."""
@@ -1300,7 +1308,10 @@ def import_candidates_from_folder_no_ranking(
                         "seniority": data.get("seniority") or "",
                     }
 
-                    qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                    if shared_pool:
+                        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                    else:
+                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                     candidate = qs.first()
                     if candidate:
                         changed = False
@@ -1477,6 +1488,7 @@ def search_and_rank_candidates_from_pool(
     progress_callback=None,
     filters: dict | None = None,
     user_id=None,
+    shared_pool: bool = False,
 ) -> dict:
     """Busca candidatos no banco de talentos do usuário e calcula aderência para a vaga."""
     from .models import Candidate, CandidateJob
@@ -1484,7 +1496,7 @@ def search_and_rank_candidates_from_pool(
     # Busca candidatos do usuário não vinculados à vaga
     linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list('candidate_id', flat=True)
     candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
-    if user_id is not None:
+    if user_id is not None and not shared_pool:
         candidates = candidates.filter(user_id=user_id)
     
     # Aplica filtros se fornecidos

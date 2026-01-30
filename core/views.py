@@ -13,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
 
-from .models import Job, Candidate, CandidateJob
+from .models import Job, Candidate, CandidateJob, Profile
 from .forms import JobForm, CandidateForm, SignupForm
 from .plans import required_plan
 from .pdf_extractor import (
@@ -25,6 +25,11 @@ from .pdf_extractor import (
 
 def home(request):
     return render(request, 'core/home.html')
+
+
+def _uses_shared_pool(user) -> bool:
+    profile, _ = Profile.objects.get_or_create(user=user)
+    return profile.plan == Profile.Plan.PREMIUM
 
 
 def signup(request):
@@ -91,6 +96,7 @@ def talent_pool(request):
     message = ""
     import_message = ""
     form = CandidateForm()
+    shared_pool = _uses_shared_pool(request.user)
     
     # Processa upload de ZIP/PDF
     if request.method == 'POST' and request.FILES.get('candidates_zip'):
@@ -105,7 +111,7 @@ def talent_pool(request):
         _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
         thread = threading.Thread(
             target=_run_talent_pool_import,
-            args=(uploaded_path, is_zip, request.user.id),
+            args=(uploaded_path, is_zip, request.user.id, shared_pool),
             daemon=True,
         )
         thread.start()
@@ -144,7 +150,7 @@ def talent_pool(request):
     company_filter = request.GET.get('company', '').strip()
     technologies_filter = request.GET.get('technologies', '').strip()
 
-    candidates = Candidate.objects.filter(user=request.user)
+    candidates = Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
     
     if name_filter:
         candidates = candidates.filter(name__icontains=name_filter)
@@ -186,6 +192,7 @@ def talent_pool(request):
         'page_obj': page_obj,
         'message': message,
         'import_message': import_message,
+        'shared_pool': shared_pool,
         'filters': {
             'name': name_filter,
             'location': location_filter,
@@ -199,7 +206,7 @@ def talent_pool(request):
     return render(request, 'core/talent_pool.html', context)
 
 
-def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int):
+def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int, shared_pool: bool = False):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
     temp_root = uploaded_path.parent
     try:
@@ -213,12 +220,14 @@ def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int):
             result = import_candidates_from_folder_no_ranking(
                 str(extract_dir),
                 user_id=user_id,
+                shared_pool=shared_pool,
                 progress_callback=progress_callback,
             )
         else:
             result = import_candidates_from_folder_no_ranking(
                 str(uploaded_path),
                 user_id=user_id,
+                shared_pool=shared_pool,
                 progress_callback=progress_callback,
             )
         _set_talent_pool_import_status({"status": "completed", "result": result})
@@ -422,7 +431,7 @@ def _set_talent_pool_import_status(payload: dict) -> None:
     cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
 
 
-def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_description: str, role_title: str, user_id: int):
+def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_description: str, role_title: str, user_id: int, shared_pool: bool = False):
     temp_root = uploaded_path.parent
     try:
         def progress_callback(**kwargs):
@@ -439,6 +448,7 @@ def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_descript
                 role_title=role_title,
                 job_id=job_id,
                 user_id=user_id,
+                shared_pool=shared_pool,
                 progress_callback=progress_callback,
             )
         else:
@@ -449,6 +459,7 @@ def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_descript
                 role_title=role_title,
                 job_id=job_id,
                 user_id=user_id,
+                shared_pool=shared_pool,
                 progress_callback=progress_callback,
             )
         _set_import_status(job_id, {"status": "completed", "result": result})
@@ -510,9 +521,10 @@ def job_detail(request, job_id: int):
 
         is_zip = zipfile.is_zipfile(uploaded_path)
         _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
+        shared_pool = _uses_shared_pool(request.user)
         thread = threading.Thread(
             target=_run_import_job,
-            args=(job.id, uploaded_path, is_zip, job_description, role_title, request.user.id),
+            args=(job.id, uploaded_path, is_zip, job_description, role_title, request.user.id, shared_pool),
             daemon=True,
         )
         thread.start()
@@ -608,7 +620,7 @@ def job_search_status(request, job_id: int):
     return JsonResponse(payload)
 
 
-def _run_search_in_pool(job_id: int, job_description: str, role_title: str, filters: dict | None = None, user_id: int | None = None):
+def _run_search_in_pool(job_id: int, job_description: str, role_title: str, filters: dict | None = None, user_id: int | None = None, shared_pool: bool = False):
     """Executa busca e rankeamento de candidatos do banco do usuário em background."""
     try:
         def progress_callback(**kwargs):
@@ -623,6 +635,7 @@ def _run_search_in_pool(job_id: int, job_description: str, role_title: str, filt
             progress_callback=progress_callback,
             filters=filters,
             user_id=user_id,
+            shared_pool=shared_pool,
         )
         _set_search_status(job_id, {"status": "completed", "result": result})
     except Exception as exc:
@@ -669,9 +682,12 @@ def preview_candidates_search(request, job_id: int):
     if ready_only:
         filters['ready_only'] = True
     
-    # Busca candidatos do usuário não vinculados à vaga
+    shared_pool = _uses_shared_pool(request.user)
+    # Busca candidatos não vinculados à vaga
     linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list('candidate_id', flat=True)
-    candidates = Candidate.objects.filter(user=request.user).exclude(id__in=linked_candidate_ids)
+    candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
+    if not shared_pool:
+        candidates = candidates.filter(user=request.user)
     
     # Aplica filtros
     if name_filter:
@@ -737,6 +753,7 @@ def search_candidates_in_pool(request, job_id: int):
     job = get_object_or_404(Job, id=job_id, user=request.user)
     job_description = _build_job_description(job)
     role_title = job.title
+    shared_pool = _uses_shared_pool(request.user)
     
     # Extrai filtros do POST (pode vir do preview)
     filters = {}
@@ -772,7 +789,7 @@ def search_candidates_in_pool(request, job_id: int):
     _set_search_status(job.id, {"status": "running", "processed": 0, "total": 0})
     thread = threading.Thread(
         target=_run_search_in_pool,
-        args=(job.id, job_description, role_title, filters if filters else None, request.user.id),
+        args=(job.id, job_description, role_title, filters if filters else None, None if shared_pool else request.user.id, shared_pool),
         daemon=True,
     )
     thread.start()
