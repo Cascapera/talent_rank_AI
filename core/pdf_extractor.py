@@ -4,6 +4,9 @@ from pathlib import Path
 import unicodedata
 import time
 
+from django.db import connection
+from django.db.models import F, Func, Q
+from django.db.models.functions import Lower
 from pypdf import PdfReader
 
 from .models import Candidate, CandidateJob
@@ -37,6 +40,25 @@ SECTION_TITLES = {
     "formação acadêmica",
     "formacao academica",
 }
+
+
+def _normalize_search_term(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
+
+
+def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
+    if not term:
+        return qs
+    if connection.vendor != "postgresql":
+        return qs.filter(**{f"{field}__icontains": term})
+    normalized = _normalize_search_term(term)
+    alias = f"{alias_prefix}_{field.replace('__', '_')}"
+    qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
+    return qs.filter(
+        Q(**{f"{field}__icontains": term}) |
+        Q(**{f"{alias}__contains": normalized})
+    )
 
 
 def _fix_mojibake(text: str) -> str:
@@ -1512,21 +1534,21 @@ def search_and_rank_candidates_from_pool(
         ready_only = filters.get('ready_only', False)
         
         if name_filter:
-            candidates = candidates.filter(name__icontains=name_filter)
+            candidates = _apply_unaccent_filter(candidates, 'name', name_filter, 'name')
         if location_filter:
-            candidates = candidates.filter(location__icontains=location_filter)
+            candidates = _apply_unaccent_filter(candidates, 'location', location_filter, 'location')
         if seniority_filter:
-            candidates = candidates.filter(seniority__icontains=seniority_filter)
+            candidates = _apply_unaccent_filter(candidates, 'seniority', seniority_filter, 'seniority')
         if company_filter:
-            candidates = candidates.filter(current_company__icontains=company_filter)
+            candidates = _apply_unaccent_filter(candidates, 'current_company', company_filter, 'company')
         if technologies_filter:
-            candidates = candidates.filter(technologies__icontains=technologies_filter)
+            candidates = _apply_unaccent_filter(candidates, 'technologies', technologies_filter, 'technologies')
         if skills_filter:
-            candidates = candidates.filter(skills__icontains=skills_filter)
+            candidates = _apply_unaccent_filter(candidates, 'skills', skills_filter, 'skills')
         if languages_filter:
-            candidates = candidates.filter(languages__icontains=languages_filter)
+            candidates = _apply_unaccent_filter(candidates, 'languages', languages_filter, 'languages')
         if certifications_filter:
-            candidates = candidates.filter(certifications__icontains=certifications_filter)
+            candidates = _apply_unaccent_filter(candidates, 'certifications', certifications_filter, 'certifications')
         if ready_only:
             candidates = candidates.exclude(ready_at__isnull=True)
     

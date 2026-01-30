@@ -2,13 +2,16 @@ import shutil
 import tempfile
 import threading
 import zipfile
+import unicodedata
 from pathlib import Path
 from urllib.parse import urlencode
 
 from django.contrib.auth import logout
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import F, Count, Q
+from django.db import connection
+from django.db.models import F, Count, Q, Func
+from django.db.models.functions import Lower
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
@@ -30,6 +33,25 @@ def home(request):
 def _uses_shared_pool(user) -> bool:
     profile, _ = Profile.objects.get_or_create(user=user)
     return profile.plan == Profile.Plan.PREMIUM
+
+
+def _normalize_term(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
+
+
+def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
+    if not term:
+        return qs
+    if connection.vendor != "postgresql":
+        return qs.filter(**{f"{field}__icontains": term})
+    normalized = _normalize_term(term)
+    alias = f"{alias_prefix}_{field.replace('__', '_')}"
+    qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
+    return qs.filter(
+        Q(**{f"{field}__icontains": term}) |
+        Q(**{f"{alias}__contains": normalized})
+    )
 
 
 def signup(request):
@@ -534,17 +556,17 @@ def job_detail(request, job_id: int):
     if status_filter:
         candidate_links = candidate_links.filter(pipeline_status=status_filter)
     if seniority_filter:
-        candidate_links = candidate_links.filter(candidate__seniority__icontains=seniority_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__seniority', seniority_filter, 'seniority')
     if location_filter:
-        candidate_links = candidate_links.filter(candidate__location__icontains=location_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__location', location_filter, 'location')
     if name_filter:
-        candidate_links = candidate_links.filter(candidate__name__icontains=name_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__name', name_filter, 'name')
     if language_filter:
-        candidate_links = candidate_links.filter(candidate__languages__icontains=language_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__languages', language_filter, 'language')
     if must_have_filter:
-        candidate_links = candidate_links.filter(candidate__skills__icontains=must_have_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__skills', must_have_filter, 'skills')
     if technologies_filter:
-        candidate_links = candidate_links.filter(candidate__technologies__icontains=technologies_filter)
+        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__technologies', technologies_filter, 'technologies')
     if min_adherence_raw.isdigit():
         candidate_links = candidate_links.filter(adherence_score__gte=int(min_adherence_raw))
     candidate_links = candidate_links.order_by(F('adherence_score').desc(nulls_last=True))
@@ -691,21 +713,21 @@ def preview_candidates_search(request, job_id: int):
     
     # Aplica filtros
     if name_filter:
-        candidates = candidates.filter(name__icontains=name_filter)
+        candidates = _apply_unaccent_filter(candidates, 'name', name_filter, 'name')
     if location_filter:
-        candidates = candidates.filter(location__icontains=location_filter)
+        candidates = _apply_unaccent_filter(candidates, 'location', location_filter, 'location')
     if seniority_filter:
-        candidates = candidates.filter(seniority__icontains=seniority_filter)
+        candidates = _apply_unaccent_filter(candidates, 'seniority', seniority_filter, 'seniority')
     if company_filter:
-        candidates = candidates.filter(current_company__icontains=company_filter)
+        candidates = _apply_unaccent_filter(candidates, 'current_company', company_filter, 'company')
     if technologies_filter:
-        candidates = candidates.filter(technologies__icontains=technologies_filter)
+        candidates = _apply_unaccent_filter(candidates, 'technologies', technologies_filter, 'technologies')
     if skills_filter:
-        candidates = candidates.filter(skills__icontains=skills_filter)
+        candidates = _apply_unaccent_filter(candidates, 'skills', skills_filter, 'skills')
     if languages_filter:
-        candidates = candidates.filter(languages__icontains=languages_filter)
+        candidates = _apply_unaccent_filter(candidates, 'languages', languages_filter, 'languages')
     if certifications_filter:
-        candidates = candidates.filter(certifications__icontains=certifications_filter)
+        candidates = _apply_unaccent_filter(candidates, 'certifications', certifications_filter, 'certifications')
     if ready_only:
         candidates = candidates.exclude(ready_at__isnull=True)
     
