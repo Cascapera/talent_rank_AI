@@ -171,6 +171,10 @@ def talent_pool(request):
     seniority_filter = request.GET.get('seniority', '').strip()
     company_filter = request.GET.get('company', '').strip()
     technologies_filter = request.GET.get('technologies', '').strip()
+    current_title_filter = request.GET.get('current_title', '').strip()
+    skills_filter = request.GET.get('skills', '').strip()
+    certifications_filter = request.GET.get('certifications', '').strip()
+    languages_filter = request.GET.get('languages', '').strip()
 
     candidates = Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
     
@@ -184,6 +188,14 @@ def talent_pool(request):
         candidates = candidates.filter(current_company__icontains=company_filter)
     if technologies_filter:
         candidates = candidates.filter(technologies__icontains=technologies_filter)
+    if current_title_filter:
+        candidates = candidates.filter(current_title__icontains=current_title_filter)
+    if skills_filter:
+        candidates = candidates.filter(skills__icontains=skills_filter)
+    if certifications_filter:
+        candidates = candidates.filter(certifications__icontains=certifications_filter)
+    if languages_filter:
+        candidates = candidates.filter(languages__icontains=languages_filter)
     
     candidates = candidates.order_by('-updated_at', '-created_at')
 
@@ -204,6 +216,14 @@ def talent_pool(request):
         query_params['company'] = company_filter
     if technologies_filter:
         query_params['technologies'] = technologies_filter
+    if current_title_filter:
+        query_params['current_title'] = current_title_filter
+    if skills_filter:
+        query_params['skills'] = skills_filter
+    if certifications_filter:
+        query_params['certifications'] = certifications_filter
+    if languages_filter:
+        query_params['languages'] = languages_filter
     query_string = urlencode(query_params)
     if query_string:
         query_string = '&' + query_string
@@ -221,6 +241,10 @@ def talent_pool(request):
             'seniority': seniority_filter,
             'company': company_filter,
             'technologies': technologies_filter,
+            'current_title': current_title_filter,
+            'skills': skills_filter,
+            'certifications': certifications_filter,
+            'languages': languages_filter,
         },
         'query_string': query_string,
         'import_status': cache.get(_talent_pool_import_status_key()),
