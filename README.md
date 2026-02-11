@@ -4,6 +4,7 @@
 
 Plataforma para recrutadores que utilizam o LinkedIn Recruiter: transforme exportações em PDF em um banco de talentos pesquisável, ranqueado por aderência à vaga, com pipeline e filtros prontos para uso no dia a dia.
 
+www.talentrankai.com
 ---
 
 ## Por que usar?
