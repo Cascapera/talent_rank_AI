@@ -15,6 +15,9 @@ __pycache__/
 # Static coletado (gerado em deploy)
 staticfiles/
 
+# Media (currículos PDF enviados pelos usuários)
+media/
+
 # Backups
 backups/
 

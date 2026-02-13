@@ -39,6 +39,7 @@ class CandidateAdmin(admin.ModelAdmin):
         'seniority',
         'experience_time',
         'average_tenure',
+        'has_resume_pdf',
         'ready_at',
         'updated_at',
     )
@@ -55,6 +56,12 @@ class CandidateAdmin(admin.ModelAdmin):
         'languages',
         'certifications',
     )
+
+    def has_resume_pdf(self, obj):
+        return bool(obj.resume_pdf)
+
+    has_resume_pdf.boolean = True
+    has_resume_pdf.short_description = "Tem PDF"
 
 
 @admin.register(CandidateJob)

@@ -200,6 +200,10 @@ server {
         alias /var/www/talent_rank_ai/staticfiles/;
     }
 
+    location /media/ {
+        alias /var/www/talent_rank_ai/media/;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;

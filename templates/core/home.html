@@ -492,7 +492,6 @@
         <nav class="nav" aria-label="Menu principal">
           <a class="login" href="{% url 'login' %}">Login</a>
           <a href="#how">Ver como funciona</a>
-          <a href="#demo">Solicitar demonstração</a>
           <button class="hamburger" id="hamburger" aria-label="Abrir menu" aria-expanded="false">
             <span></span>
           </button>
@@ -503,7 +502,6 @@
     <div class="mobile-drawer" id="mobileDrawer">
       <a href="{% url 'login' %}">Login</a>
       <a href="#how">Ver como funciona</a>
-      <a href="#demo">Solicitar demonstração</a>
     </div>
   </header>
 
@@ -529,7 +527,7 @@
           </p>
 
           <div class="hero-cta">
-            <a class="btn primary" href="#demo">Começar agora</a>
+            <a class="btn primary" href="{% url 'login' %}">Começar agora</a>
             <a class="btn" href="#how">Ver como funciona</a>
           </div>
 
@@ -697,76 +695,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- Seções “anchor” para o menu -->
-    <section id="jobs" aria-label="Jobs">
-      <div class="container">
-        <h2 class="section-title">Jobs</h2>
-        <p class="section-sub">
-          Crie perfis de vaga com must-have, nice-to-have e pesos de prioridade. Rode rankings reproduzíveis e compare resultados.
-        </p>
-      </div>
-    </section>
-
-    <section id="worker" aria-label="Worker">
-      <div class="container">
-        <h2 class="section-title">Worker</h2>
-        <p class="section-sub">
-          Pipeline de processamento com status, logs e reprocessamento de falhas. Transforme ZIPs em dados estruturados.
-        </p>
-      </div>
-    </section>
-
-    <section id="talent-pool" aria-label="Banco de Talentos">
-      <div class="container">
-        <h2 class="section-title">Banco de Talentos</h2>
-        <p class="section-sub">
-          Base pesquisável e reutilizável: encontre candidatos por stack, empresa, senioridade e histórico de interação.
-        </p>
-      </div>
-    </section>
-
-    <section id="reports" aria-label="Relatórios">
-      <div class="container">
-        <h2 class="section-title">Relatórios</h2>
-        <p class="section-sub">
-          Acompanhe funil por vaga, produtividade, tempo de preenchimento e desempenho de abordagens.
-        </p>
-      </div>
-    </section>
-
-    <!-- Demo -->
-    <section id="demo" aria-label="Solicitar demonstração">
-      <div class="container">
-        <div class="card" style="padding: 22px;">
-          <h2 class="section-title">Solicitar demonstração</h2>
-          <p class="section-sub">
-            Envie seus dados de contato e nós apresentamos um fluxo completo: importação, ranking e exportação por vaga.
-          </p>
-
-          <form style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top: 10px;">
-            <input style="height:44px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.9); padding: 0 12px;" placeholder="Nome" />
-            <input style="height:44px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.9); padding: 0 12px;" placeholder="Email" />
-            <input style="grid-column: 1 / -1; height:44px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.9); padding: 0 12px;" placeholder="Empresa (opcional)" />
-            <button type="button" class="btn primary" style="grid-column: 1 / -1; height:46px;">
-              Enviar
-            </button>
-            <div class="muted" style="grid-column: 1 / -1; font-size: 12px;">
-              * Este formulário é apenas demonstrativo. Na integração real, conecte ao backend (Django).
-            </div>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <section id="login" aria-label="Login">
-      <div class="container">
-        <h2 class="section-title">Login</h2>
-        <p class="section-sub">
-          Acesse a plataforma para importar perfis, consultar o banco e executar o ranking por vaga.
-        </p>
       </div>
     </section>
 

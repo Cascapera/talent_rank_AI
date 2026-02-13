@@ -1,5 +1,14 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
+
+
+def resume_upload_to(instance, filename):
+    """Armazena currículos em resumes/{user_id}/{uuid}.pdf"""
+    ext = filename.split(".")[-1] if "." in filename else "pdf"
+    user_dir = instance.user_id or "shared"
+    return f"resumes/{user_dir}/{uuid.uuid4().hex}.{ext}"
 
 
 class Profile(models.Model):
@@ -97,6 +106,13 @@ class Candidate(models.Model):
     experience_time = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     average_tenure = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     ready_at = models.DateField(null=True, blank=True)
+    resume_pdf = models.FileField(
+        "Currículo PDF",
+        upload_to=resume_upload_to,
+        blank=True,
+        null=True,
+        help_text="PDF do currículo do candidato. Usado para avaliação mais precisa quando vinculado a uma vaga.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

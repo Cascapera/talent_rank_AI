@@ -4,6 +4,7 @@ from pathlib import Path
 import unicodedata
 import time
 
+from django.core.files import File
 from django.db import connection
 from django.db.models import F, Func, Q
 from django.db.models.functions import Lower
@@ -18,6 +19,12 @@ from .llm_extractor import (
     calculate_adherence_for_candidate,
     calculate_adherence_batch_for_candidates,
 )
+
+
+def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
+    """Salva ou substitui o PDF do currículo no candidato."""
+    with open(pdf_path, "rb") as f:
+        candidate.resume_pdf.save(Path(pdf_path).name, File(f), save=True)
 
 
 SECTION_TITLES = {
@@ -1081,6 +1088,8 @@ def import_candidates_from_folder(
                         if changed:
                             candidate.save()
                             updated += 1
+                        # Salva ou substitui o PDF (candidato existente: sempre reextrair dados + PDF)
+                        _save_resume_pdf(candidate, pdf_file)
                     else:
                         # Garante que todos os campos de texto sejam strings, nunca None
                         safe_payload = {}
@@ -1093,6 +1102,8 @@ def import_candidates_from_folder(
                             safe_payload["user_id"] = user_id
                         candidate = Candidate.objects.create(**safe_payload)
                         created += 1
+                        # Salva o PDF no novo candidato
+                        _save_resume_pdf(candidate, pdf_file)
 
                     if job_id:
                         CandidateJob.objects.update_or_create(
@@ -1192,6 +1203,8 @@ def import_candidates_from_folder(
                             if changed:
                                 candidate.save()
                                 updated += 1
+                            # Salva ou substitui o PDF (candidato existente)
+                            _save_resume_pdf(candidate, pdf_file)
                         else:
                             # Garante que todos os campos de texto sejam strings, nunca None
                             safe_payload = {}
@@ -1204,6 +1217,8 @@ def import_candidates_from_folder(
                                 safe_payload["user_id"] = user_id
                             candidate = Candidate.objects.create(**safe_payload)
                             created += 1
+                            # Salva o PDF no novo candidato
+                            _save_resume_pdf(candidate, pdf_file)
 
                         if job_id:
                             CandidateJob.objects.update_or_create(
@@ -1351,6 +1366,8 @@ def import_candidates_from_folder_no_ranking(
                         if changed:
                             candidate.save()
                             updated += 1
+                        # Salva ou substitui o PDF (candidato existente: sempre reextrair dados + PDF)
+                        _save_resume_pdf(candidate, pdf_file)
                     else:
                         # Garante que todos os campos de texto sejam strings, nunca None
                         safe_payload = {}
@@ -1363,6 +1380,8 @@ def import_candidates_from_folder_no_ranking(
                             safe_payload["user_id"] = user_id
                         candidate = Candidate.objects.create(**safe_payload)
                         created += 1
+                        # Salva o PDF no novo candidato
+                        _save_resume_pdf(candidate, pdf_file)
                     
                     # Incrementa contador apenas após salvar com sucesso
                     processed_count += 1
@@ -1444,6 +1463,8 @@ def import_candidates_from_folder_no_ranking(
                             if changed:
                                 candidate.save()
                                 updated += 1
+                            # Salva ou substitui o PDF (candidato existente)
+                            _save_resume_pdf(candidate, pdf_file)
                         else:
                             # Garante que todos os campos de texto sejam strings, nunca None
                             safe_payload = {}
@@ -1456,6 +1477,8 @@ def import_candidates_from_folder_no_ranking(
                                 safe_payload["user_id"] = user_id
                             candidate = Candidate.objects.create(**safe_payload)
                             created += 1
+                            # Salva o PDF no novo candidato
+                            _save_resume_pdf(candidate, pdf_file)
                         
                         # Incrementa contador apenas após salvar com sucesso
                         processed_count += 1
@@ -1587,10 +1610,19 @@ def search_and_rank_candidates_from_pool(
         total_batches = (len(candidates_list) + batch_size - 1) // batch_size
         
         try:
-            # Prepara dados dos candidatos para o LLM
-            candidates_data = []
+            # Separa candidatos com PDF (avaliação via currículo completo) dos sem PDF (dados estruturados)
+            with_pdf = []
+            without_pdf = []
             for candidate in batch:
-                candidates_data.append({
+                if candidate.resume_pdf and hasattr(candidate.resume_pdf, "path"):
+                    try:
+                        path = Path(candidate.resume_pdf.path)
+                        if path.exists():
+                            with_pdf.append((candidate, path))
+                            continue
+                    except (ValueError, OSError):
+                        pass
+                without_pdf.append((candidate, {
                     "name": candidate.name or "",
                     "current_title": candidate.current_title or "",
                     "current_company": candidate.current_company or "",
@@ -1603,18 +1635,46 @@ def search_and_rank_candidates_from_pool(
                     "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
                     "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
                     "summary": candidate.summary or "",
-                })
-            
-            # Calcula aderência em lote
-            results = calculate_adherence_batch_for_candidates(
-                candidates_data,
-                job_description=job_description,
-                weights=weights,
-                role_titles=role_titles,
-            )
-            
+                }))
+
+            # Mapa candidato -> {adherence, technical_justification}
+            results_map = {}
+
+            if with_pdf:
+                pdf_paths = [p for _, p in with_pdf]
+                pdf_candidates = [c for c, _ in with_pdf]
+                llm_results = extract_candidates_batch_with_llm(
+                    pdf_paths,
+                    job_description=job_description,
+                    weights=weights,
+                    role_titles=role_titles,
+                )
+                for candidate, data in zip(pdf_candidates, llm_results):
+                    results_map[candidate.id] = {
+                        "adherence": data.get("adherence"),
+                        "technical_justification": data.get("technical_justification", ""),
+                    }
+
+            if without_pdf:
+                no_pdf_candidates = [c for c, _ in without_pdf]
+                no_pdf_data = [d for _, d in without_pdf]
+                adherence_results = calculate_adherence_batch_for_candidates(
+                    no_pdf_data,
+                    job_description=job_description,
+                    weights=weights,
+                    role_titles=role_titles,
+                )
+                for candidate, data in zip(no_pdf_candidates, adherence_results):
+                    results_map[candidate.id] = {
+                        "adherence": data.get("adherence"),
+                        "technical_justification": data.get("technical_justification", ""),
+                    }
+
             # Cria CandidateJob para cada candidato
-            for idx, (candidate, adherence_data) in enumerate(zip(batch, results)):
+            for candidate in batch:
+                adherence_data = results_map.get(candidate.id, {})
+                if not adherence_data:
+                    continue  # Candidato sem resultado (não deveria ocorrer)
                 try:
                     CandidateJob.objects.update_or_create(
                         job_id=job_id,
@@ -1659,27 +1719,67 @@ def search_and_rank_candidates_from_pool(
             error_msg = str(exc)
             for candidate in batch:
                 try:
-                    candidate_data = {
-                        "name": candidate.name or "",
-                        "current_title": candidate.current_title or "",
-                        "current_company": candidate.current_company or "",
-                        "location": candidate.location or "",
-                        "skills": candidate.skills or "",
-                        "technologies": candidate.technologies or "",
-                        "languages": candidate.languages or "",
-                        "certifications": candidate.certifications or "",
-                        "seniority": candidate.seniority or "",
-                        "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-                        "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
-                        "summary": candidate.summary or "",
-                    }
-                    
-                    adherence_data = calculate_adherence_for_candidate(
-                        candidate_data,
-                        job_description=job_description,
-                        weights=weights,
-                        role_titles=role_titles,
-                    )
+                    # Candidato com PDF: envia currículo completo para avaliação mais precisa
+                    if candidate.resume_pdf and hasattr(candidate.resume_pdf, "path"):
+                        try:
+                            path = Path(candidate.resume_pdf.path)
+                            if path.exists():
+                                full_data = extract_candidate_with_llm(
+                                    path,
+                                    job_description=job_description,
+                                    weights=weights,
+                                    role_titles=role_titles,
+                                )
+                                adherence_data = {
+                                    "adherence": full_data.get("adherence"),
+                                    "technical_justification": full_data.get("technical_justification", ""),
+                                }
+                            else:
+                                raise FileNotFoundError("PDF não encontrado")
+                        except (ValueError, OSError, FileNotFoundError):
+                            # Fallback para dados estruturados se PDF inacessível
+                            candidate_data = {
+                                "name": candidate.name or "",
+                                "current_title": candidate.current_title or "",
+                                "current_company": candidate.current_company or "",
+                                "location": candidate.location or "",
+                                "skills": candidate.skills or "",
+                                "technologies": candidate.technologies or "",
+                                "languages": candidate.languages or "",
+                                "certifications": candidate.certifications or "",
+                                "seniority": candidate.seniority or "",
+                                "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
+                                "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+                                "summary": candidate.summary or "",
+                            }
+                            adherence_data = calculate_adherence_for_candidate(
+                                candidate_data,
+                                job_description=job_description,
+                                weights=weights,
+                                role_titles=role_titles,
+                            )
+                    else:
+                        # Candidato sem PDF: usa dados estruturados (comportamento atual)
+                        candidate_data = {
+                            "name": candidate.name or "",
+                            "current_title": candidate.current_title or "",
+                            "current_company": candidate.current_company or "",
+                            "location": candidate.location or "",
+                            "skills": candidate.skills or "",
+                            "technologies": candidate.technologies or "",
+                            "languages": candidate.languages or "",
+                            "certifications": candidate.certifications or "",
+                            "seniority": candidate.seniority or "",
+                            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
+                            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+                            "summary": candidate.summary or "",
+                        }
+                        adherence_data = calculate_adherence_for_candidate(
+                            candidate_data,
+                            job_description=job_description,
+                            weights=weights,
+                            role_titles=role_titles,
+                        )
                     
                     CandidateJob.objects.update_or_create(
                         job_id=job_id,
