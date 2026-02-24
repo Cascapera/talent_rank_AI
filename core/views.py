@@ -26,6 +26,35 @@ from .pdf_extractor import (
 from .plans import required_plan
 
 
+def _prepare_uploaded_files(uploaded_files: list, temp_dir: Path) -> None:
+    """
+    Processa arquivos enviados (ZIPs e PDFs) e coloca todos os PDFs em temp_dir.
+    Suporta: múltiplos ZIPs, múltiplos PDFs, ou combinação.
+    """
+    pdf_counter = 0
+    for f in uploaded_files:
+        dest = temp_dir / f.name
+        with dest.open("wb") as out:
+            for chunk in f.chunks():
+                out.write(chunk)
+        if zipfile.is_zipfile(dest):
+            with zipfile.ZipFile(dest, "r") as zf:
+                for member in zf.namelist():
+                    if member.lower().endswith(".pdf") and not member.endswith("/"):
+                        pdf_counter += 1
+                        out_path = temp_dir / f"{pdf_counter:04d}.pdf"
+                        with zf.open(member) as src, out_path.open("wb") as dst:
+                            dst.write(src.read())
+            dest.unlink(missing_ok=True)
+        elif dest.suffix.lower() == ".pdf":
+            pdf_counter += 1
+            new_path = temp_dir / f"{pdf_counter:04d}.pdf"
+            if dest != new_path:
+                dest.rename(new_path)
+        else:
+            dest.unlink(missing_ok=True)
+
+
 def home(request):
     return render(request, "core/home.html")
 
@@ -117,24 +146,25 @@ def talent_pool(request):
     form = CandidateForm()
     shared_pool = _uses_shared_pool(request.user)
 
-    # Processa upload de ZIP/PDF
-    if request.method == "POST" and request.FILES.get("candidates_zip"):
-        upload = request.FILES["candidates_zip"]
-        temp_dir = Path(tempfile.mkdtemp(prefix="talent_pool_import_"))
-        uploaded_path = temp_dir / upload.name
-        with uploaded_path.open("wb") as output:
-            for chunk in upload.chunks():
-                output.write(chunk)
-
-        is_zip = zipfile.is_zipfile(uploaded_path)
-        _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
-        thread = threading.Thread(
-            target=_run_talent_pool_import,
-            args=(uploaded_path, is_zip, request.user.id, shared_pool),
-            daemon=True,
-        )
-        thread.start()
-        import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+    # Processa upload de ZIP/PDF (múltiplos arquivos)
+    if request.method == "POST":
+        uploads = request.FILES.getlist("candidates_zip")
+        if uploads:
+            temp_dir = Path(tempfile.mkdtemp(prefix="talent_pool_import_"))
+            _prepare_uploaded_files(uploads, temp_dir)
+            pdfs = list(temp_dir.glob("*.pdf"))
+            if pdfs:
+                _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
+                thread = threading.Thread(
+                    target=_run_talent_pool_import,
+                    args=(temp_dir, False, request.user.id, shared_pool),
+                    daemon=True,
+                )
+                thread.start()
+                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+            else:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                import_message = "Nenhum PDF encontrado nos arquivos enviados."
     elif request.method == "POST":
         # Processa formulário manual
         form = CandidateForm(request.POST)
@@ -254,37 +284,25 @@ def talent_pool(request):
 
 
 def _run_talent_pool_import(
-    uploaded_path: Path, is_zip: bool, user_id: int, shared_pool: bool = False
+    folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
 ):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
-    temp_root = uploaded_path.parent
     try:
 
         def progress_callback(**kwargs):
             _set_talent_pool_import_status(kwargs)
 
-        if is_zip:
-            extract_dir = uploaded_path.parent
-            with zipfile.ZipFile(uploaded_path, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-            result = import_candidates_from_folder_no_ranking(
-                str(extract_dir),
-                user_id=user_id,
-                shared_pool=shared_pool,
-                progress_callback=progress_callback,
-            )
-        else:
-            result = import_candidates_from_folder_no_ranking(
-                str(uploaded_path),
-                user_id=user_id,
-                shared_pool=shared_pool,
-                progress_callback=progress_callback,
-            )
+        result = import_candidates_from_folder_no_ranking(
+            str(folder_path),
+            user_id=user_id,
+            shared_pool=shared_pool,
+            progress_callback=progress_callback,
+        )
         _set_talent_pool_import_status({"status": "completed", "result": result})
     except Exception as exc:
         _set_talent_pool_import_status({"status": "error", "message": str(exc)})
     finally:
-        shutil.rmtree(temp_root, ignore_errors=True)
+        shutil.rmtree(folder_path, ignore_errors=True)
 
 
 @login_required
@@ -494,49 +512,32 @@ def _set_talent_pool_import_status(payload: dict) -> None:
 
 def _run_import_job(
     job_id: int,
-    uploaded_path: Path,
-    is_zip: bool,
+    folder_path: Path,
     job_description: str,
     role_title: str,
     user_id: int,
     shared_pool: bool = False,
 ):
-    temp_root = uploaded_path.parent
     try:
 
         def progress_callback(**kwargs):
             _set_import_status(job_id, kwargs)
 
-        if is_zip:
-            extract_dir = uploaded_path.parent
-            with zipfile.ZipFile(uploaded_path, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-            result = import_candidates_from_folder(
-                str(extract_dir),
-                job_description=job_description,
-                weights={"skills": 40, "technologies": 35, "experience": 25},
-                role_title=role_title,
-                job_id=job_id,
-                user_id=user_id,
-                shared_pool=shared_pool,
-                progress_callback=progress_callback,
-            )
-        else:
-            result = import_candidates_from_folder(
-                str(uploaded_path),
-                job_description=job_description,
-                weights={"skills": 40, "technologies": 35, "experience": 25},
-                role_title=role_title,
-                job_id=job_id,
-                user_id=user_id,
-                shared_pool=shared_pool,
-                progress_callback=progress_callback,
-            )
+        result = import_candidates_from_folder(
+            str(folder_path),
+            job_description=job_description,
+            weights={"skills": 40, "technologies": 35, "experience": 25},
+            role_title=role_title,
+            job_id=job_id,
+            user_id=user_id,
+            shared_pool=shared_pool,
+            progress_callback=progress_callback,
+        )
         _set_import_status(job_id, {"status": "completed", "result": result})
     except Exception as exc:
         _set_import_status(job_id, {"status": "error", "message": str(exc)})
     finally:
-        shutil.rmtree(temp_root, ignore_errors=True)
+        shutil.rmtree(folder_path, ignore_errors=True)
 
 
 @login_required
@@ -579,35 +580,34 @@ def job_detail(request, job_id: int):
     min_adherence_raw = request.GET.get("min_adherence", "").strip()
 
     import_message = ""
-    if request.method == "POST" and request.FILES.get("candidates_zip"):
-        upload = request.FILES["candidates_zip"]
-        job_description = _build_job_description(job)
-        role_title = job.title
-
-        temp_dir = Path(tempfile.mkdtemp(prefix="talent_import_"))
-        uploaded_path = temp_dir / upload.name
-        with uploaded_path.open("wb") as output:
-            for chunk in upload.chunks():
-                output.write(chunk)
-
-        is_zip = zipfile.is_zipfile(uploaded_path)
-        _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
-        shared_pool = _uses_shared_pool(request.user)
-        thread = threading.Thread(
-            target=_run_import_job,
-            args=(
-                job.id,
-                uploaded_path,
-                is_zip,
-                job_description,
-                role_title,
-                request.user.id,
-                shared_pool,
-            ),
-            daemon=True,
-        )
-        thread.start()
-        import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+    if request.method == "POST":
+        uploads = request.FILES.getlist("candidates_zip")
+        if uploads:
+            temp_dir = Path(tempfile.mkdtemp(prefix="talent_import_"))
+            _prepare_uploaded_files(uploads, temp_dir)
+            pdfs = list(temp_dir.glob("*.pdf"))
+            if pdfs:
+                job_description = _build_job_description(job)
+                role_title = job.title
+                _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
+                shared_pool = _uses_shared_pool(request.user)
+                thread = threading.Thread(
+                    target=_run_import_job,
+                    args=(
+                        job.id,
+                        temp_dir,
+                        job_description,
+                        role_title,
+                        request.user.id,
+                        shared_pool,
+                    ),
+                    daemon=True,
+                )
+                thread.start()
+                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+            else:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                import_message = "Nenhum PDF encontrado nos arquivos enviados."
 
     candidate_links = job.candidate_links.select_related("candidate")
     if status_filter:

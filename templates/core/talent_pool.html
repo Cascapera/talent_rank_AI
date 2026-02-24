@@ -168,15 +168,15 @@
   <div class="card">
     <h2 style="margin-top:0;">Importar candidatos (ZIP ou PDF)</h2>
     <p style="margin-bottom: 10px; color: var(--muted);">
-      Envie um ZIP com PDFs ou um PDF individual. Os candidatos serão adicionados ao banco sem vinculação a vagas.
+      Envie um ou mais arquivos: ZIP (com múltiplos PDFs), PDF individual ou vários PDFs de uma vez.
     </p>
     {% if import_message %}
       <div class="muted" style="margin-bottom: 10px;">{{ import_message }}</div>
     {% endif %}
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
-      <label for="candidates_zip">Arquivo ZIP/PDF</label>
-      <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" required />
+      <label for="candidates_zip">Arquivos ZIP/PDF</label>
+      <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" multiple required />
       <div class="actions" style="margin-top: 10px;">
         <button class="btn primary" type="submit">Importar e analisar</button>
       </div>
