@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: ruff check . && ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-django pytest-cov
+
+      - name: Run tests
+        env:
+          DJANGO_SETTINGS_MODULE: talent_query.settings_test
+          SECRET_KEY: test-secret-key-for-ci
+          DEBUG: "False"
+        run: |
+          python manage.py migrate --noinput
+          pytest --cov=core --cov-report=xml --cov-fail-under=50 -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false

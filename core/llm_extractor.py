@@ -8,10 +8,12 @@ from google import genai
 from google.genai import types
 
 
-def _build_system_prompt(job_description: str, weights: dict[str, int], role_titles: list[str], is_batch: bool = False) -> str:
+def _build_system_prompt(
+    job_description: str, weights: dict[str, int], role_titles: list[str], is_batch: bool = False
+) -> str:
     weights_json = json.dumps(weights, ensure_ascii=False)
     titles = ", ".join(role_titles) if role_titles else "N/A"
-    
+
     if is_batch:
         return (
             "Você é um recrutador técnico. Analise os PDFs dos candidatos (múltiplos arquivos) com base nesta DESCRIÇÃO DA VAGA.\n\n"
@@ -248,37 +250,39 @@ def extract_candidates_batch_with_llm(
         raise last_error
 
     data = _extract_json(response.text)
-    
+
     # Garante que é uma lista
     if not isinstance(data, list):
         data = [data]
-    
+
     # Valida que temos o mesmo número de resultados que PDFs enviados
     if len(data) != len(pdf_paths):
         raise RuntimeError(
             f"O LLM retornou {len(data)} resultado(s), mas foram enviados {len(pdf_paths)} PDF(s). "
             "Tente novamente ou processe em lotes menores."
         )
-    
+
     results = []
     for item in data:
-        results.append({
-            "name": item.get("name") or "",
-            "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
-            "location": item.get("location") or "",
-            "current_title": item.get("current_title") or "",
-            "current_company": item.get("current_company") or "",
-            "skills": _normalize_list(item.get("skills")),
-            "technologies": _normalize_list(item.get("technologies")),
-            "languages": _normalize_list(item.get("languages")),
-            "certifications": _normalize_list(item.get("certifications")),
-            "average_tenure_years": item.get("average_tenure_years"),
-            "experience_time_years": item.get("experience_time_years"),
-            "seniority": item.get("seniority") or "",
-            "adherence": item.get("adherence"),
-            "technical_justification": item.get("technical_justification") or "",
-        })
-    
+        results.append(
+            {
+                "name": item.get("name") or "",
+                "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
+                "location": item.get("location") or "",
+                "current_title": item.get("current_title") or "",
+                "current_company": item.get("current_company") or "",
+                "skills": _normalize_list(item.get("skills")),
+                "technologies": _normalize_list(item.get("technologies")),
+                "languages": _normalize_list(item.get("languages")),
+                "certifications": _normalize_list(item.get("certifications")),
+                "average_tenure_years": item.get("average_tenure_years"),
+                "experience_time_years": item.get("experience_time_years"),
+                "seniority": item.get("seniority") or "",
+                "adherence": item.get("adherence"),
+                "technical_justification": item.get("technical_justification") or "",
+            }
+        )
+
     return results
 
 
@@ -292,7 +296,9 @@ def extract_candidate_with_llm(
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
 
-    system_prompt = _build_system_prompt(job_description, weights, role_titles or [], is_batch=False)
+    system_prompt = _build_system_prompt(
+        job_description, weights, role_titles or [], is_batch=False
+    )
     client = genai.Client(api_key=api_key)
 
     with open(pdf_path, "rb") as pdf_file:
@@ -393,35 +399,37 @@ def extract_candidates_batch_no_ranking(
         raise last_error
 
     data = _extract_json(response.text)
-    
+
     # Garante que é uma lista
     if not isinstance(data, list):
         data = [data]
-    
+
     # Valida que temos o mesmo número de resultados que PDFs enviados
     if len(data) != len(pdf_paths):
         raise RuntimeError(
             f"O LLM retornou {len(data)} resultado(s), mas foram enviados {len(pdf_paths)} PDF(s). "
             "Tente novamente ou processe em lotes menores."
         )
-    
+
     results = []
     for item in data:
-        results.append({
-            "name": item.get("name") or "",
-            "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
-            "location": item.get("location") or "",
-            "current_title": item.get("current_title") or "",
-            "current_company": item.get("current_company") or "",
-            "skills": _normalize_list(item.get("skills")),
-            "technologies": _normalize_list(item.get("technologies")),
-            "languages": _normalize_list(item.get("languages")),
-            "certifications": _normalize_list(item.get("certifications")),
-            "average_tenure_years": item.get("average_tenure_years"),
-            "experience_time_years": item.get("experience_time_years"),
-            "seniority": item.get("seniority") or "",
-        })
-    
+        results.append(
+            {
+                "name": item.get("name") or "",
+                "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
+                "location": item.get("location") or "",
+                "current_title": item.get("current_title") or "",
+                "current_company": item.get("current_company") or "",
+                "skills": _normalize_list(item.get("skills")),
+                "technologies": _normalize_list(item.get("technologies")),
+                "languages": _normalize_list(item.get("languages")),
+                "certifications": _normalize_list(item.get("certifications")),
+                "average_tenure_years": item.get("average_tenure_years"),
+                "experience_time_years": item.get("experience_time_years"),
+                "seniority": item.get("seniority") or "",
+            }
+        )
+
     return results
 
 
@@ -438,7 +446,7 @@ def calculate_adherence_for_candidate(
 
     weights_json = json.dumps(weights, ensure_ascii=False)
     titles = ", ".join(role_titles) if role_titles else "N/A"
-    
+
     # Constrói texto com dados do candidato
     candidate_text = (
         f"Nome: {candidate_data.get('name', '')}\n"
@@ -454,7 +462,7 @@ def calculate_adherence_for_candidate(
         f"Média de permanência: {candidate_data.get('average_tenure', '')} anos\n"
         f"Resumo: {candidate_data.get('summary', '')}\n"
     )
-    
+
     system_prompt = (
         "Você é um recrutador técnico. Analise o perfil do candidato abaixo com base nesta DESCRIÇÃO DA VAGA.\n\n"
         "IMPORTANTE: Todas as respostas devem ser em PORTUGUÊS (Brasil). Campos de texto, justificativas e valores devem estar em português.\n\n"
@@ -473,10 +481,10 @@ def calculate_adherence_for_candidate(
         '  "technical_justification": "string"\n'
         "}\n"
     )
-    
+
     client = genai.Client(api_key=api_key)
     payload = [system_prompt]
-    
+
     last_error = None
     model_candidates = ["models/gemini-2.0-flash"]
     backoff_seconds = [3, 8, 15, 30]
@@ -503,9 +511,9 @@ def calculate_adherence_for_candidate(
             time.sleep(3)
     if last_error:
         raise last_error
-    
+
     data = _extract_json(response.text)
-    
+
     return {
         "adherence": data.get("adherence"),
         "technical_justification": data.get("technical_justification") or "",
@@ -525,7 +533,7 @@ def calculate_adherence_batch_for_candidates(
 
     weights_json = json.dumps(weights, ensure_ascii=False)
     titles = ", ".join(role_titles) if role_titles else "N/A"
-    
+
     # Constrói texto com dados de todos os candidatos
     candidates_text = ""
     for idx, candidate_data in enumerate(candidates_data):
@@ -544,7 +552,7 @@ def calculate_adherence_batch_for_candidates(
             f"Média de permanência: {candidate_data.get('average_tenure', '')} anos\n"
             f"Resumo: {candidate_data.get('summary', '')}\n"
         )
-    
+
     system_prompt = (
         "Você é um recrutador técnico. Analise os perfis dos candidatos abaixo com base nesta DESCRIÇÃO DA VAGA.\n\n"
         "IMPORTANTE: Todas as respostas devem ser em PORTUGUÊS (Brasil). Campos de texto, justificativas e valores devem estar em português.\n\n"
@@ -566,10 +574,10 @@ def calculate_adherence_batch_for_candidates(
         "  }\n"
         "]\n"
     )
-    
+
     client = genai.Client(api_key=api_key)
     payload = [system_prompt]
-    
+
     last_error = None
     model_candidates = ["models/gemini-2.0-flash"]
     backoff_seconds = [3, 8, 15, 30]
@@ -596,27 +604,29 @@ def calculate_adherence_batch_for_candidates(
             time.sleep(3)
     if last_error:
         raise last_error
-    
+
     data = _extract_json(response.text)
-    
+
     # Garante que é uma lista
     if not isinstance(data, list):
         data = [data]
-    
+
     # Valida que temos o mesmo número de resultados que candidatos enviados
     if len(data) != len(candidates_data):
         raise RuntimeError(
             f"O LLM retornou {len(data)} resultado(s), mas foram enviados {len(candidates_data)} candidato(s). "
             "Tente novamente ou processe em lotes menores."
         )
-    
+
     results = []
     for item in data:
-        results.append({
-            "adherence": item.get("adherence"),
-            "technical_justification": item.get("technical_justification") or "",
-        })
-    
+        results.append(
+            {
+                "adherence": item.get("adherence"),
+                "technical_justification": item.get("technical_justification") or "",
+            }
+        )
+
     return results
 
 

@@ -1,33 +1,33 @@
 import shutil
 import tempfile
 import threading
-import zipfile
 import unicodedata
+import zipfile
 from pathlib import Path
 from urllib.parse import urlencode
 
 from django.contrib.auth import logout
+from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import connection
-from django.db.models import F, Count, Q, Func
+from django.db.models import Count, F, Func, Q
 from django.db.models.functions import Lower
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import Job, Candidate, CandidateJob, Profile
-from .forms import JobForm, CandidateForm, SignupForm
-from .plans import required_plan
+from .forms import CandidateForm, JobForm, SignupForm
+from .models import Candidate, CandidateJob, Job, Profile
 from .pdf_extractor import (
     import_candidates_from_folder,
     import_candidates_from_folder_no_ranking,
     search_and_rank_candidates_from_pool,
 )
+from .plans import required_plan
 
 
 def home(request):
-    return render(request, 'core/home.html')
+    return render(request, "core/home.html")
 
 
 def _uses_shared_pool(user) -> bool:
@@ -48,39 +48,36 @@ def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
     normalized = _normalize_term(term)
     alias = f"{alias_prefix}_{field.replace('__', '_')}"
     qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
-    return qs.filter(
-        Q(**{f"{field}__icontains": term}) |
-        Q(**{f"{alias}__contains": normalized})
-    )
+    return qs.filter(Q(**{f"{field}__icontains": term}) | Q(**{f"{alias}__contains": normalized}))
 
 
 def signup(request):
     if request.user.is_authenticated:
-        return redirect('dashboard')
-    if request.method == 'POST':
+        return redirect("dashboard")
+    if request.method == "POST":
         form = SignupForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect('login')
+            return redirect("login")
     else:
         form = SignupForm()
-    return render(request, 'registration/signup.html', {'form': form})
+    return render(request, "registration/signup.html", {"form": form})
 
 
 @login_required
 def dashboard(request):
-    return render(request, 'core/dashboard.html')
+    return render(request, "core/dashboard.html")
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def jobs(request):
     jobs_qs = Job.objects.filter(user=request.user)
-    status = request.GET.get('status', '').strip()
-    seniority = request.GET.get('seniority', '').strip()
-    location = request.GET.get('location', '').strip()
-    department = request.GET.get('department', '').strip()
-    title = request.GET.get('title', '').strip()
+    status = request.GET.get("status", "").strip()
+    seniority = request.GET.get("seniority", "").strip()
+    location = request.GET.get("location", "").strip()
+    department = request.GET.get("department", "").strip()
+    title = request.GET.get("title", "").strip()
 
     if status:
         jobs_qs = jobs_qs.filter(status=status)
@@ -94,38 +91,38 @@ def jobs(request):
         jobs_qs = jobs_qs.filter(title__icontains=title)
 
     context = {
-        'jobs': jobs_qs,
-        'filters': {
-            'status': status,
-            'seniority': seniority,
-            'location': location,
-            'department': department,
-            'title': title,
+        "jobs": jobs_qs,
+        "filters": {
+            "status": status,
+            "seniority": seniority,
+            "location": location,
+            "department": department,
+            "title": title,
         },
-        'status_choices': Job.Status.choices,
+        "status_choices": Job.Status.choices,
     }
-    return render(request, 'core/jobs.html', context)
+    return render(request, "core/jobs.html", context)
 
 
 @login_required
 def search(request):
-    return render(request, 'core/search.html')
+    return render(request, "core/search.html")
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def talent_pool(request):
     message = ""
     import_message = ""
     form = CandidateForm()
     shared_pool = _uses_shared_pool(request.user)
-    
+
     # Processa upload de ZIP/PDF
-    if request.method == 'POST' and request.FILES.get('candidates_zip'):
-        upload = request.FILES['candidates_zip']
+    if request.method == "POST" and request.FILES.get("candidates_zip"):
+        upload = request.FILES["candidates_zip"]
         temp_dir = Path(tempfile.mkdtemp(prefix="talent_pool_import_"))
         uploaded_path = temp_dir / upload.name
-        with uploaded_path.open('wb') as output:
+        with uploaded_path.open("wb") as output:
             for chunk in upload.chunks():
                 output.write(chunk)
 
@@ -138,16 +135,18 @@ def talent_pool(request):
         )
         thread.start()
         import_message = "Importação iniciada. Acompanhe o progresso abaixo."
-    elif request.method == 'POST':
+    elif request.method == "POST":
         # Processa formulário manual
         form = CandidateForm(request.POST)
         if form.is_valid():
-            linkedin_url = form.cleaned_data['linkedin_url'].strip()
-            candidate = Candidate.objects.filter(user=request.user, linkedin_url__iexact=linkedin_url).first()
+            linkedin_url = form.cleaned_data["linkedin_url"].strip()
+            candidate = Candidate.objects.filter(
+                user=request.user, linkedin_url__iexact=linkedin_url
+            ).first()
             if candidate:
                 changed = False
                 for field, value in form.cleaned_data.items():
-                    if value in (None, ''):
+                    if value in (None, ""):
                         continue
                     if getattr(candidate, field) != value:
                         setattr(candidate, field, value)
@@ -166,18 +165,20 @@ def talent_pool(request):
             message = "Confira os campos obrigatórios."
 
     # Filtros
-    name_filter = request.GET.get('name', '').strip()
-    location_filter = request.GET.get('location', '').strip()
-    seniority_filter = request.GET.get('seniority', '').strip()
-    company_filter = request.GET.get('company', '').strip()
-    technologies_filter = request.GET.get('technologies', '').strip()
-    current_title_filter = request.GET.get('current_title', '').strip()
-    skills_filter = request.GET.get('skills', '').strip()
-    certifications_filter = request.GET.get('certifications', '').strip()
-    languages_filter = request.GET.get('languages', '').strip()
+    name_filter = request.GET.get("name", "").strip()
+    location_filter = request.GET.get("location", "").strip()
+    seniority_filter = request.GET.get("seniority", "").strip()
+    company_filter = request.GET.get("company", "").strip()
+    technologies_filter = request.GET.get("technologies", "").strip()
+    current_title_filter = request.GET.get("current_title", "").strip()
+    skills_filter = request.GET.get("skills", "").strip()
+    certifications_filter = request.GET.get("certifications", "").strip()
+    languages_filter = request.GET.get("languages", "").strip()
 
-    candidates = Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
-    
+    candidates = (
+        Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
+    )
+
     if name_filter:
         candidates = candidates.filter(name__icontains=name_filter)
     if location_filter:
@@ -196,72 +197,75 @@ def talent_pool(request):
         candidates = candidates.filter(certifications__icontains=certifications_filter)
     if languages_filter:
         candidates = candidates.filter(languages__icontains=languages_filter)
-    
-    candidates = candidates.order_by('-updated_at', '-created_at')
+
+    candidates = candidates.order_by("-updated_at", "-created_at")
 
     # Paginação: 10 candidatos por página
     paginator = Paginator(candidates, 10)
-    page_number = request.GET.get('page', 1)
+    page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
     # Constrói query string para manter filtros na paginação
     query_params = {}
     if name_filter:
-        query_params['name'] = name_filter
+        query_params["name"] = name_filter
     if location_filter:
-        query_params['location'] = location_filter
+        query_params["location"] = location_filter
     if seniority_filter:
-        query_params['seniority'] = seniority_filter
+        query_params["seniority"] = seniority_filter
     if company_filter:
-        query_params['company'] = company_filter
+        query_params["company"] = company_filter
     if technologies_filter:
-        query_params['technologies'] = technologies_filter
+        query_params["technologies"] = technologies_filter
     if current_title_filter:
-        query_params['current_title'] = current_title_filter
+        query_params["current_title"] = current_title_filter
     if skills_filter:
-        query_params['skills'] = skills_filter
+        query_params["skills"] = skills_filter
     if certifications_filter:
-        query_params['certifications'] = certifications_filter
+        query_params["certifications"] = certifications_filter
     if languages_filter:
-        query_params['languages'] = languages_filter
+        query_params["languages"] = languages_filter
     query_string = urlencode(query_params)
     if query_string:
-        query_string = '&' + query_string
+        query_string = "&" + query_string
 
     context = {
-        'form': form,
-        'candidates': page_obj,
-        'page_obj': page_obj,
-        'message': message,
-        'import_message': import_message,
-        'shared_pool': shared_pool,
-        'filters': {
-            'name': name_filter,
-            'location': location_filter,
-            'seniority': seniority_filter,
-            'company': company_filter,
-            'technologies': technologies_filter,
-            'current_title': current_title_filter,
-            'skills': skills_filter,
-            'certifications': certifications_filter,
-            'languages': languages_filter,
+        "form": form,
+        "candidates": page_obj,
+        "page_obj": page_obj,
+        "message": message,
+        "import_message": import_message,
+        "shared_pool": shared_pool,
+        "filters": {
+            "name": name_filter,
+            "location": location_filter,
+            "seniority": seniority_filter,
+            "company": company_filter,
+            "technologies": technologies_filter,
+            "current_title": current_title_filter,
+            "skills": skills_filter,
+            "certifications": certifications_filter,
+            "languages": languages_filter,
         },
-        'query_string': query_string,
-        'import_status': cache.get(_talent_pool_import_status_key()),
+        "query_string": query_string,
+        "import_status": cache.get(_talent_pool_import_status_key()),
     }
-    return render(request, 'core/talent_pool.html', context)
+    return render(request, "core/talent_pool.html", context)
 
 
-def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int, shared_pool: bool = False):
+def _run_talent_pool_import(
+    uploaded_path: Path, is_zip: bool, user_id: int, shared_pool: bool = False
+):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
     temp_root = uploaded_path.parent
     try:
+
         def progress_callback(**kwargs):
             _set_talent_pool_import_status(kwargs)
 
         if is_zip:
             extract_dir = uploaded_path.parent
-            with zipfile.ZipFile(uploaded_path, 'r') as zip_ref:
+            with zipfile.ZipFile(uploaded_path, "r") as zip_ref:
                 zip_ref.extractall(extract_dir)
             result = import_candidates_from_folder_no_ranking(
                 str(extract_dir),
@@ -284,7 +288,7 @@ def _run_talent_pool_import(uploaded_path: Path, is_zip: bool, user_id: int, sha
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def talent_pool_import_status(request):
     """Endpoint AJAX para status da importação do banco de talentos."""
     payload = cache.get(_talent_pool_import_status_key()) or {"status": "idle"}
@@ -292,23 +296,32 @@ def talent_pool_import_status(request):
 
 
 @login_required
-@required_plan('PREMIUM')
+@required_plan("PREMIUM")
 def reports(request):
     # Resumo geral (apenas dados do usuário)
     jobs_qs = Job.objects.filter(user=request.user)
     total_jobs = jobs_qs.count()
-    jobs_by_status = dict(jobs_qs.values('status').annotate(cnt=Count('id')).values_list('status', 'cnt'))
+    jobs_by_status = dict(
+        jobs_qs.values("status").annotate(cnt=Count("id")).values_list("status", "cnt")
+    )
     status_labels = dict(Job.Status.choices)
     jobs_by_status_display = [
         (status_labels.get(s, s), jobs_by_status.get(s, 0))
-        for s in [Job.Status.OPEN, Job.Status.SEARCH_DONE, Job.Status.CANDIDATES_SENT, Job.Status.CLOSED]
+        for s in [
+            Job.Status.OPEN,
+            Job.Status.SEARCH_DONE,
+            Job.Status.CANDIDATES_SENT,
+            Job.Status.CLOSED,
+        ]
     ]
 
     candidates_qs = Candidate.objects.filter(user=request.user)
     total_candidates = candidates_qs.count()
     candidates_ready = candidates_qs.filter(ready_at__isnull=False).count()
     total_links = CandidateJob.objects.filter(job__user=request.user).count()
-    candidates_hired = CandidateJob.objects.filter(job__user=request.user, pipeline_status=CandidateJob.PipelineStatus.HIRED).count()
+    candidates_hired = CandidateJob.objects.filter(
+        job__user=request.user, pipeline_status=CandidateJob.PipelineStatus.HIRED
+    ).count()
 
     # Vagas com contagem de candidatos e funil
     pipeline_status_order = [
@@ -324,54 +337,56 @@ def reports(request):
     pipeline_labels = dict(CandidateJob.PipelineStatus.choices)
 
     jobs_with_funnel = []
-    for job in jobs_qs.order_by('-created_at')[:50]:
+    for job in jobs_qs.order_by("-created_at")[:50]:
         links = job.candidate_links
         total_in_job = links.count()
         funnel = []
         for ps in pipeline_status_order:
             cnt = links.filter(pipeline_status=ps).count()
-            funnel.append({'label': pipeline_labels.get(ps, ps), 'count': cnt})
-        jobs_with_funnel.append({
-            'job': job,
-            'total_candidates': total_in_job,
-            'funnel': funnel,
-            'hired': links.filter(pipeline_status=CandidateJob.PipelineStatus.HIRED).count(),
-        })
+            funnel.append({"label": pipeline_labels.get(ps, ps), "count": cnt})
+        jobs_with_funnel.append(
+            {
+                "job": job,
+                "total_candidates": total_in_job,
+                "funnel": funnel,
+                "hired": links.filter(pipeline_status=CandidateJob.PipelineStatus.HIRED).count(),
+            }
+        )
 
     funnel_headers = [pipeline_labels.get(ps, ps) for ps in pipeline_status_order]
 
     context = {
-        'total_jobs': total_jobs,
-        'jobs_by_status_display': jobs_by_status_display,
-        'total_candidates': total_candidates,
-        'candidates_ready': candidates_ready,
-        'total_links': total_links,
-        'candidates_hired': candidates_hired,
-        'jobs_with_funnel': jobs_with_funnel,
-        'funnel_headers': funnel_headers,
+        "total_jobs": total_jobs,
+        "jobs_by_status_display": jobs_by_status_display,
+        "total_candidates": total_candidates,
+        "candidates_ready": candidates_ready,
+        "total_links": total_links,
+        "candidates_hired": candidates_hired,
+        "jobs_with_funnel": jobs_with_funnel,
+        "funnel_headers": funnel_headers,
     }
-    return render(request, 'core/reports.html', context)
+    return render(request, "core/reports.html", context)
 
 
 @login_required
 def logout_then_home(request):
     logout(request)
-    return redirect('home')
+    return redirect("home")
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def job_create(request):
-    if request.method == 'POST':
+    if request.method == "POST":
         form = JobForm(request.POST)
         if form.is_valid():
             job = form.save(commit=False)
             job.user = request.user
             job.save()
-            return redirect('jobs')
+            return redirect("jobs")
     else:
         form = JobForm()
-    return render(request, 'core/job_create.html', {'form': form})
+    return render(request, "core/job_create.html", {"form": form})
 
 
 def _build_boolean_search(job: Job) -> str:
@@ -391,7 +406,7 @@ def _build_boolean_search(job: Job) -> str:
     }
 
     def normalize_list(value: str) -> list[str]:
-        return [item.strip() for item in value.split(',') if item.strip()]
+        return [item.strip() for item in value.split(",") if item.strip()]
 
     def expand_term(term: str) -> list[str]:
         key = term.strip().lower()
@@ -477,20 +492,29 @@ def _set_talent_pool_import_status(payload: dict) -> None:
     cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
 
 
-def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_description: str, role_title: str, user_id: int, shared_pool: bool = False):
+def _run_import_job(
+    job_id: int,
+    uploaded_path: Path,
+    is_zip: bool,
+    job_description: str,
+    role_title: str,
+    user_id: int,
+    shared_pool: bool = False,
+):
     temp_root = uploaded_path.parent
     try:
+
         def progress_callback(**kwargs):
             _set_import_status(job_id, kwargs)
 
         if is_zip:
             extract_dir = uploaded_path.parent
-            with zipfile.ZipFile(uploaded_path, 'r') as zip_ref:
+            with zipfile.ZipFile(uploaded_path, "r") as zip_ref:
                 zip_ref.extractall(extract_dir)
             result = import_candidates_from_folder(
                 str(extract_dir),
                 job_description=job_description,
-                weights={'skills': 40, 'technologies': 35, 'experience': 25},
+                weights={"skills": 40, "technologies": 35, "experience": 25},
                 role_title=role_title,
                 job_id=job_id,
                 user_id=user_id,
@@ -501,7 +525,7 @@ def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_descript
             result = import_candidates_from_folder(
                 str(uploaded_path),
                 job_description=job_description,
-                weights={'skills': 40, 'technologies': 35, 'experience': 25},
+                weights={"skills": 40, "technologies": 35, "experience": 25},
                 role_title=role_title,
                 job_id=job_id,
                 user_id=user_id,
@@ -516,27 +540,28 @@ def _run_import_job(job_id: int, uploaded_path: Path, is_zip: bool, job_descript
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def job_detail(request, job_id: int):
     job = get_object_or_404(Job, id=job_id, user=request.user)
+
     def split_list(value: str):
-        return [item.strip() for item in value.split(',') if item.strip()]
+        return [item.strip() for item in value.split(",") if item.strip()]
 
     filter_keys = {
-        'pipeline_status',
-        'candidate_seniority',
-        'candidate_location',
-        'candidate_name',
-        'candidate_language',
-        'candidate_must_have',
-        'candidate_technologies',
-        'min_adherence',
+        "pipeline_status",
+        "candidate_seniority",
+        "candidate_location",
+        "candidate_name",
+        "candidate_language",
+        "candidate_must_have",
+        "candidate_technologies",
+        "min_adherence",
     }
     filters_storage_key = f"job_filters_{job.id}"
     if request.GET.get("clear_filters") == "1":
         request.session.pop(filters_storage_key, None)
     else:
-        current_params = {k: request.GET.get(k, '').strip() for k in filter_keys}
+        current_params = {k: request.GET.get(k, "").strip() for k in filter_keys}
         if any(v for v in current_params.values()):
             request.session[filters_storage_key] = current_params
         else:
@@ -544,24 +569,24 @@ def job_detail(request, job_id: int):
             if saved_filters:
                 return redirect(f"{request.path}?{urlencode(saved_filters)}")
 
-    status_filter = request.GET.get('pipeline_status', '').strip()
-    seniority_filter = request.GET.get('candidate_seniority', '').strip()
-    location_filter = request.GET.get('candidate_location', '').strip()
-    name_filter = request.GET.get('candidate_name', '').strip()
-    language_filter = request.GET.get('candidate_language', '').strip()
-    must_have_filter = request.GET.get('candidate_must_have', '').strip()
-    technologies_filter = request.GET.get('candidate_technologies', '').strip()
-    min_adherence_raw = request.GET.get('min_adherence', '').strip()
+    status_filter = request.GET.get("pipeline_status", "").strip()
+    seniority_filter = request.GET.get("candidate_seniority", "").strip()
+    location_filter = request.GET.get("candidate_location", "").strip()
+    name_filter = request.GET.get("candidate_name", "").strip()
+    language_filter = request.GET.get("candidate_language", "").strip()
+    must_have_filter = request.GET.get("candidate_must_have", "").strip()
+    technologies_filter = request.GET.get("candidate_technologies", "").strip()
+    min_adherence_raw = request.GET.get("min_adherence", "").strip()
 
     import_message = ""
-    if request.method == 'POST' and request.FILES.get('candidates_zip'):
-        upload = request.FILES['candidates_zip']
+    if request.method == "POST" and request.FILES.get("candidates_zip"):
+        upload = request.FILES["candidates_zip"]
         job_description = _build_job_description(job)
         role_title = job.title
 
         temp_dir = Path(tempfile.mkdtemp(prefix="talent_import_"))
         uploaded_path = temp_dir / upload.name
-        with uploaded_path.open('wb') as output:
+        with uploaded_path.open("wb") as output:
             for chunk in upload.chunks():
                 output.write(chunk)
 
@@ -570,87 +595,107 @@ def job_detail(request, job_id: int):
         shared_pool = _uses_shared_pool(request.user)
         thread = threading.Thread(
             target=_run_import_job,
-            args=(job.id, uploaded_path, is_zip, job_description, role_title, request.user.id, shared_pool),
+            args=(
+                job.id,
+                uploaded_path,
+                is_zip,
+                job_description,
+                role_title,
+                request.user.id,
+                shared_pool,
+            ),
             daemon=True,
         )
         thread.start()
         import_message = "Importação iniciada. Acompanhe o progresso abaixo."
 
-    candidate_links = job.candidate_links.select_related('candidate')
+    candidate_links = job.candidate_links.select_related("candidate")
     if status_filter:
         candidate_links = candidate_links.filter(pipeline_status=status_filter)
     if seniority_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__seniority', seniority_filter, 'seniority')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__seniority", seniority_filter, "seniority"
+        )
     if location_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__location', location_filter, 'location')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__location", location_filter, "location"
+        )
     if name_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__name', name_filter, 'name')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__name", name_filter, "name"
+        )
     if language_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__languages', language_filter, 'language')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__languages", language_filter, "language"
+        )
     if must_have_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__skills', must_have_filter, 'skills')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__skills", must_have_filter, "skills"
+        )
     if technologies_filter:
-        candidate_links = _apply_unaccent_filter(candidate_links, 'candidate__technologies', technologies_filter, 'technologies')
+        candidate_links = _apply_unaccent_filter(
+            candidate_links, "candidate__technologies", technologies_filter, "technologies"
+        )
     if min_adherence_raw.isdigit():
         candidate_links = candidate_links.filter(adherence_score__gte=int(min_adherence_raw))
-    candidate_links = candidate_links.order_by(F('adherence_score').desc(nulls_last=True))
+    candidate_links = candidate_links.order_by(F("adherence_score").desc(nulls_last=True))
 
     # Paginação: 10 candidatos por página
     paginator = Paginator(candidate_links, 10)
-    page_number = request.GET.get('page', 1)
+    page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
     # Constrói query string para manter filtros na paginação
     query_params = {}
     if status_filter:
-        query_params['pipeline_status'] = status_filter
+        query_params["pipeline_status"] = status_filter
     if seniority_filter:
-        query_params['candidate_seniority'] = seniority_filter
+        query_params["candidate_seniority"] = seniority_filter
     if location_filter:
-        query_params['candidate_location'] = location_filter
+        query_params["candidate_location"] = location_filter
     if name_filter:
-        query_params['candidate_name'] = name_filter
+        query_params["candidate_name"] = name_filter
     if language_filter:
-        query_params['candidate_language'] = language_filter
+        query_params["candidate_language"] = language_filter
     if must_have_filter:
-        query_params['candidate_must_have'] = must_have_filter
+        query_params["candidate_must_have"] = must_have_filter
     if technologies_filter:
-        query_params['candidate_technologies'] = technologies_filter
+        query_params["candidate_technologies"] = technologies_filter
     if min_adherence_raw and min_adherence_raw.strip():
-        query_params['min_adherence'] = min_adherence_raw
+        query_params["min_adherence"] = min_adherence_raw
     query_string = urlencode(query_params)
     if query_string:
-        query_string = '&' + query_string
+        query_string = "&" + query_string
 
     context = {
-        'job': job,
-        'must_have_list': split_list(job.must_have),
-        'nice_to_have_list': split_list(job.nice_to_have),
-        'undesirable_list': split_list(job.undesirable),
-        'import_message': import_message,
-        'candidate_links': page_obj,
-        'page_obj': page_obj,
-        'candidate_filters': {
-            'pipeline_status': status_filter,
-            'candidate_seniority': seniority_filter,
-            'candidate_location': location_filter,
-            'candidate_name': name_filter,
-            'candidate_language': language_filter,
-            'candidate_must_have': must_have_filter,
-            'candidate_technologies': technologies_filter,
-            'min_adherence': min_adherence_raw,
+        "job": job,
+        "must_have_list": split_list(job.must_have),
+        "nice_to_have_list": split_list(job.nice_to_have),
+        "undesirable_list": split_list(job.undesirable),
+        "import_message": import_message,
+        "candidate_links": page_obj,
+        "page_obj": page_obj,
+        "candidate_filters": {
+            "pipeline_status": status_filter,
+            "candidate_seniority": seniority_filter,
+            "candidate_location": location_filter,
+            "candidate_name": name_filter,
+            "candidate_language": language_filter,
+            "candidate_must_have": must_have_filter,
+            "candidate_technologies": technologies_filter,
+            "min_adherence": min_adherence_raw,
         },
-        'query_string': query_string,
-        'pipeline_status_choices': job.candidate_links.model.PipelineStatus.choices,
-        'job_status_choices': Job.Status.choices,
-        'import_status': cache.get(_import_status_key(job.id)),
-        'search_status': cache.get(_search_status_key(job.id)),
+        "query_string": query_string,
+        "pipeline_status_choices": job.candidate_links.model.PipelineStatus.choices,
+        "job_status_choices": Job.Status.choices,
+        "import_status": cache.get(_import_status_key(job.id)),
+        "search_status": cache.get(_search_status_key(job.id)),
     }
-    return render(request, 'core/job_detail.html', context)
+    return render(request, "core/job_detail.html", context)
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def job_import_status(request, job_id: int):
     get_object_or_404(Job, id=job_id, user=request.user)
     payload = cache.get(_import_status_key(job_id)) or {"status": "idle"}
@@ -658,7 +703,7 @@ def job_import_status(request, job_id: int):
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def job_search_status(request, job_id: int):
     """Endpoint AJAX para status da busca no banco."""
     get_object_or_404(Job, id=job_id, user=request.user)
@@ -666,13 +711,21 @@ def job_search_status(request, job_id: int):
     return JsonResponse(payload)
 
 
-def _run_search_in_pool(job_id: int, job_description: str, role_title: str, filters: dict | None = None, user_id: int | None = None, shared_pool: bool = False):
+def _run_search_in_pool(
+    job_id: int,
+    job_description: str,
+    role_title: str,
+    filters: dict | None = None,
+    user_id: int | None = None,
+    shared_pool: bool = False,
+):
     """Executa busca e rankeamento de candidatos do banco do usuário em background."""
     try:
+
         def progress_callback(**kwargs):
             _set_search_status(job_id, kwargs)
-        
-        weights = {'skills': 40, 'technologies': 35, 'experience': 25}
+
+        weights = {"skills": 40, "technologies": 35, "experience": 25}
         result = search_and_rank_candidates_from_pool(
             job_id=job_id,
             job_description=job_description,
@@ -689,177 +742,198 @@ def _run_search_in_pool(job_id: int, job_description: str, role_title: str, filt
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def preview_candidates_search(request, job_id: int):
     """Preview de candidatos encontrados com filtros (sem rankeamento)."""
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
-    
-    job = get_object_or_404(Job, id=job_id, user=request.user)
-    
+
+    get_object_or_404(Job, id=job_id, user=request.user)
+
     # Extrai filtros do POST
     filters = {}
-    name_filter = request.POST.get('name', '').strip()
-    location_filter = request.POST.get('location', '').strip()
-    seniority_filter = request.POST.get('seniority', '').strip()
-    company_filter = request.POST.get('company', '').strip()
-    technologies_filter = request.POST.get('technologies', '').strip()
-    skills_filter = request.POST.get('skills', '').strip()
-    languages_filter = request.POST.get('languages', '').strip()
-    certifications_filter = request.POST.get('certifications', '').strip()
-    ready_only = request.POST.get('ready_only') == 'on'
-    
+    name_filter = request.POST.get("name", "").strip()
+    location_filter = request.POST.get("location", "").strip()
+    seniority_filter = request.POST.get("seniority", "").strip()
+    company_filter = request.POST.get("company", "").strip()
+    technologies_filter = request.POST.get("technologies", "").strip()
+    skills_filter = request.POST.get("skills", "").strip()
+    languages_filter = request.POST.get("languages", "").strip()
+    certifications_filter = request.POST.get("certifications", "").strip()
+    ready_only = request.POST.get("ready_only") == "on"
+
     if name_filter:
-        filters['name'] = name_filter
+        filters["name"] = name_filter
     if location_filter:
-        filters['location'] = location_filter
+        filters["location"] = location_filter
     if seniority_filter:
-        filters['seniority'] = seniority_filter
+        filters["seniority"] = seniority_filter
     if company_filter:
-        filters['company'] = company_filter
+        filters["company"] = company_filter
     if technologies_filter:
-        filters['technologies'] = technologies_filter
+        filters["technologies"] = technologies_filter
     if skills_filter:
-        filters['skills'] = skills_filter
+        filters["skills"] = skills_filter
     if languages_filter:
-        filters['languages'] = languages_filter
+        filters["languages"] = languages_filter
     if certifications_filter:
-        filters['certifications'] = certifications_filter
+        filters["certifications"] = certifications_filter
     if ready_only:
-        filters['ready_only'] = True
-    
+        filters["ready_only"] = True
+
     shared_pool = _uses_shared_pool(request.user)
     # Busca candidatos não vinculados à vaga
-    linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list('candidate_id', flat=True)
+    linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list(
+        "candidate_id", flat=True
+    )
     candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
     if not shared_pool:
         candidates = candidates.filter(user=request.user)
-    
+
     # Aplica filtros
     if name_filter:
-        candidates = _apply_unaccent_filter(candidates, 'name', name_filter, 'name')
+        candidates = _apply_unaccent_filter(candidates, "name", name_filter, "name")
     if location_filter:
-        candidates = _apply_unaccent_filter(candidates, 'location', location_filter, 'location')
+        candidates = _apply_unaccent_filter(candidates, "location", location_filter, "location")
     if seniority_filter:
-        candidates = _apply_unaccent_filter(candidates, 'seniority', seniority_filter, 'seniority')
+        candidates = _apply_unaccent_filter(candidates, "seniority", seniority_filter, "seniority")
     if company_filter:
-        candidates = _apply_unaccent_filter(candidates, 'current_company', company_filter, 'company')
+        candidates = _apply_unaccent_filter(
+            candidates, "current_company", company_filter, "company"
+        )
     if technologies_filter:
-        candidates = _apply_unaccent_filter(candidates, 'technologies', technologies_filter, 'technologies')
+        candidates = _apply_unaccent_filter(
+            candidates, "technologies", technologies_filter, "technologies"
+        )
     if skills_filter:
-        candidates = _apply_unaccent_filter(candidates, 'skills', skills_filter, 'skills')
+        candidates = _apply_unaccent_filter(candidates, "skills", skills_filter, "skills")
     if languages_filter:
-        candidates = _apply_unaccent_filter(candidates, 'languages', languages_filter, 'languages')
+        candidates = _apply_unaccent_filter(candidates, "languages", languages_filter, "languages")
     if certifications_filter:
-        candidates = _apply_unaccent_filter(candidates, 'certifications', certifications_filter, 'certifications')
+        candidates = _apply_unaccent_filter(
+            candidates, "certifications", certifications_filter, "certifications"
+        )
     if ready_only:
         candidates = candidates.exclude(ready_at__isnull=True)
-    
+
     total = candidates.count()
-    
+
     # Paginação: 10 candidatos por página
     paginator = Paginator(candidates, 10)
-    page_number = request.POST.get('page', 1)
+    page_number = request.POST.get("page", 1)
     try:
         page_obj = paginator.page(page_number)
-    except:
+    except Exception:
         page_obj = paginator.page(1)
-    
+
     # Prepara dados para JSON
     candidates_data = []
     for candidate in page_obj:
-        candidates_data.append({
-            'id': candidate.id,
-            'name': candidate.name,
-            'company': candidate.current_company or '-',
-            'skills': candidate.skills[:100] + '...' if candidate.skills and len(candidate.skills) > 100 else (candidate.skills or '-'),
-            'languages': candidate.languages[:100] + '...' if candidate.languages and len(candidate.languages) > 100 else (candidate.languages or '-'),
-            'ready_at': candidate.ready_at.strftime('%d/%m/%Y') if candidate.ready_at else '-',
-        })
-    
-    return JsonResponse({
-        'success': True,
-        'total': total,
-        'page': page_obj.number,
-        'num_pages': paginator.num_pages,
-        'has_previous': page_obj.has_previous(),
-        'has_next': page_obj.has_next(),
-        'candidates': candidates_data,
-        'filters': filters,
-    })
+        candidates_data.append(
+            {
+                "id": candidate.id,
+                "name": candidate.name,
+                "company": candidate.current_company or "-",
+                "skills": candidate.skills[:100] + "..."
+                if candidate.skills and len(candidate.skills) > 100
+                else (candidate.skills or "-"),
+                "languages": candidate.languages[:100] + "..."
+                if candidate.languages and len(candidate.languages) > 100
+                else (candidate.languages or "-"),
+                "ready_at": candidate.ready_at.strftime("%d/%m/%Y") if candidate.ready_at else "-",
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "total": total,
+            "page": page_obj.number,
+            "num_pages": paginator.num_pages,
+            "has_previous": page_obj.has_previous(),
+            "has_next": page_obj.has_next(),
+            "candidates": candidates_data,
+            "filters": filters,
+        }
+    )
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def search_candidates_in_pool(request, job_id: int):
     """Inicia busca e rankeamento de candidatos no banco de talentos do usuário para a vaga."""
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
-    
+
     job = get_object_or_404(Job, id=job_id, user=request.user)
     job_description = _build_job_description(job)
     role_title = job.title
     shared_pool = _uses_shared_pool(request.user)
-    
+
     # Extrai filtros do POST (pode vir do preview)
     filters = {}
-    name_filter = request.POST.get('name', '').strip()
-    location_filter = request.POST.get('location', '').strip()
-    seniority_filter = request.POST.get('seniority', '').strip()
-    company_filter = request.POST.get('company', '').strip()
-    technologies_filter = request.POST.get('technologies', '').strip()
-    skills_filter = request.POST.get('skills', '').strip()
-    languages_filter = request.POST.get('languages', '').strip()
-    certifications_filter = request.POST.get('certifications', '').strip()
-    ready_only = request.POST.get('ready_only') == 'on'
-    
+    name_filter = request.POST.get("name", "").strip()
+    location_filter = request.POST.get("location", "").strip()
+    seniority_filter = request.POST.get("seniority", "").strip()
+    company_filter = request.POST.get("company", "").strip()
+    technologies_filter = request.POST.get("technologies", "").strip()
+    skills_filter = request.POST.get("skills", "").strip()
+    languages_filter = request.POST.get("languages", "").strip()
+    certifications_filter = request.POST.get("certifications", "").strip()
+    ready_only = request.POST.get("ready_only") == "on"
+
     if name_filter:
-        filters['name'] = name_filter
+        filters["name"] = name_filter
     if location_filter:
-        filters['location'] = location_filter
+        filters["location"] = location_filter
     if seniority_filter:
-        filters['seniority'] = seniority_filter
+        filters["seniority"] = seniority_filter
     if company_filter:
-        filters['company'] = company_filter
+        filters["company"] = company_filter
     if technologies_filter:
-        filters['technologies'] = technologies_filter
+        filters["technologies"] = technologies_filter
     if skills_filter:
-        filters['skills'] = skills_filter
+        filters["skills"] = skills_filter
     if languages_filter:
-        filters['languages'] = languages_filter
+        filters["languages"] = languages_filter
     if certifications_filter:
-        filters['certifications'] = certifications_filter
+        filters["certifications"] = certifications_filter
     if ready_only:
-        filters['ready_only'] = True
-    
+        filters["ready_only"] = True
+
     _set_search_status(job.id, {"status": "running", "processed": 0, "total": 0})
     thread = threading.Thread(
         target=_run_search_in_pool,
-        args=(job.id, job_description, role_title, filters if filters else None, None if shared_pool else request.user.id, shared_pool),
+        args=(
+            job.id,
+            job_description,
+            role_title,
+            filters if filters else None,
+            None if shared_pool else request.user.id,
+            shared_pool,
+        ),
         daemon=True,
     )
     thread.start()
-    
+
     filter_msg = f" com {len(filters)} filtro(s) aplicado(s)" if filters else ""
-    return JsonResponse({"success": True, "message": f"Análise iniciada{filter_msg}. Acompanhe o progresso abaixo."})
+    return JsonResponse(
+        {"success": True, "message": f"Análise iniciada{filter_msg}. Acompanhe o progresso abaixo."}
+    )
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def update_candidate_status(request, job_id: int, candidate_job_id: int):
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
-    
+
     try:
         job = get_object_or_404(Job, id=job_id, user=request.user)
-        candidate_job = get_object_or_404(
-            CandidateJob,
-            id=candidate_job_id,
-            job=job
-        )
-        
-        new_status = request.POST.get('pipeline_status', '').strip()
-        
+        candidate_job = get_object_or_404(CandidateJob, id=candidate_job_id, job=job)
+
+        new_status = request.POST.get("pipeline_status", "").strip()
+
         # Permite status vazio para limpar o status
         if new_status:
             valid_statuses = [choice[0] for choice in CandidateJob.PipelineStatus.choices]
@@ -867,31 +941,35 @@ def update_candidate_status(request, job_id: int, candidate_job_id: int):
                 return JsonResponse({"error": f"Status inválido: {new_status}"}, status=400)
             candidate_job.pipeline_status = new_status
         else:
-            candidate_job.pipeline_status = ''
-        
+            candidate_job.pipeline_status = ""
+
         candidate_job.save()
-        
-        return JsonResponse({
-            "success": True,
-            "pipeline_status": candidate_job.pipeline_status or "",
-            "pipeline_status_display": candidate_job.get_pipeline_status_display() or "-",
-            "ready_at": candidate_job.ready_at.strftime("%d/%m/%Y") if candidate_job.ready_at else None,
-        })
+
+        return JsonResponse(
+            {
+                "success": True,
+                "pipeline_status": candidate_job.pipeline_status or "",
+                "pipeline_status_display": candidate_job.get_pipeline_status_display() or "-",
+                "ready_at": candidate_job.ready_at.strftime("%d/%m/%Y")
+                if candidate_job.ready_at
+                else None,
+            }
+        )
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def update_job_status(request, job_id: int):
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
-    
+
     try:
         job = get_object_or_404(Job, id=job_id, user=request.user)
-        
-        new_status = request.POST.get('status', '').strip()
-        
+
+        new_status = request.POST.get("status", "").strip()
+
         if new_status:
             valid_statuses = [choice[0] for choice in Job.Status.choices]
             if new_status not in valid_statuses:
@@ -899,50 +977,54 @@ def update_job_status(request, job_id: int):
             job.status = new_status
         else:
             job.status = Job.Status.OPEN
-        
+
         job.save()
-        
-        return JsonResponse({
-            "success": True,
-            "status": job.status,
-            "status_display": job.get_status_display(),
-        })
+
+        return JsonResponse(
+            {
+                "success": True,
+                "status": job.status,
+                "status_display": job.get_status_display(),
+            }
+        )
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def generate_boolean_search(request, job_id: int):
-    if request.method != 'POST':
+    if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
 
     try:
         job = get_object_or_404(Job, id=job_id, user=request.user)
         job.boolean_search = _build_boolean_search(job)
         job.save(update_fields=["boolean_search"])
-        return JsonResponse({
-            "success": True,
-            "boolean_search": job.boolean_search or "",
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "boolean_search": job.boolean_search or "",
+            }
+        )
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
 @login_required
-@required_plan('BASIC')
+@required_plan("BASIC")
 def job_edit(request, job_id: int):
     job = get_object_or_404(Job, id=job_id, user=request.user)
-    if request.method == 'POST':
+    if request.method == "POST":
         form = JobForm(request.POST, instance=job)
         if form.is_valid():
-            if request.POST.get('action') == 'generate':
+            if request.POST.get("action") == "generate":
                 job = form.save(commit=False)
                 job.boolean_search = _build_boolean_search(job)
                 job.save()
             else:
                 form.save()
-            return redirect('job_detail', job_id=job.id)
+            return redirect("job_detail", job_id=job.id)
     else:
         form = JobForm(instance=job)
-    return render(request, 'core/job_edit.html', {'form': form, 'job': job})
+    return render(request, "core/job_edit.html", {"form": form, "job": job})
