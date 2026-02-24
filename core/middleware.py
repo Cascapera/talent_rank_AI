@@ -1,5 +1,4 @@
 from django.contrib.auth import logout
-from django.contrib.sessions.models import Session
 
 
 class SingleSessionMiddleware:

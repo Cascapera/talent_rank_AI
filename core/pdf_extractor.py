@@ -1,8 +1,8 @@
 import re
+import time
+import unicodedata
 from decimal import Decimal
 from pathlib import Path
-import unicodedata
-import time
 
 from django.core.files import File
 from django.db import connection
@@ -10,15 +10,15 @@ from django.db.models import F, Func, Q
 from django.db.models.functions import Lower
 from pypdf import PdfReader
 
-from .models import Candidate, CandidateJob
 from .llm_extractor import (
-    extract_candidate_with_llm,
-    extract_candidates_batch_with_llm,
-    extract_candidate_no_ranking,
-    extract_candidates_batch_no_ranking,
-    calculate_adherence_for_candidate,
     calculate_adherence_batch_for_candidates,
+    calculate_adherence_for_candidate,
+    extract_candidate_no_ranking,
+    extract_candidate_with_llm,
+    extract_candidates_batch_no_ranking,
+    extract_candidates_batch_with_llm,
 )
+from .models import Candidate, CandidateJob
 
 
 def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
@@ -62,10 +62,7 @@ def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
     normalized = _normalize_search_term(term)
     alias = f"{alias_prefix}_{field.replace('__', '_')}"
     qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
-    return qs.filter(
-        Q(**{f"{field}__icontains": term}) |
-        Q(**{f"{alias}__contains": normalized})
-    )
+    return qs.filter(Q(**{f"{field}__icontains": term}) | Q(**{f"{alias}__contains": normalized}))
 
 
 def _fix_mojibake(text: str) -> str:
@@ -219,7 +216,7 @@ def _extract_headline(lines: list[str], name_idx: int, stop_idx: int) -> str:
     if name_idx < 0:
         return ""
     headline_lines = []
-    for line in lines[name_idx + 1:stop_idx]:
+    for line in lines[name_idx + 1 : stop_idx]:
         if line.lower() in SECTION_TITLES:
             break
         headline_lines.append(line)
@@ -451,7 +448,6 @@ def _normalize_technologies(technologies: list[str]) -> list[str]:
         "arango": "ArangoDB",
         "mongodb": "MongoDB",
         "dynamodb": "DynamoDB",
-        "kafka": "Kafka",
         "rabbitmq": "RabbitMQ",
         "activemq": "ActiveMQ",
         "sqs": "SQS",
@@ -753,7 +749,7 @@ def _extract_technologies(lines: list[str], text: str) -> str:
     ]
 
     normalized_section = _normalize_technologies(technologies)
-    seen = set(_normalize_text(item) for item in normalized_section)
+    seen = {_normalize_text(item) for item in normalized_section}
     text_norm = _normalize_text(text)
     for pattern, label in known_patterns:
         if re.search(pattern, text_norm, re.I):
@@ -1013,16 +1009,16 @@ def import_candidates_from_folder(
     skipped = 0
     errors = 0
     error_details = []
-    
+
     # Processa em lotes de 10 PDFs
     batch_size = 10
     processed_count = 0
-    
+
     for batch_start in range(0, len(pdf_files), batch_size):
-        batch = pdf_files[batch_start:batch_start + batch_size]
+        batch = pdf_files[batch_start : batch_start + batch_size]
         batch_num = (batch_start // batch_size) + 1
         total_batches = (len(pdf_files) + batch_size - 1) // batch_size
-        
+
         try:
             # Processa o lote inteiro
             results = extract_candidates_batch_with_llm(
@@ -1031,11 +1027,11 @@ def import_candidates_from_folder(
                 weights=weights,
                 role_titles=role_titles,
             )
-            
+
             # Processa cada resultado do lote
             for idx, data in enumerate(results):
                 pdf_file = batch[idx]
-                
+
                 linkedin_url = data.get("linkedin_url", "")
                 if not data.get("name") or not linkedin_url:
                     skipped += 1
@@ -1070,13 +1066,31 @@ def import_candidates_from_folder(
                     if shared_pool:
                         qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                     else:
-                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        qs = (
+                            Candidate.objects.filter(
+                                user_id=user_id, linkedin_url__iexact=linkedin_url
+                            )
+                            if user_id
+                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        )
                     candidate = qs.first()
                     if candidate:
                         changed = False
                         for field, value in candidate_payload.items():
                             # Normaliza None para string vazia em campos de texto
-                            if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                            if field in (
+                                "name",
+                                "current_title",
+                                "current_company",
+                                "location",
+                                "linkedin_url",
+                                "summary",
+                                "skills",
+                                "technologies",
+                                "languages",
+                                "certifications",
+                                "seniority",
+                            ):
                                 if value is None:
                                     value = ""
                             # Ignora apenas se for None e o campo não aceitar None
@@ -1094,7 +1108,19 @@ def import_candidates_from_folder(
                         # Garante que todos os campos de texto sejam strings, nunca None
                         safe_payload = {}
                         for field, value in candidate_payload.items():
-                            if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                            if field in (
+                                "name",
+                                "current_title",
+                                "current_company",
+                                "location",
+                                "linkedin_url",
+                                "summary",
+                                "skills",
+                                "technologies",
+                                "languages",
+                                "certifications",
+                                "seniority",
+                            ):
                                 safe_payload[field] = value if value is not None else ""
                             else:
                                 safe_payload[field] = value
@@ -1114,10 +1140,10 @@ def import_candidates_from_folder(
                                 "technical_justification": data.get("technical_justification", ""),
                             },
                         )
-                    
+
                     # Incrementa contador apenas após salvar com sucesso
                     processed_count += 1
-                    
+
                 except Exception as save_exc:
                     errors += 1
                     error_msg = str(save_exc)
@@ -1126,7 +1152,7 @@ def import_candidates_from_folder(
                     else:
                         error_details.append(f"{pdf_file.name}: Erro ao salvar - {error_msg[:100]}")
                     processed_count += 1  # Conta como processado mesmo com erro
-                
+
                 if progress_callback:
                     progress_callback(
                         total=total_files,
@@ -1135,11 +1161,11 @@ def import_candidates_from_folder(
                         status="running",
                         errors=errors,
                     )
-            
+
             # Aguarda entre lotes (menos tempo já que processa 10 de uma vez)
             if batch_start + batch_size < len(pdf_files):
                 time.sleep(1)
-                
+
         except Exception as exc:
             # Se o lote falhar, tenta processar individualmente
             error_msg = str(exc)
@@ -1185,17 +1211,38 @@ def import_candidates_from_folder(
                         if shared_pool:
                             qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                         else:
-                            qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                            qs = (
+                                Candidate.objects.filter(
+                                    user_id=user_id, linkedin_url__iexact=linkedin_url
+                                )
+                                if user_id
+                                else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                            )
                         candidate = qs.first()
                         if candidate:
                             changed = False
                             for field, value in candidate_payload.items():
                                 # Normaliza None para string vazia em campos de texto
-                                if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                                if field in (
+                                    "name",
+                                    "current_title",
+                                    "current_company",
+                                    "location",
+                                    "linkedin_url",
+                                    "summary",
+                                    "skills",
+                                    "technologies",
+                                    "languages",
+                                    "certifications",
+                                    "seniority",
+                                ):
                                     if value is None:
                                         value = ""
                                 # Ignora apenas se for None e o campo não aceitar None
-                                if value is None and field not in ("experience_time", "average_tenure"):
+                                if value is None and field not in (
+                                    "experience_time",
+                                    "average_tenure",
+                                ):
                                     continue
                                 if getattr(candidate, field) != value:
                                     setattr(candidate, field, value)
@@ -1209,7 +1256,19 @@ def import_candidates_from_folder(
                             # Garante que todos os campos de texto sejam strings, nunca None
                             safe_payload = {}
                             for field, value in candidate_payload.items():
-                                if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                                if field in (
+                                    "name",
+                                    "current_title",
+                                    "current_company",
+                                    "location",
+                                    "linkedin_url",
+                                    "summary",
+                                    "skills",
+                                    "technologies",
+                                    "languages",
+                                    "certifications",
+                                    "seniority",
+                                ):
                                     safe_payload[field] = value if value is not None else ""
                                 else:
                                     safe_payload[field] = value
@@ -1226,31 +1285,38 @@ def import_candidates_from_folder(
                                 candidate=candidate,
                                 defaults={
                                     "adherence_score": data.get("adherence"),
-                                    "technical_justification": data.get("technical_justification", ""),
+                                    "technical_justification": data.get(
+                                        "technical_justification", ""
+                                    ),
                                 },
                             )
-                        
+
                         # Incrementa contador apenas após salvar com sucesso
                         processed_count += 1
-                        
+
                     except Exception as save_exc:
                         errors += 1
                         save_error_msg = str(save_exc)
                         if "RESOURCE_EXHAUSTED" in save_error_msg or "429" in save_error_msg:
                             error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                         else:
-                            error_details.append(f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}")
+                            error_details.append(
+                                f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}"
+                            )
                         processed_count += 1  # Conta como processado mesmo com erro
-                        
+
                 except Exception as individual_exc:
                     errors += 1
                     individual_error_msg = str(individual_exc)
-                    if "RESOURCE_EXHAUSTED" in individual_error_msg or "429" in individual_error_msg:
+                    if (
+                        "RESOURCE_EXHAUSTED" in individual_error_msg
+                        or "429" in individual_error_msg
+                    ):
                         error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                     else:
                         error_details.append(f"{pdf_file.name}: {individual_error_msg[:100]}")
                     processed_count += 1  # Conta como processado mesmo com erro
-                
+
                 if progress_callback:
                     progress_callback(
                         total=total_files,
@@ -1259,7 +1325,7 @@ def import_candidates_from_folder(
                         status="running",
                         errors=errors,
                     )
-                
+
                 time.sleep(2)
 
     result = {
@@ -1271,7 +1337,9 @@ def import_candidates_from_folder(
         "error_details": error_details[:10],
     }
     if progress_callback:
-        progress_callback(total=total_files, processed=total_files, current=None, status="completed")
+        progress_callback(
+            total=total_files, processed=total_files, current=None, status="completed"
+        )
     return result
 
 
@@ -1290,30 +1358,30 @@ def import_candidates_from_folder_no_ranking(
     total_files = len(pdf_files)
     if progress_callback:
         progress_callback(total=total_files, processed=0, current=None, status="running")
-    
+
     created = 0
     updated = 0
     skipped = 0
     errors = 0
     error_details = []
-    
+
     # Processa em lotes de 10 PDFs
     batch_size = 10
     processed_count = 0
-    
+
     for batch_start in range(0, len(pdf_files), batch_size):
-        batch = pdf_files[batch_start:batch_start + batch_size]
+        batch = pdf_files[batch_start : batch_start + batch_size]
         batch_num = (batch_start // batch_size) + 1
         total_batches = (len(pdf_files) + batch_size - 1) // batch_size
-        
+
         try:
             # Processa o lote inteiro sem rankeamento
             results = extract_candidates_batch_no_ranking(batch)
-            
+
             # Processa cada resultado do lote
             for idx, data in enumerate(results):
                 pdf_file = batch[idx]
-                
+
                 linkedin_url = data.get("linkedin_url", "")
                 if not data.get("name") or not linkedin_url:
                     skipped += 1
@@ -1348,13 +1416,31 @@ def import_candidates_from_folder_no_ranking(
                     if shared_pool:
                         qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
                     else:
-                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        qs = (
+                            Candidate.objects.filter(
+                                user_id=user_id, linkedin_url__iexact=linkedin_url
+                            )
+                            if user_id
+                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        )
                     candidate = qs.first()
                     if candidate:
                         changed = False
                         for field, value in candidate_payload.items():
                             # Normaliza None para string vazia em campos de texto
-                            if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                            if field in (
+                                "name",
+                                "current_title",
+                                "current_company",
+                                "location",
+                                "linkedin_url",
+                                "summary",
+                                "skills",
+                                "technologies",
+                                "languages",
+                                "certifications",
+                                "seniority",
+                            ):
                                 if value is None:
                                     value = ""
                             # Ignora apenas se for None e o campo não aceitar None
@@ -1372,7 +1458,19 @@ def import_candidates_from_folder_no_ranking(
                         # Garante que todos os campos de texto sejam strings, nunca None
                         safe_payload = {}
                         for field, value in candidate_payload.items():
-                            if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                            if field in (
+                                "name",
+                                "current_title",
+                                "current_company",
+                                "location",
+                                "linkedin_url",
+                                "summary",
+                                "skills",
+                                "technologies",
+                                "languages",
+                                "certifications",
+                                "seniority",
+                            ):
                                 safe_payload[field] = value if value is not None else ""
                             else:
                                 safe_payload[field] = value
@@ -1382,10 +1480,10 @@ def import_candidates_from_folder_no_ranking(
                         created += 1
                         # Salva o PDF no novo candidato
                         _save_resume_pdf(candidate, pdf_file)
-                    
+
                     # Incrementa contador apenas após salvar com sucesso
                     processed_count += 1
-                    
+
                 except Exception as save_exc:
                     errors += 1
                     error_msg = str(save_exc)
@@ -1394,7 +1492,7 @@ def import_candidates_from_folder_no_ranking(
                     else:
                         error_details.append(f"{pdf_file.name}: Erro ao salvar - {error_msg[:100]}")
                     processed_count += 1
-                
+
                 if progress_callback:
                     progress_callback(
                         total=total_files,
@@ -1403,11 +1501,11 @@ def import_candidates_from_folder_no_ranking(
                         status="running",
                         errors=errors,
                     )
-            
+
             # Aguarda entre lotes
             if batch_start + batch_size < len(pdf_files):
                 time.sleep(1)
-                
+
         except Exception as exc:
             # Se o lote falhar, tenta processar individualmente
             error_msg = str(exc)
@@ -1445,17 +1543,38 @@ def import_candidates_from_folder_no_ranking(
                             "seniority": data.get("seniority") or "",
                         }
 
-                        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url) if user_id else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        qs = (
+                            Candidate.objects.filter(
+                                user_id=user_id, linkedin_url__iexact=linkedin_url
+                            )
+                            if user_id
+                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        )
                         candidate = qs.first()
                         if candidate:
                             changed = False
                             for field, value in candidate_payload.items():
                                 # Normaliza None para string vazia em campos de texto
-                                if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                                if field in (
+                                    "name",
+                                    "current_title",
+                                    "current_company",
+                                    "location",
+                                    "linkedin_url",
+                                    "summary",
+                                    "skills",
+                                    "technologies",
+                                    "languages",
+                                    "certifications",
+                                    "seniority",
+                                ):
                                     if value is None:
                                         value = ""
                                 # Ignora apenas se for None e o campo não aceitar None
-                                if value is None and field not in ("experience_time", "average_tenure"):
+                                if value is None and field not in (
+                                    "experience_time",
+                                    "average_tenure",
+                                ):
                                     continue
                                 if getattr(candidate, field) != value:
                                     setattr(candidate, field, value)
@@ -1469,7 +1588,19 @@ def import_candidates_from_folder_no_ranking(
                             # Garante que todos os campos de texto sejam strings, nunca None
                             safe_payload = {}
                             for field, value in candidate_payload.items():
-                                if field in ("name", "current_title", "current_company", "location", "linkedin_url", "summary", "skills", "technologies", "languages", "certifications", "seniority"):
+                                if field in (
+                                    "name",
+                                    "current_title",
+                                    "current_company",
+                                    "location",
+                                    "linkedin_url",
+                                    "summary",
+                                    "skills",
+                                    "technologies",
+                                    "languages",
+                                    "certifications",
+                                    "seniority",
+                                ):
                                     safe_payload[field] = value if value is not None else ""
                                 else:
                                     safe_payload[field] = value
@@ -1479,28 +1610,33 @@ def import_candidates_from_folder_no_ranking(
                             created += 1
                             # Salva o PDF no novo candidato
                             _save_resume_pdf(candidate, pdf_file)
-                        
+
                         # Incrementa contador apenas após salvar com sucesso
                         processed_count += 1
-                        
+
                     except Exception as save_exc:
                         errors += 1
                         save_error_msg = str(save_exc)
                         if "RESOURCE_EXHAUSTED" in save_error_msg or "429" in save_error_msg:
                             error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                         else:
-                            error_details.append(f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}")
+                            error_details.append(
+                                f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}"
+                            )
                         processed_count += 1
-                        
+
                 except Exception as individual_exc:
                     errors += 1
                     individual_error_msg = str(individual_exc)
-                    if "RESOURCE_EXHAUSTED" in individual_error_msg or "429" in individual_error_msg:
+                    if (
+                        "RESOURCE_EXHAUSTED" in individual_error_msg
+                        or "429" in individual_error_msg
+                    ):
                         error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                     else:
                         error_details.append(f"{pdf_file.name}: {individual_error_msg[:100]}")
                     processed_count += 1
-                
+
                 if progress_callback:
                     progress_callback(
                         total=total_files,
@@ -1509,7 +1645,7 @@ def import_candidates_from_folder_no_ranking(
                         status="running",
                         errors=errors,
                     )
-                
+
                 time.sleep(2)
 
     result = {
@@ -1521,7 +1657,13 @@ def import_candidates_from_folder_no_ranking(
         "error_details": error_details[:10],
     }
     if progress_callback:
-        progress_callback(total=total_files, processed=processed_count, current=None, status="completed", result=result)
+        progress_callback(
+            total=total_files,
+            processed=processed_count,
+            current=None,
+            status="completed",
+            result=result,
+        )
     return result
 
 
@@ -1537,48 +1679,60 @@ def search_and_rank_candidates_from_pool(
 ) -> dict:
     """Busca candidatos no banco de talentos do usuário e calcula aderência para a vaga."""
     from .models import Candidate, CandidateJob
-    
+
     # Busca candidatos do usuário não vinculados à vaga
-    linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list('candidate_id', flat=True)
+    linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list(
+        "candidate_id", flat=True
+    )
     candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
     if user_id is not None and not shared_pool:
         candidates = candidates.filter(user_id=user_id)
-    
+
     # Aplica filtros se fornecidos
     if filters:
-        name_filter = filters.get('name', '').strip()
-        location_filter = filters.get('location', '').strip()
-        seniority_filter = filters.get('seniority', '').strip()
-        company_filter = filters.get('company', '').strip()
-        technologies_filter = filters.get('technologies', '').strip()
-        skills_filter = filters.get('skills', '').strip()
-        languages_filter = filters.get('languages', '').strip()
-        certifications_filter = filters.get('certifications', '').strip()
-        ready_only = filters.get('ready_only', False)
-        
+        name_filter = filters.get("name", "").strip()
+        location_filter = filters.get("location", "").strip()
+        seniority_filter = filters.get("seniority", "").strip()
+        company_filter = filters.get("company", "").strip()
+        technologies_filter = filters.get("technologies", "").strip()
+        skills_filter = filters.get("skills", "").strip()
+        languages_filter = filters.get("languages", "").strip()
+        certifications_filter = filters.get("certifications", "").strip()
+        ready_only = filters.get("ready_only", False)
+
         if name_filter:
-            candidates = _apply_unaccent_filter(candidates, 'name', name_filter, 'name')
+            candidates = _apply_unaccent_filter(candidates, "name", name_filter, "name")
         if location_filter:
-            candidates = _apply_unaccent_filter(candidates, 'location', location_filter, 'location')
+            candidates = _apply_unaccent_filter(candidates, "location", location_filter, "location")
         if seniority_filter:
-            candidates = _apply_unaccent_filter(candidates, 'seniority', seniority_filter, 'seniority')
+            candidates = _apply_unaccent_filter(
+                candidates, "seniority", seniority_filter, "seniority"
+            )
         if company_filter:
-            candidates = _apply_unaccent_filter(candidates, 'current_company', company_filter, 'company')
+            candidates = _apply_unaccent_filter(
+                candidates, "current_company", company_filter, "company"
+            )
         if technologies_filter:
-            candidates = _apply_unaccent_filter(candidates, 'technologies', technologies_filter, 'technologies')
+            candidates = _apply_unaccent_filter(
+                candidates, "technologies", technologies_filter, "technologies"
+            )
         if skills_filter:
-            candidates = _apply_unaccent_filter(candidates, 'skills', skills_filter, 'skills')
+            candidates = _apply_unaccent_filter(candidates, "skills", skills_filter, "skills")
         if languages_filter:
-            candidates = _apply_unaccent_filter(candidates, 'languages', languages_filter, 'languages')
+            candidates = _apply_unaccent_filter(
+                candidates, "languages", languages_filter, "languages"
+            )
         if certifications_filter:
-            candidates = _apply_unaccent_filter(candidates, 'certifications', certifications_filter, 'certifications')
+            candidates = _apply_unaccent_filter(
+                candidates, "certifications", certifications_filter, "certifications"
+            )
         if ready_only:
             candidates = candidates.exclude(ready_at__isnull=True)
-    
+
     total_candidates = candidates.count()
     if progress_callback:
         progress_callback(total=total_candidates, processed=0, current=None, status="running")
-    
+
     if total_candidates == 0:
         result = {
             "linked": 0,
@@ -1589,26 +1743,26 @@ def search_and_rank_candidates_from_pool(
         if progress_callback:
             progress_callback(total=0, processed=0, current=None, status="completed", result=result)
         return result
-    
+
     role_titles = []
     if role_title:
         role_titles = [item.strip() for item in role_title.split("/") if item.strip()]
-    
+
     linked = 0
     errors = 0
     error_details = []
-    
+
     # Processa em lotes de 10 candidatos
     batch_size = 10
     processed_count = 0
-    
+
     candidates_list = list(candidates)
-    
+
     for batch_start in range(0, len(candidates_list), batch_size):
-        batch = candidates_list[batch_start:batch_start + batch_size]
+        batch = candidates_list[batch_start : batch_start + batch_size]
         batch_num = (batch_start // batch_size) + 1
         total_batches = (len(candidates_list) + batch_size - 1) // batch_size
-        
+
         try:
             # Separa candidatos com PDF (avaliação via currículo completo) dos sem PDF (dados estruturados)
             with_pdf = []
@@ -1622,20 +1776,29 @@ def search_and_rank_candidates_from_pool(
                             continue
                     except (ValueError, OSError):
                         pass
-                without_pdf.append((candidate, {
-                    "name": candidate.name or "",
-                    "current_title": candidate.current_title or "",
-                    "current_company": candidate.current_company or "",
-                    "location": candidate.location or "",
-                    "skills": candidate.skills or "",
-                    "technologies": candidate.technologies or "",
-                    "languages": candidate.languages or "",
-                    "certifications": candidate.certifications or "",
-                    "seniority": candidate.seniority or "",
-                    "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-                    "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
-                    "summary": candidate.summary or "",
-                }))
+                without_pdf.append(
+                    (
+                        candidate,
+                        {
+                            "name": candidate.name or "",
+                            "current_title": candidate.current_title or "",
+                            "current_company": candidate.current_company or "",
+                            "location": candidate.location or "",
+                            "skills": candidate.skills or "",
+                            "technologies": candidate.technologies or "",
+                            "languages": candidate.languages or "",
+                            "certifications": candidate.certifications or "",
+                            "seniority": candidate.seniority or "",
+                            "experience_time": str(candidate.experience_time)
+                            if candidate.experience_time
+                            else "",
+                            "average_tenure": str(candidate.average_tenure)
+                            if candidate.average_tenure
+                            else "",
+                            "summary": candidate.summary or "",
+                        },
+                    )
+                )
 
             # Mapa candidato -> {adherence, technical_justification}
             results_map = {}
@@ -1649,7 +1812,7 @@ def search_and_rank_candidates_from_pool(
                     weights=weights,
                     role_titles=role_titles,
                 )
-                for candidate, data in zip(pdf_candidates, llm_results):
+                for candidate, data in zip(pdf_candidates, llm_results, strict=True):
                     results_map[candidate.id] = {
                         "adherence": data.get("adherence"),
                         "technical_justification": data.get("technical_justification", ""),
@@ -1664,7 +1827,7 @@ def search_and_rank_candidates_from_pool(
                     weights=weights,
                     role_titles=role_titles,
                 )
-                for candidate, data in zip(no_pdf_candidates, adherence_results):
+                for candidate, data in zip(no_pdf_candidates, adherence_results, strict=True):
                     results_map[candidate.id] = {
                         "adherence": data.get("adherence"),
                         "technical_justification": data.get("technical_justification", ""),
@@ -1681,12 +1844,14 @@ def search_and_rank_candidates_from_pool(
                         candidate=candidate,
                         defaults={
                             "adherence_score": adherence_data.get("adherence"),
-                            "technical_justification": adherence_data.get("technical_justification", ""),
+                            "technical_justification": adherence_data.get(
+                                "technical_justification", ""
+                            ),
                         },
                     )
                     linked += 1
                     processed_count += 1
-                    
+
                     if progress_callback:
                         progress_callback(
                             total=total_candidates,
@@ -1700,7 +1865,7 @@ def search_and_rank_candidates_from_pool(
                     error_msg = str(save_exc)
                     error_details.append(f"{candidate.name}: Erro ao vincular - {error_msg[:100]}")
                     processed_count += 1
-                    
+
                     if progress_callback:
                         progress_callback(
                             total=total_candidates,
@@ -1709,11 +1874,11 @@ def search_and_rank_candidates_from_pool(
                             status="running",
                             errors=errors,
                         )
-            
+
             # Aguarda entre lotes
             if batch_start + batch_size < len(candidates_list):
                 time.sleep(1)
-                
+
         except Exception as exc:
             # Se o lote falhar, tenta processar individualmente
             error_msg = str(exc)
@@ -1732,7 +1897,9 @@ def search_and_rank_candidates_from_pool(
                                 )
                                 adherence_data = {
                                     "adherence": full_data.get("adherence"),
-                                    "technical_justification": full_data.get("technical_justification", ""),
+                                    "technical_justification": full_data.get(
+                                        "technical_justification", ""
+                                    ),
                                 }
                             else:
                                 raise FileNotFoundError("PDF não encontrado")
@@ -1748,8 +1915,12 @@ def search_and_rank_candidates_from_pool(
                                 "languages": candidate.languages or "",
                                 "certifications": candidate.certifications or "",
                                 "seniority": candidate.seniority or "",
-                                "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-                                "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+                                "experience_time": str(candidate.experience_time)
+                                if candidate.experience_time
+                                else "",
+                                "average_tenure": str(candidate.average_tenure)
+                                if candidate.average_tenure
+                                else "",
                                 "summary": candidate.summary or "",
                             }
                             adherence_data = calculate_adherence_for_candidate(
@@ -1770,8 +1941,12 @@ def search_and_rank_candidates_from_pool(
                             "languages": candidate.languages or "",
                             "certifications": candidate.certifications or "",
                             "seniority": candidate.seniority or "",
-                            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-                            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+                            "experience_time": str(candidate.experience_time)
+                            if candidate.experience_time
+                            else "",
+                            "average_tenure": str(candidate.average_tenure)
+                            if candidate.average_tenure
+                            else "",
                             "summary": candidate.summary or "",
                         }
                         adherence_data = calculate_adherence_for_candidate(
@@ -1780,18 +1955,20 @@ def search_and_rank_candidates_from_pool(
                             weights=weights,
                             role_titles=role_titles,
                         )
-                    
+
                     CandidateJob.objects.update_or_create(
                         job_id=job_id,
                         candidate=candidate,
                         defaults={
                             "adherence_score": adherence_data.get("adherence"),
-                            "technical_justification": adherence_data.get("technical_justification", ""),
+                            "technical_justification": adherence_data.get(
+                                "technical_justification", ""
+                            ),
                         },
                     )
                     linked += 1
                     processed_count += 1
-                    
+
                     if progress_callback:
                         progress_callback(
                             total=total_candidates,
@@ -1805,7 +1982,7 @@ def search_and_rank_candidates_from_pool(
                     individual_error_msg = str(individual_exc)
                     error_details.append(f"{candidate.name}: {individual_error_msg[:100]}")
                     processed_count += 1
-                    
+
                     if progress_callback:
                         progress_callback(
                             total=total_candidates,
@@ -1814,7 +1991,7 @@ def search_and_rank_candidates_from_pool(
                             status="running",
                             errors=errors,
                         )
-                
+
                 time.sleep(2)
 
     result = {
@@ -1824,5 +2001,11 @@ def search_and_rank_candidates_from_pool(
         "error_details": error_details[:10],
     }
     if progress_callback:
-        progress_callback(total=total_candidates, processed=processed_count, current=None, status="completed", result=result)
+        progress_callback(
+            total=total_candidates,
+            processed=processed_count,
+            current=None,
+            status="completed",
+            result=result,
+        )
     return result

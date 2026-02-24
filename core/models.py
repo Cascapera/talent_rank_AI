@@ -13,32 +13,33 @@ def resume_upload_to(instance, filename):
 
 class Profile(models.Model):
     """Perfil do usuário: telefone, CPF e plano de assinatura."""
+
     class Plan(models.TextChoices):
-        FREE = 'FREE', 'Free'
-        BASIC = 'BASIC', 'Basic'
-        PREMIUM = 'PREMIUM', 'Premium'
+        FREE = "FREE", "Free"
+        BASIC = "BASIC", "Basic"
+        PREMIUM = "PREMIUM", "Premium"
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='profile',
+        related_name="profile",
     )
-    phone = models.CharField('Telefone', max_length=20, blank=True)
-    cpf = models.CharField('CPF', max_length=14, blank=True)
+    phone = models.CharField("Telefone", max_length=20, blank=True)
+    cpf = models.CharField("CPF", max_length=14, blank=True)
     plan = models.CharField(
-        'Plano',
+        "Plano",
         max_length=10,
         choices=Plan.choices,
         default=Plan.FREE,
     )
     plan_expires_at = models.DateField(
-        'Vencimento do plano',
+        "Vencimento do plano",
         null=True,
         blank=True,
-        help_text='Quando preenchido, o acesso é bloqueado após esta data. Deixe em branco para plano sem vencimento (manual). Na renovação da assinatura, esta data será atualizada.',
+        help_text="Quando preenchido, o acesso é bloqueado após esta data. Deixe em branco para plano sem vencimento (manual). Na renovação da assinatura, esta data será atualizada.",
     )
     last_session_key = models.CharField(
-        'Ultima sessao ativa',
+        "Ultima sessao ativa",
         max_length=40,
         blank=True,
     )
@@ -49,15 +50,15 @@ class Profile(models.Model):
 
 class Job(models.Model):
     class Status(models.TextChoices):
-        OPEN = 'OPEN', 'Aberta'
-        SEARCH_DONE = 'SEARCH_DONE', 'Busca feita'
-        CANDIDATES_SENT = 'CANDIDATES_SENT', 'Candidatos enviados'
-        CLOSED = 'CLOSED', 'Vaga finalizada'
+        OPEN = "OPEN", "Aberta"
+        SEARCH_DONE = "SEARCH_DONE", "Busca feita"
+        CANDIDATES_SENT = "CANDIDATES_SENT", "Candidatos enviados"
+        CLOSED = "CLOSED", "Vaga finalizada"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='jobs',
+        related_name="jobs",
     )
     title = models.CharField(max_length=200)
     summary = models.TextField(blank=True)
@@ -80,7 +81,7 @@ class Job(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
         return self.title
@@ -90,7 +91,7 @@ class Candidate(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='candidates',
+        related_name="candidates",
     )
     name = models.CharField(max_length=160)
     current_title = models.CharField(max_length=160, blank=True)
@@ -117,11 +118,11 @@ class Candidate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-updated_at', '-created_at']
+        ordering = ["-updated_at", "-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=('user', 'linkedin_url'),
-                name='core_candidate_user_linkedin_unique',
+                fields=("user", "linkedin_url"),
+                name="core_candidate_user_linkedin_unique",
             ),
         ]
 
@@ -131,17 +132,17 @@ class Candidate(models.Model):
 
 class CandidateJob(models.Model):
     class PipelineStatus(models.TextChoices):
-        FIRST_CONTACT = 'PRIMEIRO_CONTATO', 'Primeiro contato'
-        RESPONDED = 'RESPONDEU', 'Respondeu'
-        INTERVIEW = 'ENTREVISTA', 'Entrevista'
-        TECH_INTERVIEW = 'ENTREVISTA_TECNICA', 'Entrevista tecnica'
-        SENT_MANAGER = 'ENVIADO_GESTOR', 'Enviado para gestor'
-        CANDIDATE_READY = 'CANDIDATO_PRONTO', 'Candidato pronto'
-        SENT_CLIENT = 'ENVIADO_CLIENTE', 'Enviado para cliente'
-        HIRED = 'CONTRATADO', 'Contratado'
+        FIRST_CONTACT = "PRIMEIRO_CONTATO", "Primeiro contato"
+        RESPONDED = "RESPONDEU", "Respondeu"
+        INTERVIEW = "ENTREVISTA", "Entrevista"
+        TECH_INTERVIEW = "ENTREVISTA_TECNICA", "Entrevista tecnica"
+        SENT_MANAGER = "ENVIADO_GESTOR", "Enviado para gestor"
+        CANDIDATE_READY = "CANDIDATO_PRONTO", "Candidato pronto"
+        SENT_CLIENT = "ENVIADO_CLIENTE", "Enviado para cliente"
+        HIRED = "CONTRATADO", "Contratado"
 
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='candidate_links')
-    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='job_links')
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="candidate_links")
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name="job_links")
     pipeline_status = models.CharField(max_length=32, choices=PipelineStatus.choices, blank=True)
     ready_at = models.DateField(null=True, blank=True)
     adherence_score = models.IntegerField(null=True, blank=True)
@@ -150,8 +151,8 @@ class CandidateJob(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-updated_at', '-created_at']
-        unique_together = ('job', 'candidate')
+        ordering = ["-updated_at", "-created_at"]
+        unique_together = ("job", "candidate")
 
     def save(self, *args, **kwargs):
         from django.utils import timezone
@@ -160,7 +161,7 @@ class CandidateJob(models.Model):
         if self.pk:
             previous_status = (
                 CandidateJob.objects.filter(pk=self.pk)
-                .values_list('pipeline_status', flat=True)
+                .values_list("pipeline_status", flat=True)
                 .first()
             )
         if self.pipeline_status == self.PipelineStatus.CANDIDATE_READY:

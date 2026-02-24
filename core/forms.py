@@ -4,7 +4,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import Job, Candidate
+from .models import Candidate, Job
 
 User = get_user_model()
 
@@ -19,6 +19,7 @@ def _clean_cpf(value: str) -> str:
 
 class SignupForm(UserCreationForm):
     """Formulário de cadastro: User + telefone/CPF para pagamento futuro."""
+
     email = forms.EmailField(
         required=True,
         label="E-mail",
@@ -54,7 +55,9 @@ class SignupForm(UserCreationForm):
         fields = ("username", "email", "first_name", "last_name", "password1", "password2")
         labels = {"username": "Usuário"}
         widgets = {
-            "username": forms.TextInput(attrs={"placeholder": "Nome de Usuário", "autocomplete": "username"}),
+            "username": forms.TextInput(
+                attrs={"placeholder": "Nome de Usuário", "autocomplete": "username"}
+            ),
         }
 
     def clean_email(self):
@@ -85,52 +88,52 @@ class JobForm(forms.ModelForm):
     class Meta:
         model = Job
         fields = (
-            'title',
-            'summary',
-            'department',
-            'seniority',
-            'location',
-            'stack',
-            'contract_type',
-            'salary_min',
-            'salary_max',
-            'language',
-            'priority',
-            'must_have',
-            'nice_to_have',
-            'undesirable',
-            'boolean_search',
-            'notes',
-            'status',
+            "title",
+            "summary",
+            "department",
+            "seniority",
+            "location",
+            "stack",
+            "contract_type",
+            "salary_min",
+            "salary_max",
+            "language",
+            "priority",
+            "must_have",
+            "nice_to_have",
+            "undesirable",
+            "boolean_search",
+            "notes",
+            "status",
         )
         labels = {
-            'title': 'Título',
-            'summary': 'Descrição resumida',
-            'department': 'Área',
-            'seniority': 'Senioridade',
-            'location': 'Localização',
-            'stack': 'Stack principal',
-            'contract_type': 'Tipo de contratação',
-            'salary_min': 'Salário mínimo',
-            'salary_max': 'Salário máximo',
-            'language': 'Idioma',
-            'priority': 'Prioridade',
-            'must_have': 'Skills obrigatórias',
-            'nice_to_have': 'Skills desejáveis',
-            'undesirable': 'Não desejáveis',
-            'boolean_search': 'Busca booleana',
-            'notes': 'Observações internas',
-            'status': 'Status',
+            "title": "Título",
+            "summary": "Descrição resumida",
+            "department": "Área",
+            "seniority": "Senioridade",
+            "location": "Localização",
+            "stack": "Stack principal",
+            "contract_type": "Tipo de contratação",
+            "salary_min": "Salário mínimo",
+            "salary_max": "Salário máximo",
+            "language": "Idioma",
+            "priority": "Prioridade",
+            "must_have": "Skills obrigatórias",
+            "nice_to_have": "Skills desejáveis",
+            "undesirable": "Não desejáveis",
+            "boolean_search": "Busca booleana",
+            "notes": "Observações internas",
+            "status": "Status",
         }
         widgets = {
-            'summary': forms.Textarea(attrs={'rows': 4}),
-            'must_have': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Separe por vírgula'}),
-            'nice_to_have': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Separe por vírgula'}),
-            'undesirable': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Separe por vírgula'}),
-            'boolean_search': forms.Textarea(attrs={'rows': 3}),
-            'notes': forms.Textarea(attrs={'rows': 3}),
-            'salary_min': forms.NumberInput(attrs={'min': 0}),
-            'salary_max': forms.NumberInput(attrs={'min': 0}),
+            "summary": forms.Textarea(attrs={"rows": 4}),
+            "must_have": forms.Textarea(attrs={"rows": 3, "placeholder": "Separe por vírgula"}),
+            "nice_to_have": forms.Textarea(attrs={"rows": 3, "placeholder": "Separe por vírgula"}),
+            "undesirable": forms.Textarea(attrs={"rows": 3, "placeholder": "Separe por vírgula"}),
+            "boolean_search": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+            "salary_min": forms.NumberInput(attrs={"min": 0}),
+            "salary_max": forms.NumberInput(attrs={"min": 0}),
         }
 
 
@@ -138,41 +141,43 @@ class CandidateForm(forms.ModelForm):
     class Meta:
         model = Candidate
         fields = (
-            'name',
-            'current_title',
-            'current_company',
-            'location',
-            'linkedin_url',
-            'summary',
-            'skills',
-            'technologies',
-            'languages',
-            'certifications',
-            'seniority',
-            'experience_time',
-            'average_tenure',
+            "name",
+            "current_title",
+            "current_company",
+            "location",
+            "linkedin_url",
+            "summary",
+            "skills",
+            "technologies",
+            "languages",
+            "certifications",
+            "seniority",
+            "experience_time",
+            "average_tenure",
         )
         labels = {
-            'name': 'Nome',
-            'current_title': 'Cargo atual',
-            'current_company': 'Empresa atual',
-            'location': 'Localização',
-            'linkedin_url': 'LinkedIn',
-            'summary': 'Resumo',
-            'skills': 'Skills',
-            'technologies': 'Tecnologias',
-            'languages': 'Idiomas',
-            'certifications': 'Certificações',
-            'seniority': 'Senioridade',
-            'experience_time': 'Tempo de experiência (anos)',
-            'average_tenure': 'Média de permanência (anos)',
+            "name": "Nome",
+            "current_title": "Cargo atual",
+            "current_company": "Empresa atual",
+            "location": "Localização",
+            "linkedin_url": "LinkedIn",
+            "summary": "Resumo",
+            "skills": "Skills",
+            "technologies": "Tecnologias",
+            "languages": "Idiomas",
+            "certifications": "Certificações",
+            "seniority": "Senioridade",
+            "experience_time": "Tempo de experiência (anos)",
+            "average_tenure": "Média de permanência (anos)",
         }
         widgets = {
-            'summary': forms.Textarea(attrs={'rows': 4}),
-            'skills': forms.Textarea(attrs={'rows': 4, 'placeholder': 'Separe por vírgula'}),
-            'technologies': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Separe por vírgula'}),
-            'languages': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Ex: Ingles (Professional Working)'}),
-            'certifications': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Separe por linha'}),
-            'experience_time': forms.NumberInput(attrs={'step': '0.1', 'min': 0}),
-            'average_tenure': forms.NumberInput(attrs={'step': '0.1', 'min': 0}),
+            "summary": forms.Textarea(attrs={"rows": 4}),
+            "skills": forms.Textarea(attrs={"rows": 4, "placeholder": "Separe por vírgula"}),
+            "technologies": forms.Textarea(attrs={"rows": 3, "placeholder": "Separe por vírgula"}),
+            "languages": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Ex: Ingles (Professional Working)"}
+            ),
+            "certifications": forms.Textarea(attrs={"rows": 3, "placeholder": "Separe por linha"}),
+            "experience_time": forms.NumberInput(attrs={"step": "0.1", "min": 0}),
+            "average_tenure": forms.NumberInput(attrs={"step": "0.1", "min": 0}),
         }
