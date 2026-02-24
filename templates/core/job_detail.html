@@ -577,15 +577,15 @@
     <h2>Importar candidatos (ZIP ou PDF)</h2>
     <div class="card">
       <p style="margin-bottom: 10px; color: var(--muted);">
-        Envie um ZIP ou PDFs de Candidatos. Nossa Inteligência Artificial fará a leitura, determinará aderência e Justificativa para seus candidatos.
+        Envie um ou mais arquivos: ZIP (com múltiplos PDFs), PDF individual ou vários PDFs de uma vez.
       </p>
       {% if import_message %}
         <div class="muted" style="margin-bottom: 10px;">{{ import_message }}</div>
       {% endif %}
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <label for="candidates_zip">Arquivo ZIP/PDF</label>
-        <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" required />
+        <label for="candidates_zip">Arquivos ZIP/PDF</label>
+        <input type="file" name="candidates_zip" id="candidates_zip" accept=".zip,.pdf" multiple required />
         <div class="actions" style="margin-top: 10px;">
           <button class="btn primary" type="submit">Importar e analisar</button>
         </div>
