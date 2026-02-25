@@ -33,3 +33,6 @@ cache/
 # EB
 .elasticbeanstalk/*.cfg.yml
 .elasticbeanstalk/*.cfg.yaml
+
+# Comandos de deploy (não versionar)
+atualizar_servidor.txt
