@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import CandidateForm, JobForm, SignupForm
+from .llm_extractor import generate_parecer
 from .models import Candidate, CandidateJob, Job, Profile
 from .pdf_extractor import (
     import_candidates_from_folder,
@@ -510,6 +511,14 @@ def _set_talent_pool_import_status(payload: dict) -> None:
     cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
 
 
+def _parecer_status_key(candidate_job_id: int) -> str:
+    return f"parecer_status_{candidate_job_id}"
+
+
+def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
+    cache.set(_parecer_status_key(candidate_job_id), payload, timeout=60 * 30)
+
+
 def _run_import_job(
     job_id: int,
     folder_path: Path,
@@ -920,6 +929,131 @@ def search_candidates_in_pool(request, job_id: int):
     return JsonResponse(
         {"success": True, "message": f"Análise iniciada{filter_msg}. Acompanhe o progresso abaixo."}
     )
+
+
+def _run_parecer_generation(candidate_job_id: int, parecer_type: str) -> None:
+    """Executa geração de parecer em background."""
+    try:
+        candidate_job = CandidateJob.objects.select_related("job", "candidate").get(
+            id=candidate_job_id
+        )
+        job = candidate_job.job
+        candidate = candidate_job.candidate
+
+        job_description = _build_job_description(job)
+        candidate_data = {
+            "name": candidate.name,
+            "current_title": candidate.current_title or "",
+            "current_company": candidate.current_company or "",
+            "location": candidate.location or "",
+            "skills": candidate.skills or "",
+            "technologies": candidate.technologies or "",
+            "languages": candidate.languages or "",
+            "certifications": candidate.certifications or "",
+            "seniority": candidate.seniority or "",
+            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
+            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+            "summary": candidate.summary or "",
+        }
+        resume_path = None
+        if candidate.resume_pdf:
+            try:
+                resume_path = candidate.resume_pdf.path
+            except (ValueError, NotImplementedError):
+                pass
+
+        parecer_text = generate_parecer(
+            job_description=job_description,
+            candidate_data=candidate_data,
+            parecer_type=parecer_type,
+            role_title=job.title,
+            resume_pdf_path=resume_path,
+        )
+
+        candidate_job.parecer = parecer_text
+        candidate_job.parecer_type = parecer_type
+        candidate_job.save(update_fields=["parecer", "parecer_type", "updated_at"])
+
+        _set_parecer_status(
+            candidate_job_id,
+            {"status": "completed", "parecer": parecer_text, "parecer_type": parecer_type},
+        )
+    except Exception as exc:
+        _set_parecer_status(
+            candidate_job_id,
+            {"status": "error", "message": str(exc)},
+        )
+
+
+@login_required
+@required_plan("BASIC")
+def generate_parecer_view(request, job_id: int, candidate_job_id: int):
+    """Gera parecer ou retorna o existente se mesmo tipo."""
+    if request.method != "POST":
+        return JsonResponse({"error": "Método não permitido"}, status=405)
+
+    job = get_object_or_404(Job, id=job_id, user=request.user)
+    candidate_job = get_object_or_404(CandidateJob, id=candidate_job_id, job=job)
+
+    valid_statuses = (
+        CandidateJob.PipelineStatus.SENT_MANAGER,
+        CandidateJob.PipelineStatus.SENT_CLIENT,
+    )
+    if candidate_job.pipeline_status not in valid_statuses:
+        return JsonResponse(
+            {"error": "Parecer só pode ser gerado para candidatos enviados ao gestor ou cliente."},
+            status=400,
+        )
+
+    parecer_type = request.POST.get("parecer_type", "").strip()
+    valid_types = ["RESUMIDO", "COMPLETO", "ROBUSTO"]
+    if parecer_type not in valid_types:
+        return JsonResponse({"error": "Tipo de parecer inválido."}, status=400)
+
+    # Se já existe parecer do mesmo tipo, retorna imediatamente
+    if candidate_job.parecer_type == parecer_type and candidate_job.parecer:
+        return JsonResponse(
+            {
+                "status": "completed",
+                "parecer": candidate_job.parecer,
+                "parecer_type": candidate_job.parecer_type,
+            }
+        )
+
+    # Inicia geração em background
+    _set_parecer_status(candidate_job_id, {"status": "running"})
+    thread = threading.Thread(
+        target=_run_parecer_generation,
+        args=(candidate_job_id, parecer_type),
+        daemon=True,
+    )
+    thread.start()
+
+    return JsonResponse({"status": "running"})
+
+
+@login_required
+@required_plan("BASIC")
+def parecer_status_view(request, job_id: int, candidate_job_id: int):
+    """Retorna status da geração de parecer (para polling)."""
+    job = get_object_or_404(Job, id=job_id, user=request.user)
+    candidate_job = get_object_or_404(CandidateJob, id=candidate_job_id, job=job)
+
+    payload = cache.get(_parecer_status_key(candidate_job_id))
+    if payload:
+        return JsonResponse(payload)
+
+    # Se não há status em cache, retorna o que está no banco (já gerado antes)
+    if candidate_job.parecer and candidate_job.parecer_type:
+        return JsonResponse(
+            {
+                "status": "completed",
+                "parecer": candidate_job.parecer,
+                "parecer_type": candidate_job.parecer_type,
+            }
+        )
+
+    return JsonResponse({"status": "idle"})
 
 
 @login_required

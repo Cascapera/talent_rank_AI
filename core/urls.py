@@ -25,6 +25,16 @@ urlpatterns = [
         views.update_candidate_status,
         name="update_candidate_status",
     ),
+    path(
+        "vagas/<int:job_id>/candidatos/<int:candidate_job_id>/parecer/",
+        views.generate_parecer_view,
+        name="generate_parecer",
+    ),
+    path(
+        "vagas/<int:job_id>/candidatos/<int:candidate_job_id>/parecer-status/",
+        views.parecer_status_view,
+        name="parecer_status",
+    ),
     path("vagas/<int:job_id>/status/", views.update_job_status, name="update_job_status"),
     path(
         "vagas/<int:job_id>/gerar-busca/",

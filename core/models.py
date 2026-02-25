@@ -141,12 +141,25 @@ class CandidateJob(models.Model):
         SENT_CLIENT = "ENVIADO_CLIENTE", "Enviado para cliente"
         HIRED = "CONTRATADO", "Contratado"
 
+    class ParecerType(models.TextChoices):
+        NONE = "NONE", "Sem parecer"
+        RESUMIDO = "RESUMIDO", "Resumido"
+        COMPLETO = "COMPLETO", "Completo"
+        ROBUSTO = "ROBUSTO", "Robusto"
+
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="candidate_links")
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name="job_links")
     pipeline_status = models.CharField(max_length=32, choices=PipelineStatus.choices, blank=True)
     ready_at = models.DateField(null=True, blank=True)
     adherence_score = models.IntegerField(null=True, blank=True)
     technical_justification = models.TextField(blank=True)
+    parecer = models.TextField(blank=True)
+    parecer_type = models.CharField(
+        max_length=20,
+        choices=ParecerType.choices,
+        blank=True,
+        default="",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

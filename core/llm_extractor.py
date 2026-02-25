@@ -690,3 +690,92 @@ def extract_candidate_no_ranking(
         "experience_time_years": data.get("experience_time_years"),
         "seniority": data.get("seniority") or "",
     }
+
+
+def generate_parecer(
+    job_description: str,
+    candidate_data: dict,
+    parecer_type: str,
+    role_title: str,
+    resume_pdf_path: str | Path | None = None,
+) -> str:
+    """
+    Gera um parecer profissional do candidato em relação à vaga.
+    parecer_type: RESUMIDO (1 parágrafo, 5 linhas), COMPLETO (2 parágrafos, 10 linhas), ROBUSTO (4 parágrafos, 20 linhas).
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
+
+    format_rules = {
+        "RESUMIDO": "1 parágrafo com no máximo 5 linhas. Seja resumido e conciso.",
+        "COMPLETO": "2 parágrafos com no máximo 10 linhas no total. Um pouco mais completo.",
+        "ROBUSTO": "4 parágrafos com no máximo 20 linhas no total. Parecer robusto e detalhado.",
+    }
+    format_rule = format_rules.get(parecer_type, format_rules["RESUMIDO"])
+
+    candidate_text = (
+        f"Nome: {candidate_data.get('name', '')}\n"
+        f"Cargo atual: {candidate_data.get('current_title', '')}\n"
+        f"Empresa atual: {candidate_data.get('current_company', '')}\n"
+        f"Localização: {candidate_data.get('location', '')}\n"
+        f"Skills: {candidate_data.get('skills', '')}\n"
+        f"Tecnologias: {candidate_data.get('technologies', '')}\n"
+        f"Idiomas: {candidate_data.get('languages', '')}\n"
+        f"Certificações: {candidate_data.get('certifications', '')}\n"
+        f"Senioridade: {candidate_data.get('seniority', '')}\n"
+        f"Tempo de experiência: {candidate_data.get('experience_time', '')} anos\n"
+        f"Média de permanência: {candidate_data.get('average_tenure', '')} anos\n"
+        f"Resumo: {candidate_data.get('summary', '')}\n"
+    )
+
+    system_prompt = (
+        "Você é um recrutador técnico. Elabore um parecer profissional sobre o candidato para enviar ao gestor ou cliente.\n\n"
+        "IMPORTANTE: Todas as respostas devem ser em PORTUGUÊS (Brasil).\n\n"
+        "REGRAS OBRIGATÓRIAS:\n"
+        "- NÃO use gerúndio (evite palavras terminadas em -ando, -endo, -indo).\n"
+        "- Tom profissional e impactante para impressionar o gestor ou cliente.\n"
+        "- Destaque a aderência do candidato à vaga e os principais diferenciais.\n"
+        f"- Formato: {format_rule}\n\n"
+        f"VAGA ({role_title}):\n{job_description}\n\n"
+        "PERFIL DO CANDIDATO:\n"
+        f"{candidate_text}\n\n"
+        "Retorne APENAS o texto do parecer, sem título, sem introdução, sem markdown."
+    )
+
+    client = genai.Client(api_key=api_key)
+    payload: list = []
+
+    if resume_pdf_path and Path(resume_pdf_path).exists():
+        with open(resume_pdf_path, "rb") as pdf_file:
+            payload.append(types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"))
+    payload.append(system_prompt)
+
+    last_error = None
+    model_candidates = ["models/gemini-2.0-flash"]
+    backoff_seconds = [3, 8, 15, 30]
+    for attempt in range(4):
+        for model_name in model_candidates:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=payload,
+                )
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+        if not last_error:
+            break
+        error_str = str(last_error)
+        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+            time.sleep(wait_time)
+        elif "503" in error_str or "UNAVAILABLE" in error_str:
+            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
+        else:
+            time.sleep(3)
+    if last_error:
+        raise last_error
+
+    return (response.text or "").strip()

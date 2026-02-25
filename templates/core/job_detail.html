@@ -105,6 +105,54 @@
       font-weight: 700;
       margin: 0;
     }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal-parecer {
+      background: var(--bg);
+      border-radius: 12px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .modal-parecer-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.9);
+    }
+    .modal-parecer-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-parecer-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .parecer-text {
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+    }
   </style>
 {% endblock %}
 
@@ -394,6 +442,7 @@
               <th>Certificações</th>
               <th>Status</th>
               <th>Pronto em</th>
+              <th>Parecer</th>
             </tr>
           </thead>
           <tbody>
@@ -531,6 +580,22 @@
                   </select>
                 </td>
                 <td class="ready-at-cell">{{ link.ready_at|date:"d/m/Y"|default:"-" }}</td>
+                <td class="parecer-cell" data-candidate-job-id="{{ link.id }}" data-job-id="{{ job.id }}" data-candidate-name="{{ link.candidate.name|escape }}">
+                  {% if link.pipeline_status == "ENVIADO_GESTOR" or link.pipeline_status == "ENVIADO_CLIENTE" %}
+                    <button
+                      type="button"
+                      class="btn btn-parecer"
+                      data-candidate-job-id="{{ link.id }}"
+                      data-job-id="{{ job.id }}"
+                      data-candidate-name="{{ link.candidate.name|escape }}"
+                      style="padding: 4px 8px; font-size: 11px;"
+                    >
+                      Gerar parecer
+                    </button>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -570,6 +635,41 @@
       {% else %}
         <p class="empty">Nenhum candidato vinculado à vaga ainda.</p>
       {% endif %}
+    </div>
+  </div>
+
+  <div id="parecerModalOverlay" class="modal-overlay">
+    <div class="modal-parecer">
+      <div class="modal-parecer-header">
+        <h3 id="parecerModalTitle" style="margin: 0; font-size: 18px;">Parecer — <span id="parecerCandidateName"></span></h3>
+      </div>
+      <div class="modal-parecer-body">
+        <div id="parecerModalContent">
+          <p id="parecerLoading" style="display: none; color: var(--muted);">Carregando...</p>
+          <p id="parecerGenerating" style="display: none; color: var(--primary);">Gerando parecer...</p>
+          <p id="parecerError" style="display: none; color: #d32f2f;"></p>
+          <div id="parecerTypeForm" style="display: none;">
+            <label for="parecerTypeSelect">Tipo de parecer:</label>
+            <select id="parecerTypeSelect" style="margin: 8px 0 12px; display: block; width: 100%; padding: 8px;">
+              <option value="RESUMIDO">Resumido (1 parágrafo, 5 linhas)</option>
+              <option value="COMPLETO">Completo (2 parágrafos, 10 linhas)</option>
+              <option value="ROBUSTO">Robusto (4 parágrafos, 20 linhas)</option>
+            </select>
+            <p id="parecerExistingHint" style="display: none; font-size: 12px; color: var(--muted); margin-top: 8px;">
+              Parecer atual: <strong id="parecerExistingType"></strong>. Selecione um tipo diferente para gerar novo.
+            </p>
+          </div>
+          <div id="parecerResult" style="display: none;">
+            <div class="parecer-text" id="parecerText"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-parecer-footer">
+        <button type="button" id="parecerSolicitarBtn" class="btn primary" style="display: none;">Solicitar</button>
+        <button type="button" id="parecerCopiarBtn" class="btn" style="display: none;">Copiar</button>
+        <button type="button" id="parecerNovoBtn" class="btn" style="display: none;">Gerar novo parecer</button>
+        <button type="button" id="parecerFecharBtn" class="btn">Fechar</button>
+      </div>
     </div>
   </div>
 
@@ -787,6 +887,42 @@
               readyAtCell.textContent = responseData.ready_at;
             }
           }
+
+          // Atualiza célula de parecer: mostra botão se status for ENVIADO_GESTOR ou ENVIADO_CLIENTE
+          const row = this.closest('tr');
+          const parecerCell = row ? row.querySelector('.parecer-cell') : null;
+          if (parecerCell) {
+            const showBtn = newStatus === 'ENVIADO_GESTOR' || newStatus === 'ENVIADO_CLIENTE';
+            if (showBtn) {
+              const cjid = parecerCell.getAttribute('data-candidate-job-id');
+              const jid = parecerCell.getAttribute('data-job-id');
+              const cname = parecerCell.getAttribute('data-candidate-name') || 'Candidato';
+              parecerCell.innerHTML = `<button type="button" class="btn btn-parecer" data-candidate-job-id="${cjid}" data-job-id="${jid}" data-candidate-name="${cname}" style="padding: 4px 8px; font-size: 11px;">Gerar parecer</button>`;
+              parecerCell.querySelector('.btn-parecer')?.addEventListener('click', (function(jid, cjid, cname) {
+                return function() {
+                  parecerJobId = jid;
+                  parecerCandidateJobId = cjid;
+                  parecerCandidateName.textContent = cname || 'Candidato';
+                  hideParecerStates();
+                  parecerLoading.style.display = 'block';
+                  parecerModalOverlay.classList.add('active');
+                  fetchParecerStatus().then(data => {
+                    parecerLoading.style.display = 'none';
+                    if (data && data.status === 'completed' && data.parecer) {
+                      showParecerResult(data.parecer, data.parecer_type);
+                    } else {
+                      showParecerTypeForm(data?.parecer_type || null);
+                    }
+                  }).catch(() => {
+                    parecerLoading.style.display = 'none';
+                    showParecerTypeForm(null);
+                  });
+                };
+              })(jid, cjid, cname));
+            } else {
+              parecerCell.textContent = '-';
+            }
+          }
           
           // Feedback visual de sucesso
           this.style.borderColor = 'var(--primary)';
@@ -867,6 +1003,192 @@
       });
       select.setAttribute('data-original-value', select.value);
     });
+
+    // Modal de Parecer
+    const parecerModalOverlay = document.getElementById('parecerModalOverlay');
+    const parecerCandidateName = document.getElementById('parecerCandidateName');
+    const parecerLoading = document.getElementById('parecerLoading');
+    const parecerGenerating = document.getElementById('parecerGenerating');
+    const parecerError = document.getElementById('parecerError');
+    const parecerTypeForm = document.getElementById('parecerTypeForm');
+    const parecerTypeSelect = document.getElementById('parecerTypeSelect');
+    const parecerExistingHint = document.getElementById('parecerExistingHint');
+    const parecerExistingType = document.getElementById('parecerExistingType');
+    const parecerResult = document.getElementById('parecerResult');
+    const parecerText = document.getElementById('parecerText');
+    const parecerSolicitarBtn = document.getElementById('parecerSolicitarBtn');
+    const parecerCopiarBtn = document.getElementById('parecerCopiarBtn');
+    const parecerNovoBtn = document.getElementById('parecerNovoBtn');
+    const parecerFecharBtn = document.getElementById('parecerFecharBtn');
+
+    let parecerJobId = null;
+    let parecerCandidateJobId = null;
+    let parecerPollInterval = null;
+    let parecerCurrentType = null;
+
+    function hideParecerStates() {
+      parecerLoading.style.display = 'none';
+      parecerGenerating.style.display = 'none';
+      parecerError.style.display = 'none';
+      parecerTypeForm.style.display = 'none';
+      parecerResult.style.display = 'none';
+      parecerSolicitarBtn.style.display = 'none';
+      parecerCopiarBtn.style.display = 'none';
+      parecerNovoBtn.style.display = 'none';
+    }
+
+    function showParecerResult(text, parecerType) {
+      hideParecerStates();
+      parecerText.textContent = text || '';
+      parecerResult.style.display = 'block';
+      parecerCopiarBtn.style.display = 'inline-block';
+      parecerNovoBtn.style.display = 'inline-block';
+      parecerCurrentType = parecerType;
+    }
+
+    function showParecerTypeForm(existingType) {
+      hideParecerStates();
+      parecerTypeForm.style.display = 'block';
+      parecerSolicitarBtn.style.display = 'inline-block';
+      if (existingType) {
+        parecerExistingHint.style.display = 'block';
+        parecerExistingType.textContent = existingType === 'RESUMIDO' ? 'Resumido' : existingType === 'COMPLETO' ? 'Completo' : 'Robusto';
+      } else {
+        parecerExistingHint.style.display = 'none';
+      }
+    }
+
+    function stopParecerPolling() {
+      if (parecerPollInterval) {
+        clearInterval(parecerPollInterval);
+        parecerPollInterval = null;
+      }
+    }
+
+    async function fetchParecerStatus() {
+      const resp = await fetch(`/vagas/${parecerJobId}/candidatos/${parecerCandidateJobId}/parecer-status/`, { cache: 'no-store' });
+      if (!resp.ok) return null;
+      return resp.json();
+    }
+
+    function pollParecerStatus() {
+      parecerPollInterval = setInterval(async () => {
+        const data = await fetchParecerStatus();
+        if (!data) return;
+        if (data.status === 'completed') {
+          stopParecerPolling();
+          parecerGenerating.style.display = 'none';
+          showParecerResult(data.parecer, data.parecer_type);
+        } else if (data.status === 'error') {
+          stopParecerPolling();
+          parecerGenerating.style.display = 'none';
+          parecerError.textContent = data.message || 'Erro ao gerar parecer.';
+          parecerError.style.display = 'block';
+        }
+      }, 2000);
+    }
+
+    document.querySelectorAll('.btn-parecer').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        parecerJobId = this.getAttribute('data-job-id');
+        parecerCandidateJobId = this.getAttribute('data-candidate-job-id');
+        parecerCandidateName.textContent = this.getAttribute('data-candidate-name') || 'Candidato';
+
+        hideParecerStates();
+        parecerLoading.style.display = 'block';
+        parecerModalOverlay.classList.add('active');
+
+        try {
+          const data = await fetchParecerStatus();
+          parecerLoading.style.display = 'none';
+          if (data && data.status === 'completed' && data.parecer) {
+            showParecerResult(data.parecer, data.parecer_type);
+          } else {
+            showParecerTypeForm(data?.parecer_type || null);
+          }
+        } catch (err) {
+          parecerLoading.style.display = 'none';
+          showParecerTypeForm(null);
+        }
+      });
+    });
+
+    if (parecerSolicitarBtn) {
+      parecerSolicitarBtn.addEventListener('click', async function() {
+        const parecerType = parecerTypeSelect.value;
+        const csrftoken = getCSRFToken();
+        if (!csrftoken) {
+          alert('Token CSRF não encontrado. Recarregue a página.');
+          return;
+        }
+        parecerSolicitarBtn.disabled = true;
+        hideParecerStates();
+        parecerGenerating.style.display = 'block';
+
+        try {
+          const formData = new FormData();
+          formData.append('parecer_type', parecerType);
+          formData.append('csrfmiddlewaretoken', csrftoken);
+          const resp = await fetch(`/vagas/${parecerJobId}/candidatos/${parecerCandidateJobId}/parecer/`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRFToken': csrftoken },
+            credentials: 'same-origin'
+          });
+          const data = await resp.json().catch(() => ({}));
+
+          if (!resp.ok) {
+            throw new Error(data.error || 'Erro ao solicitar parecer.');
+          }
+
+          if (data.status === 'completed') {
+            parecerGenerating.style.display = 'none';
+            showParecerResult(data.parecer, data.parecer_type);
+          } else if (data.status === 'running') {
+            pollParecerStatus();
+          }
+        } catch (err) {
+          parecerGenerating.style.display = 'none';
+          parecerError.textContent = err.message;
+          parecerError.style.display = 'block';
+        } finally {
+          parecerSolicitarBtn.disabled = false;
+        }
+      });
+    }
+
+    if (parecerNovoBtn) {
+      parecerNovoBtn.addEventListener('click', function() {
+        showParecerTypeForm(parecerCurrentType);
+      });
+    }
+
+    if (parecerCopiarBtn) {
+      parecerCopiarBtn.addEventListener('click', function() {
+        const text = parecerText.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          const orig = parecerCopiarBtn.textContent;
+          parecerCopiarBtn.textContent = 'Copiado!';
+          setTimeout(() => { parecerCopiarBtn.textContent = orig; }, 2000);
+        }).catch(() => {
+          alert('Não foi possível copiar.');
+        });
+      });
+    }
+
+    if (parecerFecharBtn && parecerModalOverlay) {
+      parecerFecharBtn.addEventListener('click', function() {
+        stopParecerPolling();
+        parecerModalOverlay.classList.remove('active');
+      });
+      parecerModalOverlay.addEventListener('click', function(e) {
+        if (e.target === parecerModalOverlay) {
+          stopParecerPolling();
+          parecerModalOverlay.classList.remove('active');
+        }
+      });
+    }
 
     // Busca no banco de talentos - Sistema de preview
     const searchInPoolBtn = document.getElementById('searchInPoolBtn');
