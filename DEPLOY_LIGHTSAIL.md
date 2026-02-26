@@ -286,7 +286,40 @@ Mantem apenas os 2 ultimos backups:
 
 ---
 
-## 15. Checklist rápido
+## 15. CD (Deploy automático via GitHub Actions)
+
+Após o merge na `main`, o deploy roda automaticamente se o CI passar.
+
+### Secrets no GitHub
+
+Em **Settings → Secrets and variables → Actions**, crie:
+
+| Secret | Descrição |
+|--------|-----------|
+| `SSH_HOST` | IP público da instância Lightsail |
+| `SSH_USER` | Usuário SSH (ex.: `ubuntu`) |
+| `SSH_PRIVATE_KEY` | Chave privada SSH (conteúdo completo, incluindo `-----BEGIN...` e `-----END...`) |
+| `SSH_PORT` | (opcional) Porta SSH, padrão 22 |
+
+### Configurar a chave SSH
+
+1. Gere um par de chaves (ou use uma existente):
+   ```bash
+   ssh-keygen -t ed25519 -C "github-cd" -f deploy_key -N ""
+   ```
+
+2. No servidor, adicione a **chave pública** ao `authorized_keys`:
+   ```bash
+   echo "conteúdo_de_deploy_key.pub" >> ~/.ssh/authorized_keys
+   ```
+
+3. No GitHub, use o conteúdo de `deploy_key` (chave privada) como secret `SSH_PRIVATE_KEY`.
+
+4. O servidor precisa conseguir fazer `git pull` — se o repositório foi clonado via HTTPS, configure as credenciais ou use um Deploy Key no repositório.
+
+---
+
+## 16. Checklist rápido
 
 - [ ] Instância Lightsail criada
 - [ ] Banco PostgreSQL criado e acessível
@@ -297,6 +330,7 @@ Mantem apenas os 2 ultimos backups:
 - [ ] Domínio apontando para o IP
 - [ ] HTTPS habilitado
 - [ ] Backup semanal configurado
+- [ ] Secrets do CD configurados no GitHub (se usar deploy automático)
 
 ---
 

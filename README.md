@@ -1,93 +1,61 @@
 # Talent Rank AI
 
-**Rankeie candidatos por aderência à vaga em segundos — com IA.**
+Plataforma de recrutamento técnico com IA para triagem, ranking e parecer de candidatos a partir de exportações do LinkedIn Recruiter.
 
-Plataforma para recrutadores que utilizam o LinkedIn Recruiter: transforme exportações em PDF em um banco de talentos pesquisável, ranqueado por aderência à vaga, com pipeline e filtros prontos para uso no dia a dia.
-
-www.talentrankai.com
-
----
-
-## Por que usar?
-
-- **Menos tempo triando CVs** — A IA extrai dados dos PDFs e ranqueia os candidatos por fit com a vaga.
-- **Banco de talentos reutilizável** — Candidatos ficam cadastrados; busque por skills, cargo, idiomas e use em novas vagas.
-- **Pipeline visual** — Acompanhe status (primeiro contato, entrevista, enviado ao gestor etc.) direto na tela.
-- **Controle por plano** — Plano Basic: banco próprio. Plano Premium: pool compartilhado entre recrutadores.
-
-Ideal para equipes de recrutamento que exportam listas do LinkedIn Recruiter e querem centralizar, ranquear e filtrar candidatos sem planilhas.
+[![CI](https://github.com/Cascapera/talent_rank_AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Cascapera/talent_rank_AI/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Django](https://img.shields.io/badge/django-5.x-green.svg)](https://www.djangoproject.com/)
 
 ---
 
-## Como funciona
+## Visão geral
 
-1. **Crie a vaga** — Preencha descrição, área, senioridade, stack, idiomas e requisitos.
-2. **Importe os PDFs** — Envie um ZIP com os PDFs exportados do LinkedIn Recruiter (ou um PDF avulso).
-3. **Deixe a IA trabalhar** — Extração de dados, normalização de skills e cálculo de aderência à vaga.
-4. **Use filtros e ranking** — Veja os melhores fits, filtre por idioma, tecnologias, senioridade e acompanhe o pipeline.
+Sistema para recrutadores técnicos que trabalham com exportações em PDF do LinkedIn Recruiter. Extrai dados dos currículos, ranqueia por aderência à vaga e gera pareceres prontos para envio ao gestor ou cliente.
+
+**Problema:** triagem manual de dezenas de CVs, releitura massiva a cada vaga e baixo reaproveitamento do conhecimento gerado em buscas anteriores.
 
 ---
 
-## Principais recursos
+## Funcionalidades
 
 | Recurso | Descrição |
+|---------|-----------|
+| Extração com IA | Dados normalizados dos PDFs: cargo, skills, idiomas, certificações, senioridade |
+| Ranking por aderência | Nota 0–100% e justificativa técnica por candidato |
+| Parecer para gestor | Geração de parecer (resumido, completo ou robusto) |
+| Banco de talentos | Candidatos reutilizáveis, busca por skills/cargo/idiomas, vínculo a vagas |
+| Busca booleana com IA | Geração automática da string de busca para LinkedIn Recruiter |
+| Pipeline visual | Status: primeiro contato → entrevista → enviado ao gestor → contratado |
+| Filtros avançados | Busca sem acento, filtros por senioridade, tecnologias, idiomas, aderência mínima |
+| Sessão única | Um login ativo por usuário |
+
+---
+
+## Stack
+
+| Camada | Tecnologia |
 |--------|------------|
-| **Importação em lote** | ZIP com vários PDFs ou PDF único; processamento em background. |
-| **Extração com IA** | Dados extraídos e normalizados (cargo, skills, idiomas, certificações, senioridade). |
-| **Ranking por aderência** | Nota de 0–100% e justificativa técnica por candidato, com base na descrição da vaga. |
-| **Banco de talentos** | Cadastro manual ou via importação; filtros por nome, cargo, empresa, skills, idiomas, certificações. |
-| **Pipeline por vaga** | Status do candidato na vaga: primeiro contato, entrevista, enviado ao gestor, contratado etc. |
-| **Busca e filtros** | Filtros com busca sem acento (ex.: "senior" ou "sênior") em todos os campos. |
-| **Sessão única** | Um login ativo por usuário; novo login encerra o anterior. |
+| Backend | Django 5.x, Python 3.12+ |
+| Banco | PostgreSQL |
+| IA | Google GenAI (Gemini) |
+| Produção | Gunicorn, Nginx, AWS Lightsail |
+| Qualidade | pytest, Ruff, pre-commit, CI/CD (GitHub Actions) |
 
 ---
 
-## Stack técnica
+## Desenvolvimento
 
-- **Backend:** Django 5.x, Python 3.12+
-- **Banco:** PostgreSQL
-- **IA:** Google GenAI (extração e ranking)
-- **Produção:** Gunicorn, Nginx, AWS Lightsail
-
----
-
-## Requisitos para rodar
-
-- Python 3.12+
-- PostgreSQL acessível
-- Variáveis de ambiente (incluindo chave da API GenAI, se usar extração/ranking por IA)
-
----
-
-## Configuração local
-
-1. **Ambiente virtual e dependências**
+**Requisitos:** Python 3.12+, PostgreSQL, chave da API Gemini.
 
 ```bash
 python -m venv .venv
-.venv\Scripts\Activate.ps1   # Windows PowerShell
-# source .venv/bin/activate  # Linux/macOS
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\Activate.ps1  # Windows
+
 pip install -r requirements.txt
 ```
 
-2. **Arquivo `.env` na raiz do projeto**
-
-```env
-DJANGO_SECRET_KEY=sua_chave_secreta
-DJANGO_DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-POSTGRES_DB=talent_rank_ai
-POSTGRES_USER=usuario
-POSTGRES_PASSWORD=senha
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-
-# Opcional: para extração e ranking com IA
-GEMINI_API_KEY=sua_chave_gemini
-```
-
-3. **Migrações e servidor**
+Crie `.env` na raiz com `DJANGO_SECRET_KEY`, `POSTGRES_*`, `GEMINI_API_KEY` e `ALLOWED_HOSTS`.
 
 ```bash
 python manage.py migrate
@@ -96,41 +64,41 @@ python manage.py runserver
 
 ---
 
-## Backup do banco (Linux)
-
-O script `scripts/backup_postgres.sh` gera backups e mantém os dois últimos:
-
-- Atual: `backups/db_backup.dump`
-- Anterior: `backups/db_backup.prev.dump`
-
-Exemplo de cron (domingo às 03:00):
+## Testes
 
 ```bash
-0 3 * * 0 ENV_FILE=/var/www/talent_rank_ai/.env /var/www/talent_rank_ai/scripts/backup_postgres.sh >> /var/www/talent_rank_ai/backups/backup.log 2>&1
+pytest core/tests/ -v --cov=core --cov-fail-under=50
+make test   # via Makefile
+```
+
+- pytest + pytest-django
+- Cobertura mínima: 50%
+- Ruff para lint e formatação
+- pre-commit e CI no GitHub Actions
+
+---
+
+## Estrutura
+
+```
+core/           # App principal (vagas, candidatos, importação, ranking, parecer)
+talent_query/   # Configuração Django
+templates/      # Templates HTML
+static/         # Arquivos estáticos
+scripts/        # Backup do banco
 ```
 
 ---
 
-## Deploy
+## Documentação
 
-- **AWS Lightsail:** `DEPLOY_LIGHTSAIL.md`
-- **AWS (geral):** `DEPLOY_AWS.md`
-
----
-
-## Estrutura do projeto
-
-```
-core/              # App principal (vagas, candidatos, importação, ranking)
-talent_query/      # Configuração Django
-templates/         # Templates HTML
-static/            # Arquivos estáticos
-scripts/           # Scripts (backup, etc.)
-```
+- [DEPLOY_LIGHTSAIL.md](DEPLOY_LIGHTSAIL.md) — Deploy no AWS Lightsail
+- [DEPLOY_AWS.md](DEPLOY_AWS.md) — Deploy em AWS (geral)
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribuição e padrões
 
 ---
 
 ## Observações
 
-- O sistema **não** acessa nem automatiza o LinkedIn; trabalha apenas com arquivos exportados pelo próprio LinkedIn Recruiter.
-- Dados e PDFs são processados conforme a política de uso da sua organização e da API utilizada (ex.: Google GenAI).
+- O sistema não acessa nem automatiza o LinkedIn; trabalha apenas com arquivos exportados pelo LinkedIn Recruiter.
+- Dados e PDFs são processados conforme a política de uso da organização e da API utilizada (Google GenAI).

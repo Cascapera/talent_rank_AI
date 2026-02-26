@@ -15,7 +15,7 @@ pre-commit install
 
 | Comando | Descrição |
 |---------|-----------|
-| `make test` | Roda testes com coverage (mín. 20%, meta 50%+) |
+| `make test` | Roda testes com coverage (mín. 50%) |
 | `make lint` | Verifica lint (Ruff) |
 | `make format` | Formata código com Ruff |
 | `make migrate` | Aplica migrações |
@@ -32,4 +32,4 @@ pre-commit install
 O GitHub Actions executa em todo push/PR:
 
 1. **Lint** — Ruff check + format
-2. **Testes** — pytest com coverage ≥ 20% (meta: 50%+)
+2. **Testes** — pytest com coverage ≥ 50%

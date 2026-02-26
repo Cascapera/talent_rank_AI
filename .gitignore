@@ -34,5 +34,11 @@ cache/
 .elasticbeanstalk/*.cfg.yml
 .elasticbeanstalk/*.cfg.yaml
 
-# Comandos de deploy (não versionar)
+# Comandos de deploy e setup local (não versionar)
 atualizar_servidor.txt
+ssh.txt
+docs/
+
+# Coverage (gerado pelos testes)
+.coverage
+htmlcov/
