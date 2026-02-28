@@ -137,3 +137,29 @@ class TestCandidateJob:
         cj.save()
         cj.refresh_from_db()
         assert cj.ready_at == timezone.now().date()
+
+    def test_parecer_and_parecer_type_fields(self, user):
+        """CandidateJob armazena parecer e parecer_type corretamente."""
+        job = Job.objects.create(user=user, title="Vaga Dev")
+        candidate = Candidate.objects.create(
+            user=user,
+            name="Ana",
+            linkedin_url="https://linkedin.com/in/ana",
+        )
+        cj = CandidateJob.objects.create(
+            job=job,
+            candidate=candidate,
+            pipeline_status=CandidateJob.PipelineStatus.SENT_MANAGER,
+            parecer="Parecer resumido do candidato.",
+            parecer_type=CandidateJob.ParecerType.RESUMIDO,
+        )
+        cj.refresh_from_db()
+        assert cj.parecer == "Parecer resumido do candidato."
+        assert cj.parecer_type == CandidateJob.ParecerType.RESUMIDO
+
+    def test_parecer_type_choices(self):
+        """ParecerType possui as opções esperadas."""
+        assert CandidateJob.ParecerType.NONE == "NONE"
+        assert CandidateJob.ParecerType.RESUMIDO == "RESUMIDO"
+        assert CandidateJob.ParecerType.COMPLETO == "COMPLETO"
+        assert CandidateJob.ParecerType.ROBUSTO == "ROBUSTO"

@@ -66,3 +66,86 @@ class TestExtractJson:
     def test_raises_for_invalid_json(self):
         with pytest.raises(json.JSONDecodeError):
             _extract_json("not json at all {")
+
+
+class TestGenerateParecer:
+    """Testes da função generate_parecer com mock da API Gemini."""
+
+    def test_raises_without_gemini_api_key(self):
+        """Levanta RuntimeError quando GEMINI_API_KEY não está definido."""
+        from unittest.mock import patch
+
+        from core.llm_extractor import generate_parecer
+
+        job_desc = "Vaga Dev"
+        candidate_data = {"name": "João", "summary": "Resumo"}
+        with patch("core.llm_extractor.os.getenv", return_value=None):
+            with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+                generate_parecer(
+                    job_description=job_desc,
+                    candidate_data=candidate_data,
+                    parecer_type="RESUMIDO",
+                    role_title="Dev",
+                )
+
+    def test_returns_mocked_response(self):
+        """generate_parecer retorna texto da resposta mockada da API."""
+        from unittest.mock import MagicMock, patch
+
+        from core.llm_extractor import generate_parecer
+
+        mock_response = MagicMock()
+        mock_response.text = "Parecer profissional do candidato."
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        job_desc = "Vaga Arquiteto de Software"
+        candidate_data = {
+            "name": "Maria",
+            "current_title": "Dev Senior",
+            "summary": "Experiência em Python",
+        }
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+            with patch("core.llm_extractor.genai.Client", return_value=mock_client):
+                result = generate_parecer(
+                    job_description=job_desc,
+                    candidate_data=candidate_data,
+                    parecer_type="RESUMIDO",
+                    role_title="Arquiteto",
+                )
+        assert result == "Parecer profissional do candidato."
+        mock_client.models.generate_content.assert_called_once()
+
+    def test_builds_prompt_with_candidate_data(self):
+        """Prompt inclui dados do candidato e regras de formato."""
+        from unittest.mock import MagicMock, patch
+
+        from core.llm_extractor import generate_parecer
+
+        mock_response = MagicMock()
+        mock_response.text = "Parecer."
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        job_desc = "Vaga Python"
+        candidate_data = {
+            "name": "Carlos",
+            "current_title": "Dev",
+            "skills": "Python, Django",
+        }
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
+            with patch("core.llm_extractor.genai.Client", return_value=mock_client):
+                generate_parecer(
+                    job_description=job_desc,
+                    candidate_data=candidate_data,
+                    parecer_type="ROBUSTO",
+                    role_title="Dev Python",
+                )
+        call_kwargs = mock_client.models.generate_content.call_args[1]
+        contents = call_kwargs.get("contents", [])
+        prompt = contents[-1] if contents and isinstance(contents[-1], str) else ""
+        assert "Carlos" in prompt
+        assert "Python, Django" in prompt
+        assert "4 parágrafos" in prompt or "20 linhas" in prompt
