@@ -1,4 +1,4 @@
-#Talent Rank AI — Django Backend com LLM Integration (batch PDF/ZIP + scoring + async workers)
+# Talent Rank AI — Django Backend com LLM Integration (batch PDF/ZIP + scoring + async workers)
 
 Backend Django em Python para triagem, extração estruturada e ranking de candidatos a partir de PDFs exportados do LinkedIn Recruiter, com integração a LLMs (Google GenAI).
 
