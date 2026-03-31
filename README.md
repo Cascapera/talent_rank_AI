@@ -65,6 +65,26 @@ The application follows a layered design: views orchestrate the flow, `pdf_extra
 
 ---
 
+## Observability
+
+### Logging
+
+Logs are emitted as structured JSON. Each run of the main vacancy processing flow carries a **correlation_id** so related log lines can be tied together. Events mark lifecycle steps: import, LLM extraction, ranking, and persistence. Together, this allows following a single vacancy import from start to finish in log aggregation tools.
+
+### Metrics
+
+Prometheus **counters** and **histograms** cover the same vacancy flow: candidate import, LLM extraction, ranking, and persistence. Histograms record duration in milliseconds. Counters record volume (e.g. starts) and failures. Label dimensions are intentionally narrow (**llm_provider**, **model_name**) to keep cardinality low.
+
+### Endpoint
+
+The app exposes **`GET /metrics`** in Prometheus text format for scraping. It is meant to be reached from an internal network or behind a reverse proxy; no authentication is implemented on this route.
+
+### Scope
+
+This is a first pass at observability, scoped to the core vacancy processing path. It does not include OpenTelemetry-style distributed tracing or bundled dashboards.
+
+---
+
 ## Tech Stack
 
 | Area | Technologies |

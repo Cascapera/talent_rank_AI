@@ -13,18 +13,26 @@ from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Count, F, Func, Q
 from django.db.models.functions import Lower
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .forms import CandidateForm, JobForm, SignupForm
 from .llm_extractor import generate_parecer
+from .metrics import vacancy_candidate_import_failures_total
 from .models import Candidate, CandidateJob, Job, Profile
+from .observability import Timer, ensure_correlation_id, log_event, new_correlation_id
 from .pdf_extractor import (
     import_candidates_from_folder,
     import_candidates_from_folder_no_ranking,
     search_and_rank_candidates_from_pool,
 )
 from .plans import required_plan
+
+
+def metrics_view(request):
+    """Endpoint Prometheus (texto exposition format)."""
+    return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
 
 
 def _prepare_uploaded_files(uploaded_files: list, temp_dir: Path) -> None:
@@ -526,7 +534,10 @@ def _run_import_job(
     role_title: str,
     user_id: int,
     shared_pool: bool = False,
+    correlation_id: str | None = None,
 ):
+    ensure_correlation_id(correlation_id)
+    outer_timer = Timer()
     try:
 
         def progress_callback(**kwargs):
@@ -545,6 +556,14 @@ def _run_import_job(
         _set_import_status(job_id, {"status": "completed", "result": result})
     except Exception as exc:
         _set_import_status(job_id, {"status": "error", "message": str(exc)})
+        vacancy_candidate_import_failures_total.inc()
+        log_event(
+            "vacancy_candidate_import_failed",
+            status="error",
+            vacancy_id=job_id,
+            duration_ms=outer_timer.elapsed_ms(),
+            error=str(exc),
+        )
     finally:
         shutil.rmtree(folder_path, ignore_errors=True)
 
@@ -600,6 +619,8 @@ def job_detail(request, job_id: int):
                 role_title = job.title
                 _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
                 shared_pool = _uses_shared_pool(request.user)
+                header_cid = request.headers.get("X-Correlation-ID", "").strip()
+                correlation_id = header_cid or new_correlation_id()
                 thread = threading.Thread(
                     target=_run_import_job,
                     args=(
@@ -609,6 +630,7 @@ def job_detail(request, job_id: int):
                         role_title,
                         request.user.id,
                         shared_pool,
+                        correlation_id,
                     ),
                     daemon=True,
                 )

@@ -18,7 +18,17 @@ from .llm_extractor import (
     extract_candidates_batch_no_ranking,
     extract_candidates_batch_with_llm,
 )
+from .metrics import (
+    vacancy_candidate_import_duration_ms,
+    vacancy_candidate_imports_total,
+    vacancy_candidate_ranking_duration_ms,
+    vacancy_candidate_rankings_total,
+    vacancy_ranking_persist_duration_ms,
+    vacancy_ranking_persist_failures_total,
+    vacancy_ranking_persist_total,
+)
 from .models import Candidate, CandidateJob
+from .observability import Timer, log_event
 
 
 def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
@@ -999,6 +1009,15 @@ def import_candidates_from_folder(
 
     pdf_files = [folder] if folder.is_file() else sorted(folder.glob("*.pdf"))
     total_files = len(pdf_files)
+    import_timer = Timer()
+    if job_id is not None:
+        vacancy_candidate_imports_total.inc()
+        log_event(
+            "vacancy_candidate_import_started",
+            status="started",
+            vacancy_id=job_id,
+            candidate_count=total_files,
+        )
     if progress_callback:
         progress_callback(total=total_files, processed=0, current=None, status="running")
     role_titles = []
@@ -1018,6 +1037,7 @@ def import_candidates_from_folder(
         batch = pdf_files[batch_start : batch_start + batch_size]
         batch_num = (batch_start // batch_size) + 1
         total_batches = (len(pdf_files) + batch_size - 1) // batch_size
+        batch_label = f"{batch_num}/{total_batches}"
 
         try:
             # Processa o lote inteiro
@@ -1026,9 +1046,23 @@ def import_candidates_from_folder(
                 job_description=job_description,
                 weights=weights,
                 role_titles=role_titles,
+                vacancy_id=job_id,
+                batch_id=batch_label,
             )
 
+            if job_id is not None:
+                rank_timer = Timer()
+                vacancy_candidate_rankings_total.inc()
+                log_event(
+                    "vacancy_candidate_ranking_started",
+                    status="started",
+                    vacancy_id=job_id,
+                    batch_id=batch_label,
+                    candidate_count=len(batch),
+                )
+
             # Processa cada resultado do lote
+            persisted_rankings = 0
             for idx, data in enumerate(results):
                 pdf_file = batch[idx]
 
@@ -1140,6 +1174,7 @@ def import_candidates_from_folder(
                                 "technical_justification": data.get("technical_justification", ""),
                             },
                         )
+                        persisted_rankings += 1
 
                     # Incrementa contador apenas após salvar com sucesso
                     processed_count += 1
@@ -1147,6 +1182,15 @@ def import_candidates_from_folder(
                 except Exception as save_exc:
                     errors += 1
                     error_msg = str(save_exc)
+                    if job_id is not None:
+                        vacancy_ranking_persist_failures_total.inc()
+                        log_event(
+                            "vacancy_ranking_persist_fail",
+                            status="error",
+                            vacancy_id=job_id,
+                            batch_id=batch_label,
+                            error=error_msg[:500],
+                        )
                     if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
                         error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                     else:
@@ -1162,6 +1206,28 @@ def import_candidates_from_folder(
                         errors=errors,
                     )
 
+            if job_id is not None:
+                _rank_ms = rank_timer.elapsed_ms()
+                vacancy_candidate_ranking_duration_ms.observe(_rank_ms)
+                log_event(
+                    "vacancy_candidate_ranking_finished",
+                    status="success",
+                    vacancy_id=job_id,
+                    batch_id=batch_label,
+                    candidate_count=persisted_rankings,
+                    duration_ms=_rank_ms,
+                )
+                vacancy_ranking_persist_total.inc()
+                vacancy_ranking_persist_duration_ms.observe(_rank_ms)
+                log_event(
+                    "vacancy_ranking_persisted",
+                    status="success",
+                    vacancy_id=job_id,
+                    batch_id=batch_label,
+                    candidate_count=persisted_rankings,
+                    duration_ms=_rank_ms,
+                )
+
             # Aguarda entre lotes (menos tempo já que processa 10 de uma vez)
             if batch_start + batch_size < len(pdf_files):
                 time.sleep(1)
@@ -1176,6 +1242,8 @@ def import_candidates_from_folder(
                         job_description=job_description,
                         weights=weights,
                         role_titles=role_titles,
+                        vacancy_id=job_id,
+                        batch_id=batch_label,
                     )
                     linkedin_url = data.get("linkedin_url", "")
                     if not data.get("name") or not linkedin_url:
@@ -1297,6 +1365,15 @@ def import_candidates_from_folder(
                     except Exception as save_exc:
                         errors += 1
                         save_error_msg = str(save_exc)
+                        if job_id is not None:
+                            vacancy_ranking_persist_failures_total.inc()
+                            log_event(
+                                "vacancy_ranking_persist_fail",
+                                status="error",
+                                vacancy_id=job_id,
+                                batch_id=batch_label,
+                                error=save_error_msg[:500],
+                            )
                         if "RESOURCE_EXHAUSTED" in save_error_msg or "429" in save_error_msg:
                             error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
                         else:
@@ -1336,6 +1413,16 @@ def import_candidates_from_folder(
         "total": total_files,
         "error_details": error_details[:10],
     }
+    if job_id is not None:
+        _import_ms = import_timer.elapsed_ms()
+        vacancy_candidate_import_duration_ms.observe(_import_ms)
+        log_event(
+            "vacancy_candidate_import_finished",
+            status="success",
+            vacancy_id=job_id,
+            candidate_count=total_files,
+            duration_ms=_import_ms,
+        )
     if progress_callback:
         progress_callback(
             total=total_files, processed=total_files, current=None, status="completed"

@@ -5,3 +5,4 @@ pypdf
 google-genai
 gunicorn
 whitenoise
+prometheus_client

@@ -7,6 +7,19 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from .metrics import (
+    vacancy_candidate_extraction_duration_ms,
+    vacancy_candidate_extraction_failures_total,
+    vacancy_candidate_extractions_total,
+)
+from .observability import Timer, log_event
+
+LLM_PROVIDER = "google_gemini"
+
+
+def _llm_metric_labels(model_name: str | None) -> tuple[str, str]:
+    return (LLM_PROVIDER, model_name or "unknown")
+
 
 def _build_system_prompt(
     job_description: str, weights: dict[str, int], role_titles: list[str], is_batch: bool = False
@@ -207,110 +220,46 @@ def extract_candidates_batch_with_llm(
     job_description: str,
     weights: dict[str, int],
     role_titles: list[str] | None = None,
+    *,
+    vacancy_id: int | None = None,
+    batch_id: str | None = None,
 ) -> list[dict]:
     """Processa múltiplos PDFs em uma única requisição ao LLM."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
 
-    system_prompt = _build_system_prompt(job_description, weights, role_titles or [], is_batch=True)
-    client = genai.Client(api_key=api_key)
+    timer = Timer()
+    model_used: str | None = None
+    if vacancy_id is not None:
+        vacancy_candidate_extractions_total.labels(LLM_PROVIDER, "unknown").inc()
+        log_event(
+            "vacancy_candidate_extraction_started",
+            status="started",
+            vacancy_id=vacancy_id,
+            batch_id=batch_id,
+            candidate_count=len(pdf_paths),
+            llm_provider=LLM_PROVIDER,
+        )
 
-    payload = []
-    for pdf_path in pdf_paths:
-        with open(pdf_path, "rb") as pdf_file:
-            payload.append(types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"))
-    payload.append(system_prompt)
+    try:
+        system_prompt = _build_system_prompt(
+            job_description, weights, role_titles or [], is_batch=True
+        )
+        client = genai.Client(api_key=api_key)
 
-    last_error = None
-    model_candidates = ["models/gemini-2.0-flash"]
-    backoff_seconds = [3, 8, 15, 30]
-    for attempt in range(4):
-        for model_name in model_candidates:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=payload,
+        payload = []
+        for pdf_path in pdf_paths:
+            with open(pdf_path, "rb") as pdf_file:
+                payload.append(
+                    types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf")
                 )
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-        if not last_error:
-            break
-        error_str = str(last_error)
-        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-            time.sleep(wait_time)
-        elif "503" in error_str or "UNAVAILABLE" in error_str:
-            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-        else:
-            time.sleep(3)
-    if last_error:
-        raise last_error
+        payload.append(system_prompt)
 
-    data = _extract_json(response.text)
-
-    # Garante que é uma lista
-    if not isinstance(data, list):
-        data = [data]
-
-    # Valida que temos o mesmo número de resultados que PDFs enviados
-    if len(data) != len(pdf_paths):
-        raise RuntimeError(
-            f"O LLM retornou {len(data)} resultado(s), mas foram enviados {len(pdf_paths)} PDF(s). "
-            "Tente novamente ou processe em lotes menores."
-        )
-
-    results = []
-    for item in data:
-        results.append(
-            {
-                "name": item.get("name") or "",
-                "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
-                "location": item.get("location") or "",
-                "current_title": item.get("current_title") or "",
-                "current_company": item.get("current_company") or "",
-                "skills": _normalize_list(item.get("skills")),
-                "technologies": _normalize_list(item.get("technologies")),
-                "languages": _normalize_list(item.get("languages")),
-                "certifications": _normalize_list(item.get("certifications")),
-                "average_tenure_years": item.get("average_tenure_years"),
-                "experience_time_years": item.get("experience_time_years"),
-                "seniority": item.get("seniority") or "",
-                "adherence": item.get("adherence"),
-                "technical_justification": item.get("technical_justification") or "",
-            }
-        )
-
-    return results
-
-
-def extract_candidate_with_llm(
-    pdf_path: str | Path,
-    job_description: str,
-    weights: dict[str, int],
-    role_titles: list[str] | None = None,
-) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
-    system_prompt = _build_system_prompt(
-        job_description, weights, role_titles or [], is_batch=False
-    )
-    client = genai.Client(api_key=api_key)
-
-    with open(pdf_path, "rb") as pdf_file:
-        payload = [
-            types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"),
-            system_prompt,
-        ]
         last_error = None
-        model_candidates = [
-            "models/gemini-2.0-flash",
-        ]
+        model_candidates = ["models/gemini-2.0-flash"]
         backoff_seconds = [3, 8, 15, 30]
+        response = None
         for attempt in range(4):
             for model_name in model_candidates:
                 try:
@@ -318,6 +267,7 @@ def extract_candidate_with_llm(
                         model=model_name,
                         contents=payload,
                     )
+                    model_used = model_name
                     last_error = None
                     break
                 except Exception as exc:
@@ -334,24 +284,199 @@ def extract_candidate_with_llm(
                 time.sleep(3)
         if last_error:
             raise last_error
-    data = _extract_json(response.text)
+        assert response is not None
 
-    return {
-        "name": data.get("name") or "",
-        "linkedin_url": _normalize_linkedin_url(data.get("linkedin_url") or ""),
-        "location": data.get("location") or "",
-        "current_title": data.get("current_title") or "",
-        "current_company": data.get("current_company") or "",
-        "skills": _normalize_list(data.get("skills")),
-        "technologies": _normalize_list(data.get("technologies")),
-        "languages": _normalize_list(data.get("languages")),
-        "certifications": _normalize_list(data.get("certifications")),
-        "average_tenure_years": data.get("average_tenure_years"),
-        "experience_time_years": data.get("experience_time_years"),
-        "seniority": data.get("seniority") or "",
-        "adherence": data.get("adherence"),
-        "technical_justification": data.get("technical_justification") or "",
-    }
+        data = _extract_json(response.text)
+
+        # Garante que é uma lista
+        if not isinstance(data, list):
+            data = [data]
+
+        # Valida que temos o mesmo número de resultados que PDFs enviados
+        if len(data) != len(pdf_paths):
+            raise RuntimeError(
+                f"O LLM retornou {len(data)} resultado(s), mas foram enviados {len(pdf_paths)} PDF(s). "
+                "Tente novamente ou processe em lotes menores."
+            )
+
+        results = []
+        for item in data:
+            results.append(
+                {
+                    "name": item.get("name") or "",
+                    "linkedin_url": _normalize_linkedin_url(item.get("linkedin_url") or ""),
+                    "location": item.get("location") or "",
+                    "current_title": item.get("current_title") or "",
+                    "current_company": item.get("current_company") or "",
+                    "skills": _normalize_list(item.get("skills")),
+                    "technologies": _normalize_list(item.get("technologies")),
+                    "languages": _normalize_list(item.get("languages")),
+                    "certifications": _normalize_list(item.get("certifications")),
+                    "average_tenure_years": item.get("average_tenure_years"),
+                    "experience_time_years": item.get("experience_time_years"),
+                    "seniority": item.get("seniority") or "",
+                    "adherence": item.get("adherence"),
+                    "technical_justification": item.get("technical_justification") or "",
+                }
+            )
+
+        if vacancy_id is not None:
+            _ext_ms = timer.elapsed_ms()
+            vacancy_candidate_extraction_duration_ms.labels(
+                *_llm_metric_labels(model_used)
+            ).observe(_ext_ms)
+            log_event(
+                "vacancy_candidate_extraction_finished",
+                status="success",
+                vacancy_id=vacancy_id,
+                batch_id=batch_id,
+                candidate_count=len(pdf_paths),
+                duration_ms=_ext_ms,
+                llm_provider=LLM_PROVIDER,
+                model_name=model_used,
+            )
+
+        return results
+    except Exception as exc:
+        if vacancy_id is not None:
+            vacancy_candidate_extraction_failures_total.labels(
+                *_llm_metric_labels(model_used)
+            ).inc()
+            log_event(
+                "vacancy_candidate_extraction_failed",
+                status="error",
+                vacancy_id=vacancy_id,
+                batch_id=batch_id,
+                candidate_count=len(pdf_paths),
+                duration_ms=timer.elapsed_ms(),
+                llm_provider=LLM_PROVIDER,
+                model_name=model_used,
+                error=str(exc),
+            )
+        raise
+
+
+def extract_candidate_with_llm(
+    pdf_path: str | Path,
+    job_description: str,
+    weights: dict[str, int],
+    role_titles: list[str] | None = None,
+    *,
+    vacancy_id: int | None = None,
+    batch_id: str | None = None,
+) -> dict:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
+
+    timer = Timer()
+    model_used: str | None = None
+    if vacancy_id is not None:
+        vacancy_candidate_extractions_total.labels(LLM_PROVIDER, "unknown").inc()
+        log_event(
+            "vacancy_candidate_extraction_started",
+            status="started",
+            vacancy_id=vacancy_id,
+            batch_id=batch_id,
+            candidate_count=1,
+            llm_provider=LLM_PROVIDER,
+        )
+
+    try:
+        system_prompt = _build_system_prompt(
+            job_description, weights, role_titles or [], is_batch=False
+        )
+        client = genai.Client(api_key=api_key)
+
+        with open(pdf_path, "rb") as pdf_file:
+            payload = [
+                types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"),
+                system_prompt,
+            ]
+            last_error = None
+            model_candidates = [
+                "models/gemini-2.0-flash",
+            ]
+            backoff_seconds = [3, 8, 15, 30]
+            response = None
+            for attempt in range(4):
+                for model_name in model_candidates:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=payload,
+                        )
+                        model_used = model_name
+                        last_error = None
+                        break
+                    except Exception as exc:
+                        last_error = exc
+                if not last_error:
+                    break
+                error_str = str(last_error)
+                if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                    wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+                    time.sleep(wait_time)
+                elif "503" in error_str or "UNAVAILABLE" in error_str:
+                    time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
+                else:
+                    time.sleep(3)
+            if last_error:
+                raise last_error
+        assert response is not None
+        data = _extract_json(response.text)
+
+        result = {
+            "name": data.get("name") or "",
+            "linkedin_url": _normalize_linkedin_url(data.get("linkedin_url") or ""),
+            "location": data.get("location") or "",
+            "current_title": data.get("current_title") or "",
+            "current_company": data.get("current_company") or "",
+            "skills": _normalize_list(data.get("skills")),
+            "technologies": _normalize_list(data.get("technologies")),
+            "languages": _normalize_list(data.get("languages")),
+            "certifications": _normalize_list(data.get("certifications")),
+            "average_tenure_years": data.get("average_tenure_years"),
+            "experience_time_years": data.get("experience_time_years"),
+            "seniority": data.get("seniority") or "",
+            "adherence": data.get("adherence"),
+            "technical_justification": data.get("technical_justification") or "",
+        }
+
+        if vacancy_id is not None:
+            _ext_ms = timer.elapsed_ms()
+            vacancy_candidate_extraction_duration_ms.labels(
+                *_llm_metric_labels(model_used)
+            ).observe(_ext_ms)
+            log_event(
+                "vacancy_candidate_extraction_finished",
+                status="success",
+                vacancy_id=vacancy_id,
+                batch_id=batch_id,
+                candidate_count=1,
+                duration_ms=_ext_ms,
+                llm_provider=LLM_PROVIDER,
+                model_name=model_used,
+            )
+
+        return result
+    except Exception as exc:
+        if vacancy_id is not None:
+            vacancy_candidate_extraction_failures_total.labels(
+                *_llm_metric_labels(model_used)
+            ).inc()
+            log_event(
+                "vacancy_candidate_extraction_failed",
+                status="error",
+                vacancy_id=vacancy_id,
+                batch_id=batch_id,
+                candidate_count=1,
+                duration_ms=timer.elapsed_ms(),
+                llm_provider=LLM_PROVIDER,
+                model_name=model_used,
+                error=str(exc),
+            )
+        raise
 
 
 def extract_candidates_batch_no_ranking(
