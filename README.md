@@ -94,7 +94,7 @@ This is a first pass at observability, scoped to the core vacancy processing pat
 | **Async** | Threading (daemon threads) + FileBasedCache |
 | **Infra** | Gunicorn, Nginx, Whitenoise, AWS Lightsail |
 | **Quality** | Ruff, pytest, pytest-django, pre-commit, GitHub Actions |
-| **AI** | Google GenAI (Gemini 2.0 Flash) via API |
+| **AI** | Google GenAI (Gemini 2.5 Flash) via API |
 
 ---
 
@@ -138,7 +138,7 @@ The rest of the system only calls these functions; the provider (Google GenAI) a
 
 ### 8.2 Providers
 
-- **Google GenAI (Gemini 2.0 Flash):** primary use for extraction, ranking, and assessments
+- **Google GenAI (Gemini 2.5 Flash):** primary use for extraction, ranking, and assessments
 - **OpenAI:** not used at the moment; the architecture allows adding it as an alternate provider
 
 ### 8.3 Output Schema & Validation

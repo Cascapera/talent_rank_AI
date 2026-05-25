@@ -15,6 +15,7 @@ from .metrics import (
 from .observability import Timer, log_event
 
 LLM_PROVIDER = "google_gemini"
+DEFAULT_GEMINI_MODEL = "models/gemini-2.5-flash"
 
 
 def _llm_metric_labels(model_name: str | None) -> tuple[str, str]:
@@ -257,7 +258,7 @@ def extract_candidates_batch_with_llm(
         payload.append(system_prompt)
 
         last_error = None
-        model_candidates = ["models/gemini-2.0-flash"]
+        model_candidates = [DEFAULT_GEMINI_MODEL]
         backoff_seconds = [3, 8, 15, 30]
         response = None
         for attempt in range(4):
@@ -395,7 +396,7 @@ def extract_candidate_with_llm(
             ]
             last_error = None
             model_candidates = [
-                "models/gemini-2.0-flash",
+                DEFAULT_GEMINI_MODEL,
             ]
             backoff_seconds = [3, 8, 15, 30]
             response = None
@@ -497,7 +498,7 @@ def extract_candidates_batch_no_ranking(
     payload.append(system_prompt)
 
     last_error = None
-    model_candidates = ["models/gemini-2.0-flash"]
+    model_candidates = [DEFAULT_GEMINI_MODEL]
     backoff_seconds = [3, 8, 15, 30]
     for attempt in range(4):
         for model_name in model_candidates:
@@ -611,7 +612,7 @@ def calculate_adherence_for_candidate(
     payload = [system_prompt]
 
     last_error = None
-    model_candidates = ["models/gemini-2.0-flash"]
+    model_candidates = [DEFAULT_GEMINI_MODEL]
     backoff_seconds = [3, 8, 15, 30]
     for attempt in range(4):
         for model_name in model_candidates:
@@ -704,7 +705,7 @@ def calculate_adherence_batch_for_candidates(
     payload = [system_prompt]
 
     last_error = None
-    model_candidates = ["models/gemini-2.0-flash"]
+    model_candidates = [DEFAULT_GEMINI_MODEL]
     backoff_seconds = [3, 8, 15, 30]
     for attempt in range(4):
         for model_name in model_candidates:
@@ -773,7 +774,7 @@ def extract_candidate_no_ranking(
         ]
         last_error = None
         model_candidates = [
-            "models/gemini-2.0-flash",
+            DEFAULT_GEMINI_MODEL,
         ]
         backoff_seconds = [3, 8, 15, 30]
         for attempt in range(4):
@@ -877,7 +878,7 @@ def generate_parecer(
     payload.append(system_prompt)
 
     last_error = None
-    model_candidates = ["models/gemini-2.0-flash"]
+    model_candidates = [DEFAULT_GEMINI_MODEL]
     backoff_seconds = [3, 8, 15, 30]
     for attempt in range(4):
         for model_name in model_candidates:
