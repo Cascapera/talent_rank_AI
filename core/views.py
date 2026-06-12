@@ -19,6 +19,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .forms import CandidateForm, JobForm, SignupForm
 from .llm_extractor import generate_parecer
+from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
 from .metrics import vacancy_candidate_import_failures_total
 from .models import Candidate, CandidateJob, Job, Profile
 from .observability import Timer, ensure_correlation_id, log_event, new_correlation_id
@@ -174,34 +175,34 @@ def talent_pool(request):
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 import_message = "Nenhum PDF encontrado nos arquivos enviados."
-    elif request.method == "POST":
-        # Processa formulário manual
-        form = CandidateForm(request.POST)
-        if form.is_valid():
-            linkedin_url = form.cleaned_data["linkedin_url"].strip()
-            candidate = Candidate.objects.filter(
-                user=request.user, linkedin_url__iexact=linkedin_url
-            ).first()
-            if candidate:
-                changed = False
-                for field, value in form.cleaned_data.items():
-                    if value in (None, ""):
-                        continue
-                    if getattr(candidate, field) != value:
-                        setattr(candidate, field, value)
-                        changed = True
-                if changed:
-                    candidate.save()
-                    message = "Candidato atualizado com novos dados."
-                else:
-                    message = "Nenhuma alteração detectada para esse candidato."
-            else:
-                c = form.save(commit=False)
-                c.user = request.user
-                c.save()
-                message = "Candidato cadastrado com sucesso."
         else:
-            message = "Confira os campos obrigatórios."
+            # Processa formulário manual (sem arquivos no POST)
+            form = CandidateForm(request.POST)
+            if form.is_valid():
+                linkedin_url = form.cleaned_data["linkedin_url"].strip()
+                candidate = Candidate.objects.filter(
+                    user=request.user, linkedin_url__iexact=linkedin_url
+                ).first()
+                if candidate:
+                    changed = False
+                    for field, value in form.cleaned_data.items():
+                        if value in (None, ""):
+                            continue
+                        if getattr(candidate, field) != value:
+                            setattr(candidate, field, value)
+                            changed = True
+                    if changed:
+                        candidate.save()
+                        message = "Candidato atualizado com novos dados."
+                    else:
+                        message = "Nenhuma alteração detectada para esse candidato."
+                else:
+                    c = form.save(commit=False)
+                    c.user = request.user
+                    c.save()
+                    message = "Candidato cadastrado com sucesso."
+            else:
+                message = "Confira os campos obrigatórios."
 
     # Filtros
     name_filter = request.GET.get("name", "").strip()
@@ -721,6 +722,7 @@ def job_detail(request, job_id: int):
         "job_status_choices": Job.Status.choices,
         "import_status": cache.get(_import_status_key(job.id)),
         "search_status": cache.get(_search_status_key(job.id)),
+        "pool_match_min_score": get_min_match_score(),
     }
     return render(request, "core/job_detail.html", context)
 
@@ -746,11 +748,11 @@ def _run_search_in_pool(
     job_id: int,
     job_description: str,
     role_title: str,
-    filters: dict | None = None,
+    candidate_ids: list[int],
     user_id: int | None = None,
     shared_pool: bool = False,
 ):
-    """Executa busca e rankeamento de candidatos do banco do usuário em background."""
+    """Executa rankeamento via LLM dos candidatos pré-aprovados no match, em background."""
     try:
 
         def progress_callback(**kwargs):
@@ -763,7 +765,7 @@ def _run_search_in_pool(
             weights=weights,
             role_title=role_title,
             progress_callback=progress_callback,
-            filters=filters,
+            candidate_ids=candidate_ids,
             user_id=user_id,
             shared_pool=shared_pool,
         )
@@ -772,105 +774,71 @@ def _run_search_in_pool(
         _set_search_status(job_id, {"status": "error", "message": str(exc)})
 
 
-@login_required
-@required_plan("BASIC")
-def preview_candidates_search(request, job_id: int):
-    """Preview de candidatos encontrados com filtros (sem rankeamento)."""
-    if request.method != "POST":
-        return JsonResponse({"error": "Método não permitido"}, status=405)
+def _parse_min_score(request) -> int:
+    """Lê o % mínimo de match informado pela recrutadora (fallback: padrão do sistema)."""
+    raw = request.POST.get("min_score", "").strip()
+    try:
+        return max(0, min(100, int(raw)))
+    except (TypeError, ValueError):
+        return get_min_match_score()
 
-    get_object_or_404(Job, id=job_id, user=request.user)
 
-    # Extrai filtros do POST
-    filters = {}
-    name_filter = request.POST.get("name", "").strip()
-    location_filter = request.POST.get("location", "").strip()
-    seniority_filter = request.POST.get("seniority", "").strip()
-    company_filter = request.POST.get("company", "").strip()
-    technologies_filter = request.POST.get("technologies", "").strip()
-    skills_filter = request.POST.get("skills", "").strip()
-    languages_filter = request.POST.get("languages", "").strip()
-    certifications_filter = request.POST.get("certifications", "").strip()
-    ready_only = request.POST.get("ready_only") == "on"
-
-    if name_filter:
-        filters["name"] = name_filter
-    if location_filter:
-        filters["location"] = location_filter
-    if seniority_filter:
-        filters["seniority"] = seniority_filter
-    if company_filter:
-        filters["company"] = company_filter
-    if technologies_filter:
-        filters["technologies"] = technologies_filter
-    if skills_filter:
-        filters["skills"] = skills_filter
-    if languages_filter:
-        filters["languages"] = languages_filter
-    if certifications_filter:
-        filters["certifications"] = certifications_filter
-    if ready_only:
-        filters["ready_only"] = True
-
-    shared_pool = _uses_shared_pool(request.user)
-    # Busca candidatos não vinculados à vaga
-    linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list(
+def _match_pool_candidates_for_job(job, user, min_score: int):
+    """Aplica o pré-match da vaga aos candidatos do banco ainda não vinculados."""
+    shared_pool = _uses_shared_pool(user)
+    linked_candidate_ids = CandidateJob.objects.filter(job_id=job.id).values_list(
         "candidate_id", flat=True
     )
     candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
     if not shared_pool:
-        candidates = candidates.filter(user=request.user)
+        candidates = candidates.filter(user=user)
+    return match_candidates_for_job(job, candidates, min_score=min_score), shared_pool
 
-    # Aplica filtros
-    if name_filter:
-        candidates = _apply_unaccent_filter(candidates, "name", name_filter, "name")
-    if location_filter:
-        candidates = _apply_unaccent_filter(candidates, "location", location_filter, "location")
-    if seniority_filter:
-        candidates = _apply_unaccent_filter(candidates, "seniority", seniority_filter, "seniority")
-    if company_filter:
-        candidates = _apply_unaccent_filter(
-            candidates, "current_company", company_filter, "company"
-        )
-    if technologies_filter:
-        candidates = _apply_unaccent_filter(
-            candidates, "technologies", technologies_filter, "technologies"
-        )
-    if skills_filter:
-        candidates = _apply_unaccent_filter(candidates, "skills", skills_filter, "skills")
-    if languages_filter:
-        candidates = _apply_unaccent_filter(candidates, "languages", languages_filter, "languages")
-    if certifications_filter:
-        candidates = _apply_unaccent_filter(
-            candidates, "certifications", certifications_filter, "certifications"
-        )
-    if ready_only:
-        candidates = candidates.exclude(ready_at__isnull=True)
 
-    total = candidates.count()
+@login_required
+@required_plan("BASIC")
+def preview_candidates_search(request, job_id: int):
+    """Preview dos candidatos compatíveis com a vaga (pré-match, sem LLM)."""
+    if request.method != "POST":
+        return JsonResponse({"error": "Método não permitido"}, status=405)
+
+    job = get_object_or_404(Job, id=job_id, user=request.user)
+
+    if not job_has_match_criteria(job):
+        return JsonResponse(
+            {
+                "error": "A vaga não tem requisitos para o match. Preencha skills "
+                "obrigatórias, stack, senioridade ou idioma na vaga."
+            },
+            status=400,
+        )
+
+    min_score = _parse_min_score(request)
+    matches, _ = _match_pool_candidates_for_job(job, request.user, min_score)
+    total = len(matches)
 
     # Paginação: 10 candidatos por página
-    paginator = Paginator(candidates, 10)
+    paginator = Paginator(matches, 10)
     page_number = request.POST.get("page", 1)
     try:
         page_obj = paginator.page(page_number)
     except Exception:
         page_obj = paginator.page(1)
 
-    # Prepara dados para JSON
     candidates_data = []
-    for candidate in page_obj:
+    for match in page_obj:
+        candidate = match["candidate"]
+        matched_terms = ", ".join(match["matched_terms"]) or "-"
         candidates_data.append(
             {
                 "id": candidate.id,
                 "name": candidate.name,
                 "company": candidate.current_company or "-",
-                "skills": candidate.skills[:100] + "..."
-                if candidate.skills and len(candidate.skills) > 100
-                else (candidate.skills or "-"),
-                "languages": candidate.languages[:100] + "..."
-                if candidate.languages and len(candidate.languages) > 100
-                else (candidate.languages or "-"),
+                "match_score": match["score"],
+                "matched_terms": matched_terms[:120] + "..."
+                if len(matched_terms) > 120
+                else matched_terms,
+                "has_resume": bool(candidate.resume_pdf),
                 "ready_at": candidate.ready_at.strftime("%d/%m/%Y") if candidate.ready_at else "-",
             }
         )
@@ -879,12 +847,12 @@ def preview_candidates_search(request, job_id: int):
         {
             "success": True,
             "total": total,
+            "min_score": min_score,
             "page": page_obj.number,
             "num_pages": paginator.num_pages,
             "has_previous": page_obj.has_previous(),
             "has_next": page_obj.has_next(),
             "candidates": candidates_data,
-            "filters": filters,
         }
     )
 
@@ -892,54 +860,43 @@ def preview_candidates_search(request, job_id: int):
 @login_required
 @required_plan("BASIC")
 def search_candidates_in_pool(request, job_id: int):
-    """Inicia busca e rankeamento de candidatos no banco de talentos do usuário para a vaga."""
+    """Inicia a avaliação via LLM dos candidatos aprovados no pré-match da vaga."""
     if request.method != "POST":
         return JsonResponse({"error": "Método não permitido"}, status=405)
 
     job = get_object_or_404(Job, id=job_id, user=request.user)
+
+    if not job_has_match_criteria(job):
+        return JsonResponse(
+            {
+                "error": "A vaga não tem requisitos para o match. Preencha skills "
+                "obrigatórias, stack, senioridade ou idioma na vaga."
+            },
+            status=400,
+        )
+
+    min_score = _parse_min_score(request)
+    matches, shared_pool = _match_pool_candidates_for_job(job, request.user, min_score)
+    if not matches:
+        return JsonResponse(
+            {
+                "error": f"Nenhum candidato do banco atingiu o match mínimo de "
+                f"{min_score}% com esta vaga."
+            },
+            status=400,
+        )
+
+    candidate_ids = [match["candidate"].id for match in matches]
     job_description = _build_job_description(job)
-    role_title = job.title
-    shared_pool = _uses_shared_pool(request.user)
 
-    # Extrai filtros do POST (pode vir do preview)
-    filters = {}
-    name_filter = request.POST.get("name", "").strip()
-    location_filter = request.POST.get("location", "").strip()
-    seniority_filter = request.POST.get("seniority", "").strip()
-    company_filter = request.POST.get("company", "").strip()
-    technologies_filter = request.POST.get("technologies", "").strip()
-    skills_filter = request.POST.get("skills", "").strip()
-    languages_filter = request.POST.get("languages", "").strip()
-    certifications_filter = request.POST.get("certifications", "").strip()
-    ready_only = request.POST.get("ready_only") == "on"
-
-    if name_filter:
-        filters["name"] = name_filter
-    if location_filter:
-        filters["location"] = location_filter
-    if seniority_filter:
-        filters["seniority"] = seniority_filter
-    if company_filter:
-        filters["company"] = company_filter
-    if technologies_filter:
-        filters["technologies"] = technologies_filter
-    if skills_filter:
-        filters["skills"] = skills_filter
-    if languages_filter:
-        filters["languages"] = languages_filter
-    if certifications_filter:
-        filters["certifications"] = certifications_filter
-    if ready_only:
-        filters["ready_only"] = True
-
-    _set_search_status(job.id, {"status": "running", "processed": 0, "total": 0})
+    _set_search_status(job.id, {"status": "running", "processed": 0, "total": len(candidate_ids)})
     thread = threading.Thread(
         target=_run_search_in_pool,
         args=(
             job.id,
             job_description,
-            role_title,
-            filters if filters else None,
+            job.title,
+            candidate_ids,
             None if shared_pool else request.user.id,
             shared_pool,
         ),
@@ -947,9 +904,12 @@ def search_candidates_in_pool(request, job_id: int):
     )
     thread.start()
 
-    filter_msg = f" com {len(filters)} filtro(s) aplicado(s)" if filters else ""
     return JsonResponse(
-        {"success": True, "message": f"Análise iniciada{filter_msg}. Acompanhe o progresso abaixo."}
+        {
+            "success": True,
+            "message": f"Análise iniciada para {len(candidate_ids)} candidato(s) "
+            "compatível(is). Acompanhe o progresso abaixo.",
+        }
     )
 
 

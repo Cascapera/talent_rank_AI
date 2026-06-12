@@ -5,9 +5,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.core.files import File
-from django.db import connection
-from django.db.models import F, Func, Q
-from django.db.models.functions import Lower
 from pypdf import PdfReader
 
 from .llm_extractor import (
@@ -57,22 +54,6 @@ SECTION_TITLES = {
     "formação acadêmica",
     "formacao academica",
 }
-
-
-def _normalize_search_term(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
-
-
-def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
-    if not term:
-        return qs
-    if connection.vendor != "postgresql":
-        return qs.filter(**{f"{field}__icontains": term})
-    normalized = _normalize_search_term(term)
-    alias = f"{alias_prefix}_{field.replace('__', '_')}"
-    qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
-    return qs.filter(Q(**{f"{field}__icontains": term}) | Q(**{f"{alias}__contains": normalized}))
 
 
 def _fix_mojibake(text: str) -> str:
@@ -1760,11 +1741,17 @@ def search_and_rank_candidates_from_pool(
     weights: dict[str, int],
     role_title: str | None = None,
     progress_callback=None,
-    filters: dict | None = None,
+    candidate_ids: list[int] | None = None,
     user_id=None,
     shared_pool: bool = False,
 ) -> dict:
-    """Busca candidatos no banco de talentos do usuário e calcula aderência para a vaga."""
+    """
+    Calcula aderência via LLM dos candidatos do banco para a vaga.
+
+    Quando candidate_ids é fornecido (pré-match feito na view), avalia apenas
+    esses candidatos. Candidatos com PDF de currículo são avaliados pelo PDF;
+    os demais (cadastro manual ou importações antigas) pelos dados estruturados.
+    """
     from .models import Candidate, CandidateJob
 
     # Busca candidatos do usuário não vinculados à vaga
@@ -1774,47 +1761,8 @@ def search_and_rank_candidates_from_pool(
     candidates = Candidate.objects.exclude(id__in=linked_candidate_ids)
     if user_id is not None and not shared_pool:
         candidates = candidates.filter(user_id=user_id)
-
-    # Aplica filtros se fornecidos
-    if filters:
-        name_filter = filters.get("name", "").strip()
-        location_filter = filters.get("location", "").strip()
-        seniority_filter = filters.get("seniority", "").strip()
-        company_filter = filters.get("company", "").strip()
-        technologies_filter = filters.get("technologies", "").strip()
-        skills_filter = filters.get("skills", "").strip()
-        languages_filter = filters.get("languages", "").strip()
-        certifications_filter = filters.get("certifications", "").strip()
-        ready_only = filters.get("ready_only", False)
-
-        if name_filter:
-            candidates = _apply_unaccent_filter(candidates, "name", name_filter, "name")
-        if location_filter:
-            candidates = _apply_unaccent_filter(candidates, "location", location_filter, "location")
-        if seniority_filter:
-            candidates = _apply_unaccent_filter(
-                candidates, "seniority", seniority_filter, "seniority"
-            )
-        if company_filter:
-            candidates = _apply_unaccent_filter(
-                candidates, "current_company", company_filter, "company"
-            )
-        if technologies_filter:
-            candidates = _apply_unaccent_filter(
-                candidates, "technologies", technologies_filter, "technologies"
-            )
-        if skills_filter:
-            candidates = _apply_unaccent_filter(candidates, "skills", skills_filter, "skills")
-        if languages_filter:
-            candidates = _apply_unaccent_filter(
-                candidates, "languages", languages_filter, "languages"
-            )
-        if certifications_filter:
-            candidates = _apply_unaccent_filter(
-                candidates, "certifications", certifications_filter, "certifications"
-            )
-        if ready_only:
-            candidates = candidates.exclude(ready_at__isnull=True)
+    if candidate_ids is not None:
+        candidates = candidates.filter(id__in=candidate_ids)
 
     total_candidates = candidates.count()
     if progress_callback:

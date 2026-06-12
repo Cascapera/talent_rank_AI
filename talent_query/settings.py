@@ -160,6 +160,10 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Busca no banco de talentos: score mínimo (0-100) do pré-match vaga x candidato
+# para que o candidato seja enviado à LLM para avaliação final.
+POOL_MATCH_MIN_SCORE = int(os.getenv("POOL_MATCH_MIN_SCORE", "40"))
+
 # Auth
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"

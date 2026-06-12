@@ -184,56 +184,23 @@
     </div>
   </div>
 
-  <!-- Modal de Filtros para Busca no Banco -->
+  <!-- Modal de Match Mínimo para Busca no Banco -->
   <div id="searchFiltersModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div class="card" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
-      <h2 style="margin-top: 0;">Filtros de Busca no Banco de Talentos</h2>
-      <p style="color: var(--muted); margin-bottom: 20px;">Use os filtros abaixo para criar um funil de candidatos. Você poderá revisar os resultados antes de analisar e vincular.</p>
-      
+    <div class="card" style="max-width: 480px; width: 90%;">
+      <h2 style="margin-top: 0;">Buscar candidatos compatíveis</h2>
+      <p style="color: var(--muted); margin-bottom: 20px;">
+        O sistema compara os requisitos da vaga (skills obrigatórias, stack, desejáveis,
+        senioridade e idioma) com os candidatos do banco. Apenas quem atingir o match
+        mínimo abaixo será enviado para a avaliação final por IA.
+      </p>
+
       <form id="searchFiltersForm" method="post" action="{% url 'preview_candidates_search' job.id %}">
         {% csrf_token %}
-        <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
-          <div>
-            <label for="search_name">Nome</label>
-            <input type="text" id="search_name" name="name" placeholder="Buscar por nome" />
-          </div>
-          <div>
-            <label for="search_location">Localização</label>
-            <input type="text" id="search_location" name="location" placeholder="Ex: São Paulo, Campinas" />
-          </div>
-          <div>
-            <label for="search_seniority">Senioridade</label>
-            <input type="text" id="search_seniority" name="seniority" placeholder="Ex: Senior, Pleno" />
-          </div>
-          <div>
-            <label for="search_company">Empresa</label>
-            <input type="text" id="search_company" name="company" placeholder="Nome da empresa" />
-          </div>
-          <div>
-            <label for="search_skills">Skills</label>
-            <input type="text" id="search_skills" name="skills" placeholder="Ex: Python, Azure, AWS" />
-          </div>
-          <div>
-            <label for="search_technologies">Tecnologias</label>
-            <input type="text" id="search_technologies" name="technologies" placeholder="Ex: Docker, Kubernetes" />
-          </div>
-          <div>
-            <label for="search_languages">Idiomas</label>
-            <input type="text" id="search_languages" name="languages" placeholder="Ex: Inglês, Português" />
-          </div>
-          <div>
-            <label for="search_certifications">Certificações</label>
-            <input type="text" id="search_certifications" name="certifications" placeholder="Ex: AWS Certified" />
-          </div>
-        </div>
-        
         <div style="margin-bottom: 20px;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="search_ready_only" name="ready_only" />
-            <span>Apenas candidatos prontos (com data em "Pronto em")</span>
-          </label>
+          <label for="search_min_score">Match mínimo (%)</label>
+          <input type="number" id="search_min_score" name="min_score" min="0" max="100" step="5" value="{{ pool_match_min_score }}" required style="max-width: 120px;" />
         </div>
-        
+
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
           <button type="button" class="btn" id="cancelSearchFiltersBtn" style="background: var(--muted);">Cancelar</button>
           <button type="submit" class="btn primary">Buscar</button>
@@ -242,10 +209,10 @@
     </div>
   </div>
 
-  <!-- Modal de Preview dos Candidatos Encontrados -->
+  <!-- Modal de Preview dos Candidatos Compatíveis -->
   <div id="previewCandidatesModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
     <div class="card" style="max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto;">
-      <h2 style="margin-top: 0;">Candidatos Encontrados</h2>
+      <h2 style="margin-top: 0;">Candidatos Compatíveis</h2>
       <div id="previewTotal" style="margin-bottom: 15px; color: var(--primary); font-weight: bold;"></div>
       
       <div id="previewCandidatesList" style="margin-bottom: 20px;">
@@ -1199,7 +1166,7 @@
     const newSearchBtn = document.getElementById('newSearchBtn');
     const analyzeAndLinkBtn = document.getElementById('analyzeAndLinkBtn');
     
-    let currentFilters = null;
+    let currentMinScore = null;
     
     if (searchInPoolBtn && searchFiltersModal) {
       // Abre modal de filtros ao clicar no botão
@@ -1244,27 +1211,28 @@
         const paginationEl = document.getElementById('previewPagination');
         
         if (totalEl) {
-          totalEl.textContent = `${data.total} candidato(s) encontrado(s)`;
+          totalEl.textContent = `${data.total} candidato(s) com match mínimo de ${data.min_score}%`;
         }
-        
+
         if (listEl) {
           if (data.candidates.length === 0) {
-            listEl.innerHTML = '<p style="color: var(--muted); text-align: center; padding: 20px;">Nenhum candidato encontrado com os filtros aplicados.</p>';
+            listEl.innerHTML = '<p style="color: var(--muted); text-align: center; padding: 20px;">Nenhum candidato do banco atingiu o match mínimo. Tente reduzir o percentual.</p>';
           } else {
             let html = '<table class="table" style="width: 100%; font-size: 13px;"><thead><tr>';
-            html += '<th>Nome</th><th>Empresa</th><th>Skills</th><th>Idiomas</th><th>Pronto em</th>';
+            html += '<th>Nome</th><th>Empresa</th><th>Match</th><th>Requisitos atendidos</th><th>Currículo</th><th>Pronto em</th>';
             html += '</tr></thead><tbody>';
-            
+
             data.candidates.forEach(candidate => {
               html += '<tr>';
               html += `<td>${candidate.name}</td>`;
               html += `<td>${candidate.company}</td>`;
-              html += `<td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.skills}">${candidate.skills}</td>`;
-              html += `<td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.languages}">${candidate.languages}</td>`;
+              html += `<td><strong style="color: var(--primary);">${candidate.match_score}%</strong></td>`;
+              html += `<td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.matched_terms}">${candidate.matched_terms}</td>`;
+              html += `<td>${candidate.has_resume ? 'PDF' : 'Dados cadastrados'}</td>`;
               html += `<td>${candidate.ready_at}</td>`;
               html += '</tr>';
             });
-            
+
             html += '</tbody></table>';
             listEl.innerHTML = html;
           }
@@ -1287,21 +1255,13 @@
       
       // Função para carregar página do preview
       window.loadPreviewPage = function(page) {
-        if (!currentFilters) return;
-        
+        if (currentMinScore === null) return;
+
         const jobId = searchInPoolBtn.getAttribute('data-job-id');
         const formData = new FormData();
         const csrftoken = getCSRFToken();
-        
-        Object.keys(currentFilters).forEach(key => {
-          if (key === 'ready_only') {
-            if (currentFilters[key]) {
-              formData.append(key, 'on');
-            }
-          } else {
-            formData.append(key, currentFilters[key]);
-          }
-        });
+
+        formData.append('min_score', currentMinScore);
         formData.append('page', page);
         formData.append('csrfmiddlewaretoken', csrftoken);
         
@@ -1341,19 +1301,10 @@
             }
             
             formData.append('csrfmiddlewaretoken', csrftoken);
-            
-            // Salva filtros atuais
-            currentFilters = {};
-            for (let [key, value] of formData.entries()) {
-              if (key !== 'csrfmiddlewaretoken' && key !== 'page') {
-                if (key === 'ready_only') {
-                  currentFilters[key] = value === 'on';
-                } else {
-                  currentFilters[key] = value;
-                }
-              }
-            }
-            
+
+            // Salva o match mínimo escolhido para paginação e análise
+            currentMinScore = formData.get('min_score');
+
             const response = await fetch(`/vagas/${jobId}/preview-search/`, {
               method: 'POST',
               body: formData,
@@ -1389,34 +1340,26 @@
       // Botão "Analisar e Vincular"
       if (analyzeAndLinkBtn) {
         analyzeAndLinkBtn.addEventListener('click', async function() {
-          if (!currentFilters) {
-            alert('Nenhum filtro aplicado. Faça uma busca primeiro.');
+          if (currentMinScore === null) {
+            alert('Nenhuma busca feita. Informe o match mínimo primeiro.');
             return;
           }
-          
+
           const jobId = searchInPoolBtn.getAttribute('data-job-id');
           this.disabled = true;
           this.style.opacity = '0.6';
           this.textContent = 'Analisando...';
           previewCandidatesModal.style.display = 'none';
-          
+
           try {
             const formData = new FormData();
             const csrftoken = getCSRFToken();
-            
+
             if (!csrftoken) {
               throw new Error('Token CSRF não encontrado. Recarregue a página.');
             }
-            
-            Object.keys(currentFilters).forEach(key => {
-              if (key === 'ready_only') {
-                if (currentFilters[key]) {
-                  formData.append(key, 'on');
-                }
-              } else {
-                formData.append(key, currentFilters[key]);
-              }
-            });
+
+            formData.append('min_score', currentMinScore);
             formData.append('csrfmiddlewaretoken', csrftoken);
             
             const response = await fetch(`/vagas/${jobId}/search-pool/`, {

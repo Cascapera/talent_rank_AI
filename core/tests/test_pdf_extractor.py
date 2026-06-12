@@ -4,19 +4,7 @@ from core.pdf_extractor import (
     _clean_lines,
     _find_linkedin_url,
     _fix_mojibake,
-    _normalize_search_term,
 )
-
-
-class TestNormalizeSearchTerm:
-    def test_removes_accents(self):
-        assert _normalize_search_term("Sênior") == "senior"
-
-    def test_lowercase(self):
-        assert _normalize_search_term("Python") == "python"
-
-    def test_empty(self):
-        assert _normalize_search_term("") == ""
 
 
 class TestFindLinkedinUrl:
