@@ -30,6 +30,101 @@ def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
         candidate.resume_pdf.save(Path(pdf_path).name, File(f), save=True)
 
 
+# Campos de texto do candidato: None nunca chega ao banco neles, vira "".
+_TEXT_FIELDS = (
+    "name",
+    "current_title",
+    "current_company",
+    "location",
+    "linkedin_url",
+    "summary",
+    "skills",
+    "technologies",
+    "languages",
+    "certifications",
+    "seniority",
+)
+
+# Campos numéricos, que aceitam None no banco.
+_NULLABLE_FIELDS = ("experience_time", "average_tenure")
+
+
+def _candidate_payload(data: dict) -> dict:
+    """Traduz o resultado do LLM para os campos do modelo Candidate."""
+    return {
+        "name": data.get("name") or "",
+        "current_title": data.get("current_title") or "",
+        "current_company": data.get("current_company") or "",
+        "location": data.get("location") or "",
+        "linkedin_url": data.get("linkedin_url", ""),
+        "summary": "",
+        "skills": ", ".join(data.get("skills", [])),
+        "technologies": ", ".join(data.get("technologies", [])),
+        "languages": ", ".join(data.get("languages", [])),
+        "certifications": ", ".join(data.get("certifications", [])),
+        "experience_time": data.get("experience_time_years"),
+        "average_tenure": data.get("average_tenure_years"),
+        "seniority": data.get("seniority") or "",
+    }
+
+
+def _find_candidate(linkedin_url: str, user_id, shared_pool: bool) -> Candidate | None:
+    """Procura um candidato já existente pela URL do LinkedIn (case-insensitive).
+
+    shared_pool: procura no banco inteiro, ignorando o dono do registro.
+    """
+    if shared_pool:
+        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+    elif user_id:
+        qs = Candidate.objects.filter(user_id=user_id, linkedin_url__iexact=linkedin_url)
+    else:
+        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+    return qs.first()
+
+
+def _upsert_candidate(
+    data: dict, *, user_id, shared_pool: bool, pdf_path: Path
+) -> tuple[Candidate, str]:
+    """Cria ou atualiza o candidato a partir do resultado do LLM e grava o currículo.
+
+    Único ponto do sistema que persiste candidato vindo de importação. Antes de R-08
+    este bloco existia em 4 cópias quase idênticas, uma delas já divergente.
+
+    Devolve `(candidato, resultado)`, onde resultado é "created", "updated" ou
+    "unchanged". "unchanged" é o candidato que já existia e no qual nenhum campo mudou:
+    hoje ele não entra em nenhum contador do chamador.
+
+    O PDF é sempre (re)gravado, inclusive quando nada mudou.
+    """
+    payload = _candidate_payload(data)
+    candidate = _find_candidate(payload["linkedin_url"], user_id, shared_pool)
+
+    if candidate is None:
+        safe_payload = {
+            field: ("" if field in _TEXT_FIELDS and value is None else value)
+            for field, value in payload.items()
+        }
+        if user_id:
+            safe_payload["user_id"] = user_id
+        candidate = Candidate.objects.create(**safe_payload)
+        _save_resume_pdf(candidate, pdf_path)
+        return candidate, "created"
+
+    changed = False
+    for field, value in payload.items():
+        if field in _TEXT_FIELDS and value is None:
+            value = ""
+        if value is None and field not in _NULLABLE_FIELDS:
+            continue
+        if getattr(candidate, field) != value:
+            setattr(candidate, field, value)
+            changed = True
+    if changed:
+        candidate.save()
+    _save_resume_pdf(candidate, pdf_path)
+    return candidate, "updated" if changed else "unchanged"
+
+
 def import_candidates_from_folder(
     folder_path: str,
     job_description: str,
@@ -118,89 +213,13 @@ def import_candidates_from_folder(
                     continue
 
                 try:
-                    candidate_payload = {
-                        "name": data.get("name") or "",
-                        "current_title": data.get("current_title") or "",
-                        "current_company": data.get("current_company") or "",
-                        "location": data.get("location") or "",
-                        "linkedin_url": linkedin_url,
-                        "summary": "",
-                        "skills": ", ".join(data.get("skills", [])),
-                        "technologies": ", ".join(data.get("technologies", [])),
-                        "languages": ", ".join(data.get("languages", [])),
-                        "certifications": ", ".join(data.get("certifications", [])),
-                        "experience_time": data.get("experience_time_years"),
-                        "average_tenure": data.get("average_tenure_years"),
-                        "seniority": data.get("seniority") or "",
-                    }
-
-                    if shared_pool:
-                        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                    else:
-                        qs = (
-                            Candidate.objects.filter(
-                                user_id=user_id, linkedin_url__iexact=linkedin_url
-                            )
-                            if user_id
-                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                        )
-                    candidate = qs.first()
-                    if candidate:
-                        changed = False
-                        for field, value in candidate_payload.items():
-                            # Normaliza None para string vazia em campos de texto
-                            if field in (
-                                "name",
-                                "current_title",
-                                "current_company",
-                                "location",
-                                "linkedin_url",
-                                "summary",
-                                "skills",
-                                "technologies",
-                                "languages",
-                                "certifications",
-                                "seniority",
-                            ):
-                                if value is None:
-                                    value = ""
-                            # Ignora apenas se for None e o campo não aceitar None
-                            if value is None and field not in ("experience_time", "average_tenure"):
-                                continue
-                            if getattr(candidate, field) != value:
-                                setattr(candidate, field, value)
-                                changed = True
-                        if changed:
-                            candidate.save()
-                            updated += 1
-                        # Salva ou substitui o PDF (candidato existente: sempre reextrair dados + PDF)
-                        _save_resume_pdf(candidate, pdf_file)
-                    else:
-                        # Garante que todos os campos de texto sejam strings, nunca None
-                        safe_payload = {}
-                        for field, value in candidate_payload.items():
-                            if field in (
-                                "name",
-                                "current_title",
-                                "current_company",
-                                "location",
-                                "linkedin_url",
-                                "summary",
-                                "skills",
-                                "technologies",
-                                "languages",
-                                "certifications",
-                                "seniority",
-                            ):
-                                safe_payload[field] = value if value is not None else ""
-                            else:
-                                safe_payload[field] = value
-                        if user_id:
-                            safe_payload["user_id"] = user_id
-                        candidate = Candidate.objects.create(**safe_payload)
+                    candidate, outcome = _upsert_candidate(
+                        data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
+                    )
+                    if outcome == "created":
                         created += 1
-                        # Salva o PDF no novo candidato
-                        _save_resume_pdf(candidate, pdf_file)
+                    elif outcome == "updated":
+                        updated += 1
 
                     if job_id:
                         CandidateJob.objects.update_or_create(
@@ -297,92 +316,13 @@ def import_candidates_from_folder(
                         continue
 
                     try:
-                        candidate_payload = {
-                            "name": data.get("name") or "",
-                            "current_title": data.get("current_title") or "",
-                            "current_company": data.get("current_company") or "",
-                            "location": data.get("location") or "",
-                            "linkedin_url": linkedin_url,
-                            "summary": "",
-                            "skills": ", ".join(data.get("skills", [])),
-                            "technologies": ", ".join(data.get("technologies", [])),
-                            "languages": ", ".join(data.get("languages", [])),
-                            "certifications": ", ".join(data.get("certifications", [])),
-                            "experience_time": data.get("experience_time_years"),
-                            "average_tenure": data.get("average_tenure_years"),
-                            "seniority": data.get("seniority") or "",
-                        }
-
-                        if shared_pool:
-                            qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                        else:
-                            qs = (
-                                Candidate.objects.filter(
-                                    user_id=user_id, linkedin_url__iexact=linkedin_url
-                                )
-                                if user_id
-                                else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                            )
-                        candidate = qs.first()
-                        if candidate:
-                            changed = False
-                            for field, value in candidate_payload.items():
-                                # Normaliza None para string vazia em campos de texto
-                                if field in (
-                                    "name",
-                                    "current_title",
-                                    "current_company",
-                                    "location",
-                                    "linkedin_url",
-                                    "summary",
-                                    "skills",
-                                    "technologies",
-                                    "languages",
-                                    "certifications",
-                                    "seniority",
-                                ):
-                                    if value is None:
-                                        value = ""
-                                # Ignora apenas se for None e o campo não aceitar None
-                                if value is None and field not in (
-                                    "experience_time",
-                                    "average_tenure",
-                                ):
-                                    continue
-                                if getattr(candidate, field) != value:
-                                    setattr(candidate, field, value)
-                                    changed = True
-                            if changed:
-                                candidate.save()
-                                updated += 1
-                            # Salva ou substitui o PDF (candidato existente)
-                            _save_resume_pdf(candidate, pdf_file)
-                        else:
-                            # Garante que todos os campos de texto sejam strings, nunca None
-                            safe_payload = {}
-                            for field, value in candidate_payload.items():
-                                if field in (
-                                    "name",
-                                    "current_title",
-                                    "current_company",
-                                    "location",
-                                    "linkedin_url",
-                                    "summary",
-                                    "skills",
-                                    "technologies",
-                                    "languages",
-                                    "certifications",
-                                    "seniority",
-                                ):
-                                    safe_payload[field] = value if value is not None else ""
-                                else:
-                                    safe_payload[field] = value
-                            if user_id:
-                                safe_payload["user_id"] = user_id
-                            candidate = Candidate.objects.create(**safe_payload)
+                        candidate, outcome = _upsert_candidate(
+                            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
+                        )
+                        if outcome == "created":
                             created += 1
-                            # Salva o PDF no novo candidato
-                            _save_resume_pdf(candidate, pdf_file)
+                        elif outcome == "updated":
+                            updated += 1
 
                         if job_id:
                             CandidateJob.objects.update_or_create(
@@ -521,89 +461,13 @@ def import_candidates_from_folder_no_ranking(
                     continue
 
                 try:
-                    candidate_payload = {
-                        "name": data.get("name") or "",
-                        "current_title": data.get("current_title") or "",
-                        "current_company": data.get("current_company") or "",
-                        "location": data.get("location") or "",
-                        "linkedin_url": linkedin_url,
-                        "summary": "",
-                        "skills": ", ".join(data.get("skills", [])),
-                        "technologies": ", ".join(data.get("technologies", [])),
-                        "languages": ", ".join(data.get("languages", [])),
-                        "certifications": ", ".join(data.get("certifications", [])),
-                        "experience_time": data.get("experience_time_years"),
-                        "average_tenure": data.get("average_tenure_years"),
-                        "seniority": data.get("seniority") or "",
-                    }
-
-                    if shared_pool:
-                        qs = Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                    else:
-                        qs = (
-                            Candidate.objects.filter(
-                                user_id=user_id, linkedin_url__iexact=linkedin_url
-                            )
-                            if user_id
-                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
-                        )
-                    candidate = qs.first()
-                    if candidate:
-                        changed = False
-                        for field, value in candidate_payload.items():
-                            # Normaliza None para string vazia em campos de texto
-                            if field in (
-                                "name",
-                                "current_title",
-                                "current_company",
-                                "location",
-                                "linkedin_url",
-                                "summary",
-                                "skills",
-                                "technologies",
-                                "languages",
-                                "certifications",
-                                "seniority",
-                            ):
-                                if value is None:
-                                    value = ""
-                            # Ignora apenas se for None e o campo não aceitar None
-                            if value is None and field not in ("experience_time", "average_tenure"):
-                                continue
-                            if getattr(candidate, field) != value:
-                                setattr(candidate, field, value)
-                                changed = True
-                        if changed:
-                            candidate.save()
-                            updated += 1
-                        # Salva ou substitui o PDF (candidato existente: sempre reextrair dados + PDF)
-                        _save_resume_pdf(candidate, pdf_file)
-                    else:
-                        # Garante que todos os campos de texto sejam strings, nunca None
-                        safe_payload = {}
-                        for field, value in candidate_payload.items():
-                            if field in (
-                                "name",
-                                "current_title",
-                                "current_company",
-                                "location",
-                                "linkedin_url",
-                                "summary",
-                                "skills",
-                                "technologies",
-                                "languages",
-                                "certifications",
-                                "seniority",
-                            ):
-                                safe_payload[field] = value if value is not None else ""
-                            else:
-                                safe_payload[field] = value
-                        if user_id:
-                            safe_payload["user_id"] = user_id
-                        candidate = Candidate.objects.create(**safe_payload)
+                    candidate, outcome = _upsert_candidate(
+                        data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
+                    )
+                    if outcome == "created":
                         created += 1
-                        # Salva o PDF no novo candidato
-                        _save_resume_pdf(candidate, pdf_file)
+                    elif outcome == "updated":
+                        updated += 1
 
                     # Incrementa contador apenas após salvar com sucesso
                     processed_count += 1
@@ -651,89 +515,16 @@ def import_candidates_from_folder_no_ranking(
                         continue
 
                     try:
-                        candidate_payload = {
-                            "name": data.get("name") or "",
-                            "current_title": data.get("current_title") or "",
-                            "current_company": data.get("current_company") or "",
-                            "location": data.get("location") or "",
-                            "linkedin_url": linkedin_url,
-                            "summary": "",
-                            "skills": ", ".join(data.get("skills", [])),
-                            "technologies": ", ".join(data.get("technologies", [])),
-                            "languages": ", ".join(data.get("languages", [])),
-                            "certifications": ", ".join(data.get("certifications", [])),
-                            "experience_time": data.get("experience_time_years"),
-                            "average_tenure": data.get("average_tenure_years"),
-                            "seniority": data.get("seniority") or "",
-                        }
-
-                        qs = (
-                            Candidate.objects.filter(
-                                user_id=user_id, linkedin_url__iexact=linkedin_url
-                            )
-                            if user_id
-                            else Candidate.objects.filter(linkedin_url__iexact=linkedin_url)
+                        # shared_pool nao e considerado aqui: divergencia das outras 3 copias,
+                        # preservada de proposito para nao misturar bugfix com refatoracao.
+                        # Corrigida em R-09.
+                        candidate, outcome = _upsert_candidate(
+                            data, user_id=user_id, shared_pool=False, pdf_path=pdf_file
                         )
-                        candidate = qs.first()
-                        if candidate:
-                            changed = False
-                            for field, value in candidate_payload.items():
-                                # Normaliza None para string vazia em campos de texto
-                                if field in (
-                                    "name",
-                                    "current_title",
-                                    "current_company",
-                                    "location",
-                                    "linkedin_url",
-                                    "summary",
-                                    "skills",
-                                    "technologies",
-                                    "languages",
-                                    "certifications",
-                                    "seniority",
-                                ):
-                                    if value is None:
-                                        value = ""
-                                # Ignora apenas se for None e o campo não aceitar None
-                                if value is None and field not in (
-                                    "experience_time",
-                                    "average_tenure",
-                                ):
-                                    continue
-                                if getattr(candidate, field) != value:
-                                    setattr(candidate, field, value)
-                                    changed = True
-                            if changed:
-                                candidate.save()
-                                updated += 1
-                            # Salva ou substitui o PDF (candidato existente)
-                            _save_resume_pdf(candidate, pdf_file)
-                        else:
-                            # Garante que todos os campos de texto sejam strings, nunca None
-                            safe_payload = {}
-                            for field, value in candidate_payload.items():
-                                if field in (
-                                    "name",
-                                    "current_title",
-                                    "current_company",
-                                    "location",
-                                    "linkedin_url",
-                                    "summary",
-                                    "skills",
-                                    "technologies",
-                                    "languages",
-                                    "certifications",
-                                    "seniority",
-                                ):
-                                    safe_payload[field] = value if value is not None else ""
-                                else:
-                                    safe_payload[field] = value
-                            if user_id:
-                                safe_payload["user_id"] = user_id
-                            candidate = Candidate.objects.create(**safe_payload)
+                        if outcome == "created":
                             created += 1
-                            # Salva o PDF no novo candidato
-                            _save_resume_pdf(candidate, pdf_file)
+                        elif outcome == "updated":
+                            updated += 1
 
                         # Incrementa contador apenas após salvar com sucesso
                         processed_count += 1
