@@ -45,7 +45,7 @@ jobs:
           DEBUG: "False"
         run: |
           python manage.py migrate --noinput
-          pytest --cov=core --cov-report=xml --cov-fail-under=27 -v
+          pytest --cov=core --cov-report=xml --cov-fail-under=34 -v
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

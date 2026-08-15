@@ -55,7 +55,8 @@ branch = true
 [tool.coverage.report]
 # Piso = cobertura real de hoje menos 1 ponto, para o CI travar em regressão
 # sem travar o dia a dia. Sobe a cada onda do PROJETO_REFATORACAO.md (meta: 55).
-fail_under = 27
+# 27 -> 34 em R-05 (characterization tests do upsert).
+fail_under = 34
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
