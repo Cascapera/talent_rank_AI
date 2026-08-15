@@ -42,20 +42,20 @@ filterwarnings = ["ignore::DeprecationWarning", "ignore::PendingDeprecationWarni
 
 [tool.coverage.run]
 source = ["core"]
+# Nada de código de aplicação é omitido: o número tem que ser o real.
+# views.py, llm_extractor.py e pdf_extractor.py ficavam de fora e escondiam
+# 1.820 dos 2.241 statements — o CI reportava 88% medindo 19% do código.
 omit = [
     "*/migrations/*",
     "*/tests/*",
     "*/__init__.py",
-    "core/views.py",      # Views: integração HTTP, testar via E2E
-    "core/urls.py",       # Rotas: configuração, não lógica
-    "core/apps.py",       # AppConfig, sem lógica
-    "core/llm_extractor.py",   # Chamadas à API Gemini, testar via integração
-    "core/pdf_extractor.py",   # PDF + DB + API, testar via integração
 ]
 branch = true
 
 [tool.coverage.report]
-fail_under = 50
+# Piso = cobertura real de hoje menos 1 ponto, para o CI travar em regressão
+# sem travar o dia a dia. Sobe a cada onda do PROJETO_REFATORACAO.md (meta: 55).
+fail_under = 27
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
