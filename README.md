@@ -116,7 +116,7 @@ This is a first pass at observability, scoped to the core vacancy processing pat
 
 1. **Upload (PDF/ZIP)** → API receives files via form
 2. **Persistence and enqueue** → files saved to temp, import job started on a thread
-3. **Worker processes** → extracts text (pypdf) and/or sends PDF to LLM for structured extraction
+3. **Worker processes** → sends the PDF to the LLM for structured extraction
 4. **LLM layer call** → extraction, ranking, or assessment depending on the flow
 5. **Save score + justification** → `CandidateJob.adherence_score`, `technical_justification`
 6. **Update pipeline/status** → `CandidateJob.pipeline_status`, `ready_at`
