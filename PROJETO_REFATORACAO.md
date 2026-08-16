@@ -12,8 +12,9 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 29 |
+| **Itens no backlog** | 34 (29 originais + 5 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
+| **Executado** | 7 itens em `develop` · PRs #13 a #21 · nada em produção ainda |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1208,6 +1209,112 @@ Ganho:       mudar a identidade visual passa a ser uma edição, não doze
 
 ---
 
+---
+
+### Onda 7 — achados da execução (adicionada em 2026-08-15)
+
+> Estes 5 itens **não estavam no plano original**. Apareceram ao escrever os
+> characterization tests de R-05 e R-06: o comportamento foi fixado como está, de
+> propósito, para não misturar correção com refatoração. Agora viram trabalho próprio.
+
+```
+[R-29] 🐛 [BUGFIX] Reimportar candidato apaga o resumo escrito à mão
+Motivação:   descoberto em R-05. `_candidate_payload` fixa `summary: ""` independente
+             do que veio do LLM. Um candidato cujo resumo a recrutadora escreveu à mão
+             PERDE o resumo ao ser reimportado. É perda de trabalho humano, silenciosa.
+Arquivos:    core/pdf_extractor.py, core/tests/test_import_upsert.py
+O que muda:  ⚠️ MUDA COMPORTAMENTO. Opções, a decidir com a usuária:
+             (a) preservar o summary existente quando já houver um (mais conservador);
+             (b) usar o summary do LLM quando o campo estiver vazio;
+             (c) manter como está, se zerar for intencional.
+             O teste `test_summary_is_always_wiped_on_update` inverte junto.
+Não muda:    os demais campos do upsert
+Pré-requisito: decisão de produto — não implemente sem perguntar
+PR:          2 arquivos · ~20 linhas
+Produção:    transparente
+Como validar: o teste que hoje fixa o wipe passa a exigir a preservação
+Verificação pós-deploy: escrever resumo à mão num candidato, reimportar, conferir
+Risco:       baixo tecnicamente; a decisão é de produto
+Reversão:    reverter o commit
+Esforço:     2h
+Ganho:       para de destruir trabalho manual da recrutadora
+Prioridade:  ALTA — é o item de maior impacto direto no uso diário
+
+[R-30] 🐛 [BUGFIX] Barra de progresso mostra 100% mesmo quando tudo falhou
+Motivação:   descoberto em R-06. O callback final de `import_candidates_from_folder`
+             envia `processed=total_files` em vez do contador real. Uma importação que
+             falhou em TODOS os PDFs termina exibindo 100%.
+Arquivos:    core/pdf_extractor.py, core/tests/test_import_batches.py
+O que muda:  ⚠️ MUDA COMPORTAMENTO: envia o contador real, como já faz o
+             `..._no_ranking`. Unifica os dois contratos de callback final de quebra.
+Não muda:    o dicionário de resultado
+Pré-requisito: nenhum (R-10 já unificou o laço, então é 1 linha)
+PR:          2 arquivos · ~20 linhas
+Produção:    transparente
+Como validar: `test_final_call_claims_everything_processed_even_after_errors` inverte
+Verificação pós-deploy: importar 1 PDF que falha e conferir que a barra não completa
+Risco:       baixo
+Reversão:    reverter o commit
+Esforço:     2h
+Ganho:       a recrutadora deixa de achar que a importação deu certo quando não deu
+
+[R-31] PDFs órfãos acumulam no disco a cada reimportação
+Motivação:   descoberto em R-05. `_upsert_candidate` sempre regrava o currículo, e o
+             nome tem uuid — o arquivo anterior fica no disco para sempre. Reimportar
+             o mesmo candidato 10 vezes deixa 10 PDFs, 9 inalcançáveis.
+Arquivos:    core/pdf_extractor.py, core/tests/test_import_upsert.py
+O que muda:  apagar o arquivo antigo ao substituir, ou pular a regravação quando o
+             conteúdo não mudou
+Não muda:    qual PDF fica associado ao candidato
+Pré-requisito: nenhum
+PR:          2 arquivos · ~30 linhas
+Produção:    REQUER CUIDADO — apagar arquivo é irreversível; comece só evitando novos
+             órfãos e trate os já existentes num comando separado, depois de conferir
+Como validar: reimportar 3× e conferir que o diretório tem 1 arquivo
+Verificação pós-deploy: `du -sh media/resumes/` estável entre importações
+Risco:       médio — mexer em exclusão de arquivo de currículo pede cuidado
+Reversão:    reverter o commit (não recupera arquivo apagado)
+Esforço:     3h
+Ganho:       o disco do Lightsail para de crescer sem limite
+
+[R-32] Candidato sem alteração some da contabilidade
+Motivação:   descoberto em R-05. O "unchanged" não entra em `created` nem em `updated`.
+             O resumo da importação não fecha: 10 PDFs podem virar "3 criados, 2
+             atualizados" sem explicar os outros 5.
+Arquivos:    core/pdf_extractor.py, templates, core/tests/
+O que muda:  ⚠️ MUDA COMPORTAMENTO: adiciona `unchanged` ao dicionário de resultado e
+             exibe na tela
+Não muda:    created, updated, skipped, errors
+Pré-requisito: R-30 (mexem no mesmo contrato de resultado)
+PR:          3 arquivos · ~40 linhas
+Produção:    transparente
+Como validar: teste que hoje fixa o sumiço passa a exigir `unchanged == 1`
+Verificação pós-deploy: reimportar lote idêntico e conferir o resumo
+Risco:       baixo
+Reversão:    reverter o commit
+Esforço:     3h
+Ganho:       o resumo da importação passa a fechar a conta
+
+[R-33] Characterization tests de search_and_rank_candidates_from_pool (T-7)
+Motivação:   é a última função grande sem teste (309 linhas, o maior bloco do arquivo)
+             e bloqueia a conversão do 3º laço, que ficou de fora do R-10
+Arquivos:    core/tests/test_search_pool.py (novo)
+O que muda:  testes T-7 da seção 6: separação com-PDF / sem-PDF, `results_map`,
+             CandidateJob criado com aderência, fallback individual
+Não muda:    nenhuma linha de aplicação
+Pré-requisito: nenhum
+PR:          1 arquivo · ~220 linhas
+Produção:    transparente
+Como validar: passam contra o código atual sem alterá-lo
+Risco:       baixo
+Reversão:    reverter o commit
+Esforço:     1d
+Ganho:       destrava converter o 3º laço para `_process_in_batches` e fecha a
+             cobertura do `pdf_extractor`
+```
+
+---
+
 ## 8. Sequenciamento
 
 ```
@@ -1243,11 +1350,25 @@ Onda 6 ─ Frontend ──┴─────────────────
   R-27 ─→ R-28
 ```
 
-> **Correção do plano (2026-08-15, descoberta ao executar):** R-01 e R-03 estavam
+> **Correção 1 do plano (2026-08-15, descoberta ao executar):** R-01 e R-03 estavam
 > listados como independentes. Não são. Com o `fail_under` calibrado na cobertura real,
 > R-01 sozinho na `main` reprova o CI, porque sem o delete de R-03 a cobertura é 25% e o
 > piso é 27. R-01 passou a ser PR empilhado sobre R-03 e **só pode entrar depois dele**.
 > A ordem correta da Onda 0 é: R-03 → R-01, com R-02 e R-04 livres.
+
+> **Correção 2 do plano (2026-08-15, descoberta ao executar R-10):** o item dizia
+> "3 cópias do loop de lotes". Apenas **2 foram convertidas**. A terceira, em
+> `search_and_rank_candidates_from_pool` (309 linhas), tem forma diferente — separa
+> candidatos com e sem PDF antes de chamar o LLM — e **não tem characterization test**.
+> Converter sem rede seria exatamente o que este projeto existe para evitar. Virou o
+> item **R-33** (escrever T-7) seguido da conversão. R-10 está fechado como parcial,
+> de propósito.
+
+> **Onda 7 acrescentada:** escrever os characterization tests de R-05 e R-06 revelou
+> 6 comportamentos não intencionais. Todos foram **fixados como estão**, para não
+> misturar correção com refatoração, e viraram os itens R-29 a R-33. Dois deles
+> (R-29 e R-30) afetam o uso diário da recrutadora e merecem prioridade sobre boa
+> parte do backlog original.
 
 **Paralelizável:** R-07 corre junto com R-05/R-06. R-13 encaixa em qualquer ponto. A Onda
 4 inteira é independente de todo o resto — se a segurança preocupar mais que a
@@ -1420,10 +1541,23 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento
-Progresso: 0/29 itens concluídos · 3 mergeados em `develop` (R-03 #13, R-01 #14,
-           R-04 #15), aguardando o merge `develop` → `main` para fechar
-           · atualizado em 2026-08-15
+Progresso: 0/34 concluídos de ponta a ponta · 7 itens com código em `develop`
+           (R-01, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o merge
+           `develop` → `main` para fechar · atualizado em 2026-08-15
 ```
+
+### Resultado até aqui
+
+| Métrica | Linha de base | Hoje em `develop` |
+|---|---:|---:|
+| Testes | 100 | **145** |
+| Cobertura real | 25% (reportada como 87,62%) | **41,84%** (real) |
+| `pdf_extractor.py` | 2.046 linhas / 848 stmts | **779 linhas / 291 stmts** |
+| Código morto | 872 linhas | **0** |
+| Cópias do bloco de upsert | 4 (uma divergente) | **1** |
+| Cópias do laço de lotes | 3 | **2** (a 3ª bloqueada em T-7) |
+| Arquivos > 500 linhas | 6 | **4** |
+| Bugs reais corrigidos | — | **1** (R-09) |
 
 > **Fluxo de trabalho acordado:** todo item entra por **PR**, nunca push direto, e a base
 > é sempre `develop`. `develop` foi criada a partir de `main` e não dispara deploy — o
@@ -1501,24 +1635,30 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-05** · Characterization tests: upsert de candidato
       risco: baixo · 1d · produção: transparente · PR: ~250 linhas / 1 arquivo
       pré-requisito: R-03
-  - [ ] Testes escritos e passando **contra o código atual, sem alterá-lo**
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Testes escritos e passando **contra o código atual, sem alterá-lo**
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#17**, CI verde, mergeado em `develop`
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Commitado — `653de97`
+  - Status: **em `develop`** · Notas: 24 testes. Cobertura 28,46% → 34,83%,
+    `pdf_extractor` 2% → 24%. Fixou 3 quirks que viraram itens novos do backlog:
+    R-29 (summary zerado), R-31 (PDF órfão a cada import), R-32 (unchanged some
+    da contabilidade).
 
 - [ ] **R-06** · Characterization tests: loop de lotes e progresso
       risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
       pré-requisito: R-05
-  - [ ] Testes escritos e passando contra o código atual
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Testes escritos e passando contra o código atual
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#18**, CI verde, mergeado em `develop`
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Commitado — `1edfc17`
+  - Status: **em `develop`** · Notas: 21 testes. Cobertura 34,83% → 37,47%,
+    `pdf_extractor` 24% → 34%. Fixou mais 3 quirks: fallback é por lote (aceitável,
+    só não era óbvio), callback final mente sobre o progresso (virou R-30) e os dois
+    importadores têm contrato final diferente.
 
 - [ ] **R-07** · Characterization tests: cliente LLM, retry e parsing
       risco: baixo · 1d · produção: transparente · PR: ~200 linhas / 1 arquivo
@@ -1540,43 +1680,61 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-08** · Extrair `_upsert_candidate()` — unificar as 4 cópias
       risco: médio · 1d · produção: transparente · PR: ~430 linhas / 1 arquivo
       pré-requisito: R-05
-  - [ ] Refatoração aplicada
-  - [ ] **Testes de R-05 passam SEM nenhuma alteração** (se precisou mudar, está errado)
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] Refatoração aplicada
+  - [x] **Testes de R-05 passam SEM nenhuma alteração** — 45/45, incluindo os quirks
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#19**, CI verde, mergeado em `develop`
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
   - [ ] Verificado em produção — 2 PDFs (1 novo, 1 existente), created/updated corretos
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Commitado — `802929a`
+  - Status: **em `develop`** · Notas: o item central do plano, entregue como previsto.
+    4 cópias → 1 (`_upsert_candidate`, apoiado por `_candidate_payload` e
+    `_find_candidate`). A lista de 11 campos saiu de 8 ocorrências para 1
+    (`_TEXT_FIELDS`). `pdf_extractor` 1.102 → 893 linhas; diff +121/−330.
+    A divergência do `shared_pool` foi preservada com `shared_pool=False` explícito
+    e comentário apontando R-09 — corrigida no PR seguinte.
 
 - [ ] **R-09** · 🐛 [BUGFIX] shared_pool ignorado no fallback individual
       risco: médio · 2h · produção: **requer cuidado (P-2)** · PR: ~10 linhas / 2 arquivos
       pré-requisito: R-08
-  - [ ] Duplicatas já existentes levantadas por query antes do deploy
-  - [ ] Teste de regressão escrito — **falha antes, passa depois**
-  - [ ] Correção aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [ ] ⚠️ **Duplicatas já existentes levantadas por query antes do deploy** — PENDENTE,
+        depende de acesso ao banco de produção. Query na descrição do PR #20.
+  - [x] Teste de regressão escrito — **falha antes** (`assert 1 == 0`), **passa depois**
+  - [x] Correção aplicada
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#20**, CI verde, mergeado em `develop`
   - [ ] Usuária avisada da mudança de comportamento
-  - [ ] Implantado
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
   - [ ] Verificado em produção — PREMIUM importa candidato do pool: atualiza, não duplica
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Commitado — `0b9b94b`
+  - Status: **em `develop`, com pendência de limpeza** · Notas: correção de 1 linha,
+    exatamente como previsto — R-08 preparou o terreno. Novo arquivo
+    `test_import_no_ranking.py` (6 testes) cobre a função que não tinha teste nenhum,
+    incluindo um teste de equivalência provando que lote e fallback dão o mesmo
+    resultado para a mesma entrada. **Duas caixas seguem abertas e dependem de você:
+    levantar as duplicatas já criadas pelo bug e avisar a usuária.**
 
 - [ ] **R-10** · Extrair o loop de lotes com fallback individual
       risco: médio · 1d · produção: transparente · PR: ~520 linhas / 1 arquivo
       pré-requisito: R-06, R-08
-  - [ ] Refatoração aplicada
-  - [ ] Testes de R-05 e R-06 passam sem alteração
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] Refatoração aplicada
+  - [x] Testes de R-05 e R-06 passam sem alteração — 51/51
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#21**, CI verde, mergeado em `develop`
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
   - [ ] Verificado em produção — ZIP com 12 PDFs (2 lotes), progresso do início ao fim
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Commitado — `a604872`
+  - Status: **em `develop`, parcial** · Notas: `_process_in_batches` com 3 callbacks
+    obrigatórios + 3 hooks opcionais de instrumentação; o fluxo de vaga mantém todas as
+    métricas, o banco de talentos passa sem elas. Devolve `(resultado, processados)`
+    porque os dois fluxos divergem no callback final. `import_candidates_from_folder`
+    280 → 134 linhas; `..._no_ranking` 173 → 33.
+    **Só 2 dos 3 laços foram convertidos** — ver a correção do plano abaixo.
+    Piso de cobertura desceu 42 → 41: não é regressão, o código duplicado removido
+    estava coberto e numerador e denominador caíram juntos (1.755 → 1.684 stmts).
 
 - [ ] **R-11** · Extrair `_generate()` — unificar as 7 cópias de client + retry
       risco: médio · 0,5d · produção: transparente · PR: ~235 linhas / 1 arquivo
@@ -1865,13 +2023,85 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ---
 
+### Onda 7 — achados da execução
+
+- [ ] 🐛 **R-29** · Reimportar candidato apaga o resumo escrito à mão
+      risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
+      **prioridade ALTA** — perda de trabalho manual da recrutadora
+  - [ ] **Decisão de produto tomada com a usuária** (preservar / preencher se vazio / manter)
+  - [ ] Correção aplicada + teste invertido
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — escrever resumo, reimportar, resumo continua lá
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] 🐛 **R-30** · Barra de progresso mostra 100% mesmo quando tudo falhou
+      risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
+  - [ ] Correção aplicada + teste invertido
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — importar 1 PDF que falha, barra não completa
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
+      risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
+  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor
+  - [ ] Etapa 1: parar de gerar novos órfãos
+  - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — `du -sh media/resumes/` estável entre importações
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] **R-32** · Candidato sem alteração some da contabilidade
+      risco: baixo · 3h · produção: transparente · PR: ~40 linhas / 3 arquivos
+      pré-requisito: R-30
+  - [ ] Correção aplicada + teste invertido
+  - [ ] Template atualizado para exibir `unchanged`
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — reimportar lote idêntico e conferir o resumo
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] **R-33** · Characterization tests de `search_and_rank_candidates_from_pool` (T-7)
+      risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
+      **destrava a conversão do 3º laço, que ficou fora do R-10**
+  - [ ] Testes escritos e passando contra o código atual, sem alterá-lo
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
+
+---
+
 ### Registro de execução
 
 | Data | Item | O que mudou de fato | Surpresas encontradas |
 |---|---|---|---|
 | 2026-08-15 | **R-03** | 940 linhas removidas de `pdf_extractor.py` (2.046 → 1.106). Imports `re`, `unicodedata`, `Decimal`, `PdfReader` removidos. `test_pdf_extractor.py` reescrito (7 testes de helpers mortos → 1 teste de fumaça da API pública). | O `pypdf` virou dependência morta — era usado só pelo parser deletado. Removido de `requirements.txt` e a menção corrigida no README (escopo além do planejado, mas consequência direta do delete). |
 | 2026-08-15 | **R-01** | `omit` de `views.py`/`urls.py`/`llm_extractor.py`/`pdf_extractor.py` removido do `pyproject.toml`. `fail_under` unificado em **27** nos três lugares (pyproject 50, Makefile 20, ci.yml 50 → todos 27). | Duas. (1) Rodado depois de R-03, a cobertura real já era 28,46% e não 25% — o delete tirou 415 statements não cobertos do denominador; `fail_under` ficou em 27, não nos 24 planejados. (2) **R-01 não é independente de R-03**, ao contrário do que a seção 8 dizia: sozinho na `main` ele reprova o CI. Virou PR empilhado; sequenciamento corrigido. |
-| 2026-08-15 | **R-04** | `landing.html` (774 l) e `core/tests.py` removidos com `git rm`. | Nenhuma. `git grep` confirmou zero referências. |
+| 2026-08-15 | **R-04** | `landing.html` (828 l) e `core/tests.py` removidos com `git rm`. PR #15. | Nenhuma. `git grep` confirmou zero referências. |
+| 2026-08-15 | **R-05** | 24 characterization tests do upsert (`test_import_upsert.py`). Piso 27 → 34. Cobertura 28,46% → 34,83%. PR #17, `653de97`. | O teste do caminho sem `user_id` precisou de `django_db(transaction=True)`: o `IntegrityError` envenena o bloco atomic que o pytest abre em volta do teste, o que não acontece em produção (thread própria, autocommit). Fixou 3 quirks → R-29, R-31, R-32. |
+| 2026-08-15 | **R-06** | 21 tests do laço de lotes e fallback (`test_import_batches.py`). Piso 34 → 37. Cobertura 34,83% → 37,47%. PR #18, `1edfc17`. | Fixou mais 3 quirks. O do callback final virou R-30. |
+| 2026-08-15 | **R-08** | `_upsert_candidate` + `_candidate_payload` + `_find_candidate`. 4 cópias → 1; lista de campos de 8 ocorrências → 1. `pdf_extractor` 1.102 → 893 linhas. PR #19, `802929a`. | Nenhuma surpresa: **os 45 testes passaram sem uma única alteração**, que era exatamente o critério de sucesso. A separação R-08/R-09 se pagou. |
+| 2026-08-15 | **R-09** | `shared_pool` repassado no fallback (1 linha). Novo `test_import_no_ranking.py` (6 testes). Cobertura 38,92% → 42,12%. PR #20, `0b9b94b`. | O teste falhou antes (`assert 1 == 0`) e passou depois, como planejado. **Pendências abertas:** levantar duplicatas já criadas pelo bug e avisar a usuária. |
+| 2026-08-15 | **R-10** | `_process_in_batches` com 3 callbacks + 3 hooks opcionais. `import_candidates_from_folder` 280 → 134 linhas; `..._no_ranking` 173 → 33. PR #21, `a604872`. | Duas. (1) **Só 2 dos 3 laços convertidos** — o de `search_and_rank` não tem teste; virou R-33. (2) A cobertura **caiu** 42,12% → 41,84% e o piso desceu para 41: o código duplicado removido estava coberto, então numerador e denominador caíram juntos. Não é regressão, mas engana quem olhar só o número. |
 
 ---
 
