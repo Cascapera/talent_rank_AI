@@ -125,6 +125,178 @@ def _upsert_candidate(
     return candidate, "updated" if changed else "unchanged"
 
 
+def _rate_limited(message: str) -> bool:
+    return "RESOURCE_EXHAUSTED" in message or "429" in message
+
+
+def _process_in_batches(
+    items,
+    *,
+    batch_fn,
+    single_fn,
+    persist_fn,
+    progress_callback=None,
+    on_batch_start=None,
+    on_batch_end=None,
+    on_persist_error=None,
+    batch_size=10,
+) -> tuple[dict, int]:
+    """Percorre `items` em lotes, caindo para item a item quando o lote falha.
+
+    Único laço de importação do sistema. Antes de R-10 este esqueleto existia em
+    3 cópias.
+
+    Contrato dos callbacks obrigatórios:
+        batch_fn(batch, batch_label)  -> lista de dados, um por item do lote
+        single_fn(item, batch_label)  -> dados de um item só (usado no fallback)
+        persist_fn(data, item)        -> "created" | "updated" | "unchanged"
+
+    Hooks opcionais de instrumentação — o fluxo de vaga usa, o banco de talentos não:
+        on_batch_start(batch, batch_label)
+        on_batch_end(batch_label, persisted)
+        on_persist_error(batch_label, error_msg)
+
+    Devolve `(resultado, processados)`. O callback final de conclusão fica por conta
+    de quem chama: os dois fluxos divergem nele.
+    """
+    total = len(items)
+    created = updated = skipped = errors = processed = 0
+    error_details: list[str] = []
+
+    if progress_callback:
+        progress_callback(total=total, processed=0, current=None, status="running")
+
+    total_batches = (total + batch_size - 1) // batch_size
+
+    def report(batch_label, item, suffix=""):
+        if progress_callback:
+            progress_callback(
+                total=total,
+                processed=processed,
+                current=f"Lote {batch_label}: {item.name}{suffix}",
+                status="running",
+                errors=errors,
+            )
+
+    def is_incomplete(data) -> bool:
+        return not data.get("name") or not data.get("linkedin_url", "")
+
+    for batch_start in range(0, total, batch_size):
+        batch = items[batch_start : batch_start + batch_size]
+        batch_label = f"{(batch_start // batch_size) + 1}/{total_batches}"
+
+        try:
+            results = batch_fn(batch, batch_label)
+            if on_batch_start:
+                on_batch_start(batch, batch_label)
+
+            persisted = 0
+            for idx, data in enumerate(results):
+                item = batch[idx]
+
+                if is_incomplete(data):
+                    skipped += 1
+                    processed += 1
+                    report(batch_label, item, " (pulado)")
+                    continue
+
+                try:
+                    outcome = persist_fn(data, item)
+                    if outcome == "created":
+                        created += 1
+                    elif outcome == "updated":
+                        updated += 1
+                    persisted += 1
+                    processed += 1
+                except Exception as save_exc:
+                    errors += 1
+                    msg = str(save_exc)
+                    if on_persist_error:
+                        on_persist_error(batch_label, msg)
+                    error_details.append(
+                        f"{item.name}: Limite de uso da API atingido"
+                        if _rate_limited(msg)
+                        else f"{item.name}: Erro ao salvar - {msg[:100]}"
+                    )
+                    processed += 1
+
+                report(batch_label, item)
+
+            if on_batch_end:
+                on_batch_end(batch_label, persisted)
+
+            # Aguarda entre lotes (menos tempo já que processa 10 de uma vez)
+            if batch_start + batch_size < total:
+                time.sleep(1)
+
+        except Exception:
+            # Se o lote falhar, tenta processar item a item
+            for item in batch:
+                try:
+                    data = single_fn(item, batch_label)
+
+                    if is_incomplete(data):
+                        skipped += 1
+                        processed += 1
+                        report(batch_label, item, " (pulado)")
+                        continue
+
+                    try:
+                        outcome = persist_fn(data, item)
+                        if outcome == "created":
+                            created += 1
+                        elif outcome == "updated":
+                            updated += 1
+                        processed += 1
+                    except Exception as save_exc:
+                        errors += 1
+                        msg = str(save_exc)
+                        if on_persist_error:
+                            on_persist_error(batch_label, msg)
+                        error_details.append(
+                            f"{item.name}: Limite de uso da API atingido"
+                            if _rate_limited(msg)
+                            else f"{item.name}: Erro ao salvar - {msg[:100]}"
+                        )
+                        processed += 1
+
+                except Exception as individual_exc:
+                    errors += 1
+                    msg = str(individual_exc)
+                    error_details.append(
+                        f"{item.name}: Limite de uso da API atingido"
+                        if _rate_limited(msg)
+                        else f"{item.name}: {msg[:100]}"
+                    )
+                    processed += 1
+
+                report(batch_label, item)
+                time.sleep(2)
+
+    result = {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "total": total,
+        "error_details": error_details[:10],
+    }
+    return result, processed
+
+
+def _pdf_files_in(folder_path: str) -> list[Path]:
+    folder = Path(folder_path)
+    if not folder.exists():
+        raise FileNotFoundError(f"Pasta nao encontrada: {folder}")
+    return [folder] if folder.is_file() else sorted(folder.glob("*.pdf"))
+
+
+def _split_role_titles(role_title: str | None) -> list[str]:
+    if not role_title:
+        return []
+    return [item.strip() for item in role_title.split("/") if item.strip()]
+
+
 def import_candidates_from_folder(
     folder_path: str,
     job_description: str,
@@ -135,14 +307,13 @@ def import_candidates_from_folder(
     shared_pool: bool = False,
     progress_callback=None,
 ) -> dict:
-    folder = Path(folder_path)
-    if not folder.exists():
-        raise FileNotFoundError(f"Pasta nao encontrada: {folder}")
-
-    pdf_files = [folder] if folder.is_file() else sorted(folder.glob("*.pdf"))
+    pdf_files = _pdf_files_in(folder_path)
     total_files = len(pdf_files)
+    role_titles = _split_role_titles(role_title)
+    instrumented = job_id is not None
+
     import_timer = Timer()
-    if job_id is not None:
+    if instrumented:
         vacancy_candidate_imports_total.inc()
         log_event(
             "vacancy_candidate_import_started",
@@ -150,257 +321,112 @@ def import_candidates_from_folder(
             vacancy_id=job_id,
             candidate_count=total_files,
         )
-    if progress_callback:
-        progress_callback(total=total_files, processed=0, current=None, status="running")
-    role_titles = []
-    if role_title:
-        role_titles = [item.strip() for item in role_title.split("/") if item.strip()]
-    created = 0
-    updated = 0
-    skipped = 0
-    errors = 0
-    error_details = []
 
-    # Processa em lotes de 10 PDFs
-    batch_size = 10
-    processed_count = 0
+    rank_timer: Timer | None = None
 
-    for batch_start in range(0, len(pdf_files), batch_size):
-        batch = pdf_files[batch_start : batch_start + batch_size]
-        batch_num = (batch_start // batch_size) + 1
-        total_batches = (len(pdf_files) + batch_size - 1) // batch_size
-        batch_label = f"{batch_num}/{total_batches}"
+    def batch_fn(batch, batch_label):
+        return extract_candidates_batch_with_llm(
+            batch,
+            job_description=job_description,
+            weights=weights,
+            role_titles=role_titles,
+            vacancy_id=job_id,
+            batch_id=batch_label,
+        )
 
-        try:
-            # Processa o lote inteiro
-            results = extract_candidates_batch_with_llm(
-                batch,
-                job_description=job_description,
-                weights=weights,
-                role_titles=role_titles,
-                vacancy_id=job_id,
-                batch_id=batch_label,
+    def single_fn(pdf_file, batch_label):
+        return extract_candidate_with_llm(
+            pdf_file,
+            job_description=job_description,
+            weights=weights,
+            role_titles=role_titles,
+            vacancy_id=job_id,
+            batch_id=batch_label,
+        )
+
+    def persist_fn(data, pdf_file):
+        candidate, outcome = _upsert_candidate(
+            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
+        )
+        if job_id:
+            CandidateJob.objects.update_or_create(
+                job_id=job_id,
+                candidate=candidate,
+                defaults={
+                    "adherence_score": data.get("adherence"),
+                    "technical_justification": data.get("technical_justification", ""),
+                },
             )
+        return outcome
 
-            if job_id is not None:
-                rank_timer = Timer()
-                vacancy_candidate_rankings_total.inc()
-                log_event(
-                    "vacancy_candidate_ranking_started",
-                    status="started",
-                    vacancy_id=job_id,
-                    batch_id=batch_label,
-                    candidate_count=len(batch),
-                )
+    def on_batch_start(batch, batch_label):
+        nonlocal rank_timer
+        rank_timer = Timer()
+        vacancy_candidate_rankings_total.inc()
+        log_event(
+            "vacancy_candidate_ranking_started",
+            status="started",
+            vacancy_id=job_id,
+            batch_id=batch_label,
+            candidate_count=len(batch),
+        )
 
-            # Processa cada resultado do lote
-            persisted_rankings = 0
-            for idx, data in enumerate(results):
-                pdf_file = batch[idx]
+    def on_batch_end(batch_label, persisted):
+        rank_ms = rank_timer.elapsed_ms()
+        vacancy_candidate_ranking_duration_ms.observe(rank_ms)
+        log_event(
+            "vacancy_candidate_ranking_finished",
+            status="success",
+            vacancy_id=job_id,
+            batch_id=batch_label,
+            candidate_count=persisted,
+            duration_ms=rank_ms,
+        )
+        vacancy_ranking_persist_total.inc()
+        vacancy_ranking_persist_duration_ms.observe(rank_ms)
+        log_event(
+            "vacancy_ranking_persisted",
+            status="success",
+            vacancy_id=job_id,
+            batch_id=batch_label,
+            candidate_count=persisted,
+            duration_ms=rank_ms,
+        )
 
-                linkedin_url = data.get("linkedin_url", "")
-                if not data.get("name") or not linkedin_url:
-                    skipped += 1
-                    processed_count += 1  # Conta como processado mesmo que pulado
-                    if progress_callback:
-                        progress_callback(
-                            total=total_files,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {pdf_file.name} (pulado)",
-                            status="running",
-                            errors=errors,
-                        )
-                    continue
+    def on_persist_error(batch_label, error_msg):
+        vacancy_ranking_persist_failures_total.inc()
+        log_event(
+            "vacancy_ranking_persist_fail",
+            status="error",
+            vacancy_id=job_id,
+            batch_id=batch_label,
+            error=error_msg[:500],
+        )
 
-                try:
-                    candidate, outcome = _upsert_candidate(
-                        data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
-                    )
-                    if outcome == "created":
-                        created += 1
-                    elif outcome == "updated":
-                        updated += 1
+    result, _processed = _process_in_batches(
+        pdf_files,
+        batch_fn=batch_fn,
+        single_fn=single_fn,
+        persist_fn=persist_fn,
+        progress_callback=progress_callback,
+        on_batch_start=on_batch_start if instrumented else None,
+        on_batch_end=on_batch_end if instrumented else None,
+        on_persist_error=on_persist_error if instrumented else None,
+    )
 
-                    if job_id:
-                        CandidateJob.objects.update_or_create(
-                            job_id=job_id,
-                            candidate=candidate,
-                            defaults={
-                                "adherence_score": data.get("adherence"),
-                                "technical_justification": data.get("technical_justification", ""),
-                            },
-                        )
-                        persisted_rankings += 1
-
-                    # Incrementa contador apenas após salvar com sucesso
-                    processed_count += 1
-
-                except Exception as save_exc:
-                    errors += 1
-                    error_msg = str(save_exc)
-                    if job_id is not None:
-                        vacancy_ranking_persist_failures_total.inc()
-                        log_event(
-                            "vacancy_ranking_persist_fail",
-                            status="error",
-                            vacancy_id=job_id,
-                            batch_id=batch_label,
-                            error=error_msg[:500],
-                        )
-                    if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
-                        error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                    else:
-                        error_details.append(f"{pdf_file.name}: Erro ao salvar - {error_msg[:100]}")
-                    processed_count += 1  # Conta como processado mesmo com erro
-
-                if progress_callback:
-                    progress_callback(
-                        total=total_files,
-                        processed=processed_count,
-                        current=f"Lote {batch_num}/{total_batches}: {pdf_file.name}",
-                        status="running",
-                        errors=errors,
-                    )
-
-            if job_id is not None:
-                _rank_ms = rank_timer.elapsed_ms()
-                vacancy_candidate_ranking_duration_ms.observe(_rank_ms)
-                log_event(
-                    "vacancy_candidate_ranking_finished",
-                    status="success",
-                    vacancy_id=job_id,
-                    batch_id=batch_label,
-                    candidate_count=persisted_rankings,
-                    duration_ms=_rank_ms,
-                )
-                vacancy_ranking_persist_total.inc()
-                vacancy_ranking_persist_duration_ms.observe(_rank_ms)
-                log_event(
-                    "vacancy_ranking_persisted",
-                    status="success",
-                    vacancy_id=job_id,
-                    batch_id=batch_label,
-                    candidate_count=persisted_rankings,
-                    duration_ms=_rank_ms,
-                )
-
-            # Aguarda entre lotes (menos tempo já que processa 10 de uma vez)
-            if batch_start + batch_size < len(pdf_files):
-                time.sleep(1)
-
-        except Exception as exc:
-            # Se o lote falhar, tenta processar individualmente
-            error_msg = str(exc)
-            for pdf_file in batch:
-                try:
-                    data = extract_candidate_with_llm(
-                        pdf_file,
-                        job_description=job_description,
-                        weights=weights,
-                        role_titles=role_titles,
-                        vacancy_id=job_id,
-                        batch_id=batch_label,
-                    )
-                    linkedin_url = data.get("linkedin_url", "")
-                    if not data.get("name") or not linkedin_url:
-                        skipped += 1
-                        processed_count += 1  # Conta como processado mesmo que pulado
-                        if progress_callback:
-                            progress_callback(
-                                total=total_files,
-                                processed=processed_count,
-                                current=f"Lote {batch_num}/{total_batches}: {pdf_file.name} (pulado)",
-                                status="running",
-                                errors=errors,
-                            )
-                        continue
-
-                    try:
-                        candidate, outcome = _upsert_candidate(
-                            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
-                        )
-                        if outcome == "created":
-                            created += 1
-                        elif outcome == "updated":
-                            updated += 1
-
-                        if job_id:
-                            CandidateJob.objects.update_or_create(
-                                job_id=job_id,
-                                candidate=candidate,
-                                defaults={
-                                    "adherence_score": data.get("adherence"),
-                                    "technical_justification": data.get(
-                                        "technical_justification", ""
-                                    ),
-                                },
-                            )
-
-                        # Incrementa contador apenas após salvar com sucesso
-                        processed_count += 1
-
-                    except Exception as save_exc:
-                        errors += 1
-                        save_error_msg = str(save_exc)
-                        if job_id is not None:
-                            vacancy_ranking_persist_failures_total.inc()
-                            log_event(
-                                "vacancy_ranking_persist_fail",
-                                status="error",
-                                vacancy_id=job_id,
-                                batch_id=batch_label,
-                                error=save_error_msg[:500],
-                            )
-                        if "RESOURCE_EXHAUSTED" in save_error_msg or "429" in save_error_msg:
-                            error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                        else:
-                            error_details.append(
-                                f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}"
-                            )
-                        processed_count += 1  # Conta como processado mesmo com erro
-
-                except Exception as individual_exc:
-                    errors += 1
-                    individual_error_msg = str(individual_exc)
-                    if (
-                        "RESOURCE_EXHAUSTED" in individual_error_msg
-                        or "429" in individual_error_msg
-                    ):
-                        error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                    else:
-                        error_details.append(f"{pdf_file.name}: {individual_error_msg[:100]}")
-                    processed_count += 1  # Conta como processado mesmo com erro
-
-                if progress_callback:
-                    progress_callback(
-                        total=total_files,
-                        processed=processed_count,
-                        current=f"Lote {batch_num}/{total_batches}: {pdf_file.name}",
-                        status="running",
-                        errors=errors,
-                    )
-
-                time.sleep(2)
-
-    result = {
-        "created": created,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "total": total_files,
-        "error_details": error_details[:10],
-    }
-    if job_id is not None:
-        _import_ms = import_timer.elapsed_ms()
-        vacancy_candidate_import_duration_ms.observe(_import_ms)
+    if instrumented:
+        import_ms = import_timer.elapsed_ms()
+        vacancy_candidate_import_duration_ms.observe(import_ms)
         log_event(
             "vacancy_candidate_import_finished",
             status="success",
             vacancy_id=job_id,
             candidate_count=total_files,
-            duration_ms=_import_ms,
+            duration_ms=import_ms,
         )
     if progress_callback:
+        # Envia total_files, nao o contador real: importacao que falhou em tudo
+        # ainda termina mostrando 100%. Comportamento preservado de proposito.
         progress_callback(
             total=total_files, processed=total_files, current=None, status="completed"
         )
@@ -413,165 +439,28 @@ def import_candidates_from_folder_no_ranking(
     shared_pool: bool = False,
     progress_callback=None,
 ) -> dict:
-    """Importa candidatos sem rankeamento (para banco de talentos). Candidatos ficam vinculados ao user_id."""
-    folder = Path(folder_path)
-    if not folder.exists():
-        raise FileNotFoundError(f"Pasta não encontrada: {folder}")
+    """Importa candidatos sem rankeamento (banco de talentos), vinculados ao user_id."""
+    pdf_files = _pdf_files_in(folder_path)
 
-    pdf_files = [folder] if folder.is_file() else sorted(folder.glob("*.pdf"))
-    total_files = len(pdf_files)
+    def persist_fn(data, pdf_file):
+        _candidate, outcome = _upsert_candidate(
+            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
+        )
+        return outcome
+
+    result, processed = _process_in_batches(
+        pdf_files,
+        batch_fn=lambda batch, _label: extract_candidates_batch_no_ranking(batch),
+        single_fn=lambda pdf_file, _label: extract_candidate_no_ranking(pdf_file),
+        persist_fn=persist_fn,
+        progress_callback=progress_callback,
+    )
+
     if progress_callback:
-        progress_callback(total=total_files, processed=0, current=None, status="running")
-
-    created = 0
-    updated = 0
-    skipped = 0
-    errors = 0
-    error_details = []
-
-    # Processa em lotes de 10 PDFs
-    batch_size = 10
-    processed_count = 0
-
-    for batch_start in range(0, len(pdf_files), batch_size):
-        batch = pdf_files[batch_start : batch_start + batch_size]
-        batch_num = (batch_start // batch_size) + 1
-        total_batches = (len(pdf_files) + batch_size - 1) // batch_size
-
-        try:
-            # Processa o lote inteiro sem rankeamento
-            results = extract_candidates_batch_no_ranking(batch)
-
-            # Processa cada resultado do lote
-            for idx, data in enumerate(results):
-                pdf_file = batch[idx]
-
-                linkedin_url = data.get("linkedin_url", "")
-                if not data.get("name") or not linkedin_url:
-                    skipped += 1
-                    processed_count += 1
-                    if progress_callback:
-                        progress_callback(
-                            total=total_files,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {pdf_file.name} (pulado)",
-                            status="running",
-                            errors=errors,
-                        )
-                    continue
-
-                try:
-                    candidate, outcome = _upsert_candidate(
-                        data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
-                    )
-                    if outcome == "created":
-                        created += 1
-                    elif outcome == "updated":
-                        updated += 1
-
-                    # Incrementa contador apenas após salvar com sucesso
-                    processed_count += 1
-
-                except Exception as save_exc:
-                    errors += 1
-                    error_msg = str(save_exc)
-                    if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
-                        error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                    else:
-                        error_details.append(f"{pdf_file.name}: Erro ao salvar - {error_msg[:100]}")
-                    processed_count += 1
-
-                if progress_callback:
-                    progress_callback(
-                        total=total_files,
-                        processed=processed_count,
-                        current=f"Lote {batch_num}/{total_batches}: {pdf_file.name}",
-                        status="running",
-                        errors=errors,
-                    )
-
-            # Aguarda entre lotes
-            if batch_start + batch_size < len(pdf_files):
-                time.sleep(1)
-
-        except Exception as exc:
-            # Se o lote falhar, tenta processar individualmente
-            error_msg = str(exc)
-            for pdf_file in batch:
-                try:
-                    data = extract_candidate_no_ranking(pdf_file)
-                    linkedin_url = data.get("linkedin_url", "")
-                    if not data.get("name") or not linkedin_url:
-                        skipped += 1
-                        processed_count += 1
-                        if progress_callback:
-                            progress_callback(
-                                total=total_files,
-                                processed=processed_count,
-                                current=f"Lote {batch_num}/{total_batches}: {pdf_file.name} (pulado)",
-                                status="running",
-                                errors=errors,
-                            )
-                        continue
-
-                    try:
-                        candidate, outcome = _upsert_candidate(
-                            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
-                        )
-                        if outcome == "created":
-                            created += 1
-                        elif outcome == "updated":
-                            updated += 1
-
-                        # Incrementa contador apenas após salvar com sucesso
-                        processed_count += 1
-
-                    except Exception as save_exc:
-                        errors += 1
-                        save_error_msg = str(save_exc)
-                        if "RESOURCE_EXHAUSTED" in save_error_msg or "429" in save_error_msg:
-                            error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                        else:
-                            error_details.append(
-                                f"{pdf_file.name}: Erro ao salvar - {save_error_msg[:100]}"
-                            )
-                        processed_count += 1
-
-                except Exception as individual_exc:
-                    errors += 1
-                    individual_error_msg = str(individual_exc)
-                    if (
-                        "RESOURCE_EXHAUSTED" in individual_error_msg
-                        or "429" in individual_error_msg
-                    ):
-                        error_details.append(f"{pdf_file.name}: Limite de uso da API atingido")
-                    else:
-                        error_details.append(f"{pdf_file.name}: {individual_error_msg[:100]}")
-                    processed_count += 1
-
-                if progress_callback:
-                    progress_callback(
-                        total=total_files,
-                        processed=processed_count,
-                        current=f"Lote {batch_num}/{total_batches}: {pdf_file.name}",
-                        status="running",
-                        errors=errors,
-                    )
-
-                time.sleep(2)
-
-    result = {
-        "created": created,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "total": total_files,
-        "error_details": error_details[:10],
-    }
-    if progress_callback:
+        # Diferente do fluxo de vaga: aqui vai o contador real e o result no payload.
         progress_callback(
-            total=total_files,
-            processed=processed_count,
+            total=result["total"],
+            processed=processed,
             current=None,
             status="completed",
             result=result,
