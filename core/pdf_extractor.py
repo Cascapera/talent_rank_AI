@@ -515,11 +515,8 @@ def import_candidates_from_folder_no_ranking(
                         continue
 
                     try:
-                        # shared_pool nao e considerado aqui: divergencia das outras 3 copias,
-                        # preservada de proposito para nao misturar bugfix com refatoracao.
-                        # Corrigida em R-09.
                         candidate, outcome = _upsert_candidate(
-                            data, user_id=user_id, shared_pool=False, pdf_path=pdf_file
+                            data, user_id=user_id, shared_pool=shared_pool, pdf_path=pdf_file
                         )
                         if outcome == "created":
                             created += 1
