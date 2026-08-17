@@ -2333,16 +2333,28 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-26** · `CandidateJob.save()`: evitar a query extra
       risco: baixo · 3h · produção: transparente · PR: ~35 linhas / 2 arquivos
-  - [ ] Refatoração aplicada
-  - [ ] Os 13 testes de `test_models.py` passam sem alteração
-  - [ ] `assertNumQueries` provando 1 query a menos
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Refatoração aplicada
+  - [x] **Os 13 testes de `test_models.py` passam sem alteração**
+  - [x] Contagem de queries provando 1 a menos — **2 → 1** no save comum
+  - [x] Suíte completa verde — 318 testes, cobertura 75,19%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — status "Candidato pronto" preenche a data
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a leitura do status anterior saiu do topo do
+    `save()` e foi para dentro do único ramo que a usa. **Duas condições, não uma:** só
+    consulta quando o status novo é "Candidato pronto" **e** o `ready_at` já está
+    preenchido — se ainda não está, a marcação acontece de qualquer jeito e a consulta
+    seria desperdício.
+
+    Onde isso pesa: a importação grava aderência para **cada candidato de cada lote**, e
+    cada gravação levava a leitura extra junto.
+
+    3 testes de custo, todos vermelhos antes (salvar aderência, salvar parecer, mover
+    para etapa intermediária), mais 1 provando que a consulta **continua acontecendo**
+    no caso em que ela se paga — otimização que some com o caso legítimo não é
+    otimização, é bug.
 
 - [ ] **Onda 5 concluída** — relatórios em 2 queries, upsert indexado
 
