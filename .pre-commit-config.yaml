@@ -1,6 +1,7 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+    # Tem que bater com o ruff de requirements-dev.txt e do job de lint no CI.
+    rev: v0.15.17
     hooks:
       - id: ruff
         args: [--fix]

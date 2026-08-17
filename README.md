@@ -3,8 +3,8 @@
 Python Django backend for screening, structured extraction, and ranking of candidates from PDFs exported from LinkedIn Recruiter, with LLM integration (Google GenAI).
 
 [![CI](https://github.com/Cascapera/talent_rank_AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Cascapera/talent_rank_AI/actions/workflows/ci.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Django](https://img.shields.io/badge/django-5.x-green.svg)](https://www.djangoproject.com/)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
+[![Django](https://img.shields.io/badge/django-5.2-green.svg)](https://www.djangoproject.com/)
 
 ---
 
@@ -89,7 +89,7 @@ This is a first pass at observability, scoped to the core vacancy processing pat
 
 | Area | Technologies |
 |------|----------------|
-| **Backend** | Python 3.12+, Django 5.x |
+| **Backend** | Python 3.10 (prod), Django 5.2 |
 | **Database** | PostgreSQL |
 | **Async** | Threading (daemon threads) + FileBasedCache |
 | **Infra** | Gunicorn, Nginx, Whitenoise, AWS Lightsail |
@@ -249,7 +249,8 @@ make format   # apply fixes
 
 ### Requirements
 
-- Python 3.12+
+- Python 3.10 — the version running in production. The CI also runs the suite
+  on 3.12, but 3.10 is the gate: pin your local venv to it to avoid drift.
 - PostgreSQL
 - Google GenAI API key (`GEMINI_API_KEY`)
 
