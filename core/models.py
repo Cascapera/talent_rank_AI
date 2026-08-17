@@ -184,3 +184,58 @@ class CandidateJob(models.Model):
                 if self.candidate_id:
                     Candidate.objects.filter(id=self.candidate_id).update(ready_at=now_date)
         super().save(*args, **kwargs)
+
+
+class ImportJob(models.Model):
+    """Estado de um job de background, no banco (R-20a).
+
+    Hoje o progresso vive **só no cache**, com TTL de 1h e sem dono claro. O problema
+    real (D-6): o deploy roda `systemctl restart`, as threads são `daemon` e morrem sem
+    executar o `finally` — o status fica `"running"` no cache por uma hora e a
+    recrutadora olha uma barra de progresso parada, sem erro em lugar nenhum.
+
+    Esta tabela é a etapa **expand** do expand-contract: por enquanto ninguém lê daqui.
+    O código escreve no cache **e** aqui; a leitura continua no cache. O R-20b move a
+    leitura e passa a exibir "interrompido" quando o `heartbeat_at` para de andar.
+
+    `job` é nulo para importação no banco de talentos, que não pertence a vaga nenhuma.
+    """
+
+    class Kind(models.TextChoices):
+        VACANCY_IMPORT = "VACANCY_IMPORT", "Importação em vaga"
+        TALENT_POOL_IMPORT = "TALENT_POOL_IMPORT", "Importação no banco de talentos"
+        POOL_SEARCH = "POOL_SEARCH", "Busca no banco de talentos"
+
+    class Status(models.TextChoices):
+        RUNNING = "RUNNING", "Em andamento"
+        COMPLETED = "COMPLETED", "Concluída"
+        ERROR = "ERROR", "Falhou"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="import_jobs",
+    )
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="import_jobs",
+        null=True,
+        blank=True,
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.RUNNING)
+    processed = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    # Atualizado a cada passo do job. É o que permite ao R-20b distinguir "ainda
+    # trabalhando" de "morreu no meio" — um `status=RUNNING` com heartbeat velho.
+    heartbeat_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["user", "kind", "-started_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} #{self.pk} ({self.status})"
