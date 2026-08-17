@@ -1,6 +1,23 @@
+# Dependências de desenvolvimento e CI — VERSÕES TRAVADAS (R-02).
+#
+# Antes deste PR os pacotes aqui usavam `>=`, que é piso e não trava: um
+# `pytest` novo entrava sozinho e podia reprovar um PR que não mudou nada.
+# Pior, o CI nem lia este arquivo — o job de teste rodava
+# `pip install pytest pytest-django pytest-cov`, sem versão e sem `ruff`,
+# então dev e CI podiam divergir sem ninguém notar. O CI agora instala daqui.
+#
+# O `ruff` fixado aqui é o mesmo do `.pre-commit-config.yaml` e o mesmo do job
+# de lint no CI. Versões diferentes de ruff formatam diferente — com três
+# fontes divergentes, o hook local "consertava" o que o CI acabava de aprovar.
+#
+# Todas as versões abaixo foram verificadas como instaláveis em Python 3.10 e
+# 3.12, que são as duas versões da matriz do CI.
+
 -r requirements.txt
-pytest>=8.0
-pytest-django>=4.8
-pytest-cov>=4.1
-ruff>=0.8
-pre-commit>=3.6
+
+pytest==9.0.3
+pytest-django==4.12.0
+pytest-cov==7.1.0
+coverage==7.14.1
+ruff==0.15.17
+pre-commit==4.6.2

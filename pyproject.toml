@@ -3,10 +3,16 @@ name = "talent-rank-ai"
 version = "0.1.0"
 description = "Plataforma de recrutamento com IA para ranking de candidatos"
 readme = "README.md"
-requires-python = ">=3.12"
+# Produção roda Python 3.10.12 (confirmado por `pip freeze` no servidor em
+# 2026-08-17). Declarar 3.12 aqui era ficção: a suíte nunca tinha rodado na
+# versão que atende as usuárias. Só sobe quando o servidor subir.
+requires-python = ">=3.10"
 
 [tool.ruff]
-target-version = "py312"
+# py310, não py312: com a regra `UP` (pyupgrade) ligada e o `make format`
+# rodando `ruff check --fix .`, um target alto autoriza o ruff a reescrever o
+# código em sintaxe 3.11/3.12. Isso passaria no CI e quebraria em produção.
+target-version = "py310"
 line-length = 100
 exclude = [".git", ".venv", "venv", "__pycache__", "migrations", "staticfiles", "media"]
 
