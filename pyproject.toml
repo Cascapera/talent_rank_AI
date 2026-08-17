@@ -3,10 +3,16 @@ name = "talent-rank-ai"
 version = "0.1.0"
 description = "Plataforma de recrutamento com IA para ranking de candidatos"
 readme = "README.md"
-requires-python = ">=3.12"
+# Produção roda Python 3.10.12 (confirmado por `pip freeze` no servidor em
+# 2026-08-17). Declarar 3.12 aqui era ficção: a suíte nunca tinha rodado na
+# versão que atende as usuárias. Só sobe quando o servidor subir.
+requires-python = ">=3.10"
 
 [tool.ruff]
-target-version = "py312"
+# py310, não py312: com a regra `UP` (pyupgrade) ligada e o `make format`
+# rodando `ruff check --fix .`, um target alto autoriza o ruff a reescrever o
+# código em sintaxe 3.11/3.12. Isso passaria no CI e quebraria em produção.
+target-version = "py310"
 line-length = 100
 exclude = [".git", ".venv", "venv", "__pycache__", "migrations", "staticfiles", "media"]
 
@@ -42,20 +48,24 @@ filterwarnings = ["ignore::DeprecationWarning", "ignore::PendingDeprecationWarni
 
 [tool.coverage.run]
 source = ["core"]
+# Nada de código de aplicação é omitido: o número tem que ser o real.
+# views.py, llm_extractor.py e pdf_extractor.py ficavam de fora e escondiam
+# 1.820 dos 2.241 statements — o CI reportava 88% medindo 19% do código.
 omit = [
     "*/migrations/*",
     "*/tests/*",
     "*/__init__.py",
-    "core/views.py",      # Views: integração HTTP, testar via E2E
-    "core/urls.py",       # Rotas: configuração, não lógica
-    "core/apps.py",       # AppConfig, sem lógica
-    "core/llm_extractor.py",   # Chamadas à API Gemini, testar via integração
-    "core/pdf_extractor.py",   # PDF + DB + API, testar via integração
 ]
 branch = true
 
 [tool.coverage.report]
-fail_under = 50
+# Piso = cobertura real de hoje menos 1 ponto, para o CI travar em regressão
+# sem travar o dia a dia. Sobe a cada onda do PROJETO_REFATORACAO.md (meta: 55).
+# 27 -> 34 (R-05, upsert) -> 37 (R-06, lotes) -> 42 (R-09, banco de talentos)
+# -> 41 (R-10). A queda de 42,12 para 41,84 nao e regressao: o codigo duplicado
+# removido em R-10 estava coberto, entao numerador e denominador cairam juntos
+# (1.755 -> 1.684 statements). Em absoluto ha menos codigo sem teste do que antes.
+fail_under = 41
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

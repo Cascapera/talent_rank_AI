@@ -69,7 +69,7 @@ Exemplo: `ALLOWED_HOSTS=.talentrankai.com.br,talentrankai.com.br,meuambiente.us-
 
 1. Acesse **Elastic Beanstalk** → **Create Application**.
 2. **Application name**: `talent-rank-ai` (ou outro).
-3. **Platform**: **Python** e a versão usada no projeto (ex.: Python 3.12).
+3. **Platform**: **Python** na mesma versão de produção — **Python 3.10**.
 4. **Application code**: “Upload your code”.
 5. Crie um **ZIP** da aplicação:
    - Inclua: pasta do projeto (com `manage.py`, `talent_query/`, `core/`, `templates/`, `static/`, `requirements.txt`, `Procfile`, `.ebextensions/`).
