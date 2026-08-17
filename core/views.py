@@ -17,6 +17,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from .domain.normalization import SYNONYMS
 from .forms import CandidateForm, JobForm, SignupForm
 from .llm_extractor import generate_parecer
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
@@ -418,27 +419,17 @@ def job_create(request):
 
 
 def _build_boolean_search(job: Job) -> str:
-    synonyms = {
-        "js": ["javascript"],
-        "javascript": ["js"],
-        "node": ["node.js", "nodejs"],
-        "nodejs": ["node.js", "node"],
-        "node.js": ["node", "nodejs"],
-        "react": ["reactjs"],
-        "reactjs": ["react"],
-        "k8s": ["kubernetes"],
-        "kubernetes": ["k8s"],
-        "aws": ["amazon web services"],
-        "gcp": ["google cloud"],
-        "ci/cd": ["cicd", "continuous integration", "continuous delivery"],
-    }
-
     def normalize_list(value: str) -> list[str]:
         return [item.strip() for item in value.split(",") if item.strip()]
 
     def expand_term(term: str) -> list[str]:
+        # R-13: o dicionário agora é único (domain/normalization.py). A CHAVE, porém,
+        # continua sendo calculada aqui com `strip().lower()`, sem remover acento —
+        # diferente do `normalize()` que o matching usa. Não unifiquei de propósito:
+        # é mudança de comportamento e virou R-36. Na prática não diverge hoje porque
+        # todas as chaves de SYNONYMS são ASCII.
         key = term.strip().lower()
-        extra = synonyms.get(key, [])
+        extra = SYNONYMS.get(key, [])
         return [term] + extra
 
     def group_terms(terms: list[str]) -> str:
