@@ -14,7 +14,7 @@
 | **Foco** | Global |
 | **Itens no backlog** | 35 (29 originais + 6 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | 9 itens em `develop` · PRs #13 a #23 · nada em produção ainda |
+| **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1550,16 +1550,25 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ## 13. Checklist de acompanhamento
 
 ```
-Status: em andamento
-Progresso: 0/35 concluídos de ponta a ponta · 9 itens com código em `develop`
-           (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o
-           merge `develop` → `main` para fechar · 1 item fechado sem correção
-           (R-29, decisão de produto) · atualizado em 2026-08-17
-           (o contador dizia "7 itens" e listava 8: erro de contagem, corrigido)
+Status: em andamento — **Ondas 0 e 1 EM PRODUÇÃO desde 2026-08-17**
+Progresso: 9 itens implantados, aguardando só a verificação manual em produção
+           (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10) · 1 item fechado
+           sem correção (R-29, decisão de produto) · 35 no backlog
+           atualizado em 2026-08-17
 
-           ✅ As duas pendências que dependiam do dono do projeto foram resolvidas em
-           2026-08-17: `pip freeze` do servidor (R-02) e levantamento das duplicatas
-           (R-09). **Nada mais bloqueia o merge `develop` → `main`.**
+           🚀 **Merge `develop` → `main` feito: PR #26, 26 commits, 13 PRs.**
+           `main` saiu de `0a8801d` (12/06) para `b6f431c`. CI verde (lint, py3.10,
+           py3.12); CD concluído em 46s. O deploy confirmou as duas previsões do
+           pré-voo: `No migrations to apply` e `pip install` sem baixar, instalar ou
+           desinstalar nada — os pins do R-02 bateram exatamente com o servidor.
+           `0 static files copied, 130 unmodified`.
+
+           ✅ As duas pendências que dependiam do dono do projeto foram resolvidas
+           antes do merge: `pip freeze` do servidor (R-02) e levantamento das
+           duplicatas (R-09).
+
+           ⏳ **Falta:** a verificação manual em produção de cada item (as caixas
+           "Verificado em produção" seguem abertas). Roteiro no registro de execução.
 ```
 
 ### Resultado até aqui
@@ -1595,7 +1604,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#14**, CI verde (lint 8s, test 49s), mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção
   - [x] Commitado — `21eb996` · branch `refat/r-01-cobertura-real`
   - Status: **código pronto** · Notas: executado DEPOIS de R-03, então o `fail_under`
@@ -1611,7 +1620,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#23**, CI verde (lint 8s, py3.10 1m1s, py3.12 1m2s),
         mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — `systemctl status` + home e dashboard abrem
   - [x] Commitado — `aa814d3` · branch `refat/r-02-travar-dependencias`
   - Status: **em `develop`** · Notas: o `pip freeze` mostrou produção em **Python 3.10.12
@@ -1631,7 +1640,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde (94 testes)
   - [x] Lint e format verdes — sem import órfão
   - [x] PR aberto e revisado — **#13**, CI verde (lint 9s, test 55s), mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — importação de 1 PDF numa vaga de teste
   - [x] Commitado — `4403ca8` · branch `refat/r-03-remover-codigo-morto`
   - Status: **código pronto** · Notas: removidas **940 linhas** (872 de corpo de função +
@@ -1650,7 +1659,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#15**, CI verde (lint 6s, test 56s)
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — página inicial abre
   - [x] Commitado — `958038b` · branch `refat/r-04-arquivos-orfaos`
   - Status: **código pronto** · Notas: `git grep` por "landing" não retornou nenhuma
@@ -1664,7 +1673,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#17**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [x] Commitado — `653de97`
   - Status: **em `develop`** · Notas: 24 testes. Cobertura 28,46% → 34,83%,
     `pdf_extractor` 2% → 24%. Fixou 3 quirks que viraram itens novos do backlog:
@@ -1678,7 +1687,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#18**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [x] Commitado — `1edfc17`
   - Status: **em `develop`** · Notas: 21 testes. Cobertura 34,83% → 37,47%,
     `pdf_extractor` 24% → 34%. Fixou mais 3 quirks: fallback é por lote (aceitável,
@@ -1710,7 +1719,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#19**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — 2 PDFs (1 novo, 1 existente), created/updated corretos
   - [x] Commitado — `802929a`
   - Status: **em `develop`** · Notas: o item central do plano, entregue como previsto.
@@ -1734,7 +1743,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Usuária avisada da mudança de comportamento — **stakes baixas depois do
         levantamento**: a única duplicata existente é da conta do dono do projeto, não da
         dela. O aviso vira cortesia ("importar deixa de duplicar"), não contenção de dano.
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — PREMIUM importa candidato do pool: atualiza, não duplica
   - [x] Commitado — `0b9b94b`
   - Status: **em `develop`, sem pendência de dado** · Notas: correção de 1 linha,
@@ -1776,7 +1785,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#21**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [ ] Verificado em produção — ZIP com 12 PDFs (2 lotes), progresso do início ao fim
   - [x] Commitado — `a604872`
   - Status: **em `develop`, parcial** · Notas: `_process_in_batches` com 3 callbacks
@@ -2178,6 +2187,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-15 | **R-10** | `_process_in_batches` com 3 callbacks + 3 hooks opcionais. `import_candidates_from_folder` 280 → 134 linhas; `..._no_ranking` 173 → 33. PR #21, `a604872`. | Duas. (1) **Só 2 dos 3 laços convertidos** — o de `search_and_rank` não tem teste; virou R-33. (2) A cobertura **caiu** 42,12% → 41,84% e o piso desceu para 41: o código duplicado removido estava coberto, então numerador e denominador caíram juntos. Não é regressão, mas engana quem olhar só o número. |
 | 2026-08-17 | **R-02** | 7 diretas + 30 transitivas fixadas em `==` nas versões do servidor. `requirements-dev.txt` de `>=` para `==`; o CI passou a instalar dele. `pyproject` `requires-python` e ruff `target-version` de 3.12 para **3.10**. `ci.yml` virou matriz 3.10 + 3.12. `ruff` unificado em 0.15.17 (CI, dev e pre-commit, que estava em v0.8.0). README e DEPLOY_AWS corrigidos. PR #23, `aa814d3`. | Três. (1) **Produção roda Python 3.10.12, não 3.12** — o projeto inteiro (pyproject, ruff, CI, README) declarava 3.12+ e a suíte nunca tinha rodado na versão que atende as usuárias. O alinhamento teve que ser para baixo, e o plano dizia o contrário. (2) **Armadilha ativa:** ruff com `target-version = py312`, regra `UP` ligada e `make format` rodando `ruff check --fix .` podiam reescrever o código em sintaxe 3.12, passar no CI em 3.12 e quebrar em produção no 3.10. (3) Travar só as diretas, como o plano pedia, deixaria ~30 transitivas flutuando — um `pydantic` novo derruba o `google-genai` igual. Fixei tudo. Bônus: o Django 6.0.6 do venv local nunca poderia rodar em produção (Django 6.0 exige 3.12+). Fim do suporte do 3.10 em outubro/2026 virou **R-34**. |
 | 2026-08-17 | **R-09** (pendência) / **R-29** | Levantamento das duplicatas rodado no banco de produção via `manage.py dbshell`: **1 grupo, 2 linhas**. Confirmada a assinatura do R-09 e descartada a hipótese de sujeira no dado. Decisão: não mexer no banco. R-29 fechado sem correção — mantém o comportamento atual de sobrescrever o resumo. | Três. (1) O query que estava na descrição do PR #20 **superestimava o problema**: agrupava por `linkedin_url` entre todos os usuários, e duas recrutadoras terem o mesmo perfil é normal. Reescrito para a assinatura real (linha PREMIUM criada depois de outra). (2) A duplicata é da conta do dono do projeto, não da usuária — provável resíduo de teste, não trabalho perdido dela. (3) Achado no caminho: `_find_candidate` devolve `qs.first()` sobre `ordering = ["-updated_at", ...]`, então com duplicata pré-existente a reimportação atualiza a cópia mais recente e deixa a outra parada. O R-09 impede duplicata nova, não resolve as velhas. |
+| 2026-08-17 | **Ondas 0 e 1 → produção** | Merge `develop` → `main` (PR #26): 26 commits, 13 PRs, `0a8801d` → `b6f431c`. CI verde nas duas versões da matriz; CD concluído em 46s. Superfície real: **1 arquivo de aplicação alterado** (`pdf_extractor.py`), `views.py` intocado, **zero migrations**, nenhum template alterado. | Duas confirmações e nenhuma surpresa. (1) `pip install` no deploy **não baixou, instalou nem desinstalou nada** — os pins do R-02, colhidos do próprio servidor horas antes, bateram exatamente. O item se validou no primeiro deploy. (2) `No migrations to apply` e `0 static files copied, 130 unmodified`, como o pré-voo previa. O `pypdf` segue instalado no servidor (o `pip install` não desinstala) e sem uso — inofensivo, não deve voltar ao `requirements.txt`. |
 
 ---
 
