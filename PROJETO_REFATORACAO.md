@@ -12,7 +12,7 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 35 (29 originais + 6 achados na execução) |
+| **Itens no backlog** | 36 (29 originais + 7 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
 | **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
 
@@ -1732,14 +1732,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-07** · Characterization tests: cliente LLM, retry e parsing
       risco: baixo · 1d · produção: transparente · PR: ~200 linhas / 1 arquivo
-  - [ ] Testes escritos e passando contra o código atual
-  - [ ] Confirmado que nenhum teste chama a API do Gemini de verdade
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Testes escritos e passando contra o código atual, **sem alterá-lo**
+  - [x] Confirmado que nenhum teste chama a API do Gemini de verdade — `genai.Client`
+        substituído por duplo e `time.sleep` capturado numa lista
+  - [x] Suíte completa verde — **195 testes**, cobertura **53,58%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: 50 testes em `test_llm_client.py`, divididos em
+    `_extract_json` · `_normalize_list` · `_normalize_linkedin_url` · guarda da API key
+    (parametrizada nas 7 funções) · retry · contratos · validação de tamanho do lote.
+    **Cobertura do `llm_extractor` foi de 20% para 71%**, e a total de 41,83% para
+    53,58% — o maior salto de uma tacada só no projeto. Piso do CI subiu 41 → 53 nos
+    três lugares. A meta de 55% da seção 10 está a um item de distância.
+
+    Três comportamentos fixados que ninguém tinha visto:
+    1. **`_extract_json` procura array ANTES de objeto** — virou **R-35**, é o mais sério.
+    2. O laço **dorme depois da 4ª tentativa** também, antes de propagar: com rate
+       limit são 30s parados sem nenhuma tentativa pela frente.
+    3. Erro que não é rate limit nem 503 **não usa o backoff** — dorme 3s fixos, mas
+       ainda assim tenta as 4 vezes.
 
 - [ ] **Onda 0 concluída** — suíte verde, cobertura real exposta, nada em aberto
 
@@ -2215,6 +2228,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Commitado — `<hash>`
   - Status: não iniciado · Notas:
 
+- [ ] 🐛 **R-35** · `_extract_json` devolve o array interno em vez do objeto
+      risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
+      **Achado no R-07.** `llm_extractor.py:198-216`: quando o `json.loads` do texto
+      inteiro falha, a função procura **array antes de objeto**. Se a resposta vier
+      embrulhada em ``` e o objeto tiver um array interno — e todo candidato tem
+      `skills` —, o slice do array vence e o candidato inteiro vira a lista de skills.
+      Hoje não dispara porque o prompt pede "apenas JSON válido (sem markdown)" e o
+      `json.loads` resolve na primeira tentativa. É uma bomba armada, não um incêndio:
+      basta o modelo embrulhar a resposta uma vez. Fixado por
+      `test_array_is_tried_before_object`.
+      Correção provável: procurar objeto e array e escolher o que começa antes no
+      texto, em vez de fixar a ordem.
+  - [ ] Correção aplicada + teste invertido
+  - [ ] Conferido que o caso do array puro (lote) continua funcionando
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
 - [ ] ⏳ **R-34** · Subir produção de Python 3.10 para 3.12 — **prazo: outubro/2026**
       risco: **alto (mexe no servidor)** · 0,5d + janela · produção: requer parada curta
       pré-requisito: R-02 (a matriz do CI já prova que a suíte passa em 3.12)
@@ -2254,6 +2288,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **Verificação em produção** | Fluxo completo exercitado no front pelo dono do projeto: criar vaga, importar candidatos, navegar. Sem erro. 9 itens fechados de ponta a ponta (R-01 a R-06, R-08, R-09, R-10). | Duas verificações ficaram parciais e foram marcadas `[~]` em vez de `[x]`: o caso de 2 lotes do R-10 (exige ZIP com 12+ PDFs) e o caso PREMIUM do R-09 (exige candidato que já exista no pool de outra conta). Ambas cobertas por teste automatizado — 21 testes do R-06 e o teste de regressão do R-09 —, mas registrar como "verificado" seria falsear o registro. Ficam como observação na próxima importação grande da usuária. |
 | 2026-08-17 | **R-30** | Callback final do fluxo de vaga passa a mandar `total`, `processed` e `result`, igual ao `..._no_ranking`. 3 characterization tests do R-06 invertidos. PR #29. | **O diagnóstico do item estava errado e foi refutado antes de escrever código.** Três motivos independentes: (1) não existe barra de progresso — `job_detail.html:711-723` renderiza o ramo `completed` a partir do `result`, sem usar `processed`/`total`; (2) o callback final é sempre sobrescrito por `views.py:557` microssegundos depois, então não sobrevive a um poll de 2s; (3) `processed` nunca esteve errado — `_process_in_batches` incrementa em todos os caminhos, inclusive nos de erro, então `processed == total` sempre. "Processado" significa tentado, não bem-sucedido; o teste do R-06 leu o nome da variável, não a semântica. Sobrou unificar o contrato e fechar uma janela de corrida em que um poll via `completed` sem `result` e a tela mostrava tudo zerado. Estimativa corrigida de 2h para 30min. |
 | 2026-08-17 | **R-32** | `unchanged` entra no `result` do `_process_in_batches` e passa a ser exibido. Teste do R-05 invertido, agora exigindo que a soma feche com o total. | Duas. (1) O plano dizia "3 arquivos" e eram **5**: a exibição vive em **4 lugares**, não 1 — `job_detail.html` e `talent_pool.html`, cada um com um bloco Django e um bloco JS de poll que renderizam a mesma frase de formas diferentes. É a duplicação do D-11 cobrando o preço na prática. (2) O cache de status tem TTL de 1h, então na primeira hora após o deploy existem payloads sem a chave nova — resolvido com `\|default:0` no template e `\|\| 0` no JS. |
+| 2026-08-17 | **R-07** | 50 characterization tests do cliente LLM em `test_llm_client.py`: `_extract_json`, `_normalize_list`, `_normalize_linkedin_url`, guarda da API key parametrizada nas 7 funções, retry, contratos das 7 públicas e validação de tamanho do lote. Nenhuma linha de aplicação alterada. Piso do CI 41 → 53. | **Maior salto de cobertura do projeto: 41,83% → 53,58%**, com o `llm_extractor` indo de 20% para 71%. A meta de 55% da seção 10 ficou a um item de distância. Três comportamentos fixados que ninguém tinha visto: (1) **`_extract_json` procura array antes de objeto** — resposta embrulhada em ``` com array interno faz o candidato virar a lista de skills dele; virou **R-35** e é o mais sério; (2) o laço **dorme depois da 4ª tentativa** antes de propagar — com rate limit são 30s parados à toa; (3) erro que não é rate limit nem 503 não usa backoff, dorme 3s fixos, mas ainda tenta 4 vezes. |
 
 ---
 
