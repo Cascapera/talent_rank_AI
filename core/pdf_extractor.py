@@ -30,6 +30,22 @@ def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
         candidate.resume_pdf.save(Path(pdf_path).name, File(f), save=True)
 
 
+def _resume_path(candidate: Candidate) -> Path | None:
+    """Caminho do currículo em disco, ou `None` se não houver arquivo utilizável.
+
+    O registro no banco não basta: o arquivo tem que existir. Um `media/` limpo sem
+    limpar o banco não quebra o ranking — o candidato passa a ser avaliado pelos dados
+    estruturados, em silêncio.
+    """
+    if not candidate.resume_pdf or not hasattr(candidate.resume_pdf, "path"):
+        return None
+    try:
+        path = Path(candidate.resume_pdf.path)
+    except (ValueError, OSError):
+        return None
+    return path if path.exists() else None
+
+
 # Campos de texto do candidato: None nunca chega ao banco neles, vira "".
 _TEXT_FIELDS = (
     "name",
@@ -140,6 +156,8 @@ def _process_in_batches(
     on_batch_end=None,
     on_persist_error=None,
     batch_size=10,
+    is_incomplete=None,
+    persist_error_label="Erro ao salvar",
 ) -> tuple[dict, int]:
     """Percorre `items` em lotes, caindo para item a item quando o lote falha.
 
@@ -178,8 +196,12 @@ def _process_in_batches(
                 errors=errors,
             )
 
-    def is_incomplete(data) -> bool:
-        return not data.get("name") or not data.get("linkedin_url", "")
+    if is_incomplete is None:
+        # Default: o critério da importação de candidato. O ranking do banco de talentos
+        # trabalha com dicionários de aderência, que não têm nome nem URL — por isso o
+        # critério é injetável desde a conversão do 3º laço.
+        def is_incomplete(data) -> bool:
+            return not data.get("name") or not data.get("linkedin_url", "")
 
     for batch_start in range(0, total, batch_size):
         batch = items[batch_start : batch_start + batch_size]
@@ -200,6 +222,7 @@ def _process_in_batches(
                     report(batch_label, item, " (pulado)")
                     continue
 
+                suffix = ""
                 try:
                     outcome = persist_fn(data, item)
                     if outcome == "created":
@@ -212,17 +235,18 @@ def _process_in_batches(
                     processed += 1
                 except Exception as save_exc:
                     errors += 1
+                    suffix = " (erro)"
                     msg = str(save_exc)
                     if on_persist_error:
                         on_persist_error(batch_label, msg)
                     error_details.append(
                         f"{item.name}: Limite de uso da API atingido"
                         if _rate_limited(msg)
-                        else f"{item.name}: Erro ao salvar - {msg[:100]}"
+                        else f"{item.name}: {persist_error_label} - {msg[:100]}"
                     )
                     processed += 1
 
-                report(batch_label, item)
+                report(batch_label, item, suffix)
 
             if on_batch_end:
                 on_batch_end(batch_label, persisted)
@@ -260,7 +284,7 @@ def _process_in_batches(
                         error_details.append(
                             f"{item.name}: Limite de uso da API atingido"
                             if _rate_limited(msg)
-                            else f"{item.name}: Erro ao salvar - {msg[:100]}"
+                            else f"{item.name}: {persist_error_label} - {msg[:100]}"
                         )
                         processed += 1
 
@@ -513,8 +537,6 @@ def search_and_rank_candidates_from_pool(
         candidates = candidates.filter(id__in=candidate_ids)
 
     total_candidates = candidates.count()
-    if progress_callback:
-        progress_callback(total=total_candidates, processed=0, current=None, status="running")
 
     if total_candidates == 0:
         result = {
@@ -524,6 +546,7 @@ def search_and_rank_candidates_from_pool(
             "error_details": [],
         }
         if progress_callback:
+            progress_callback(total=0, processed=0, current=None, status="running")
             progress_callback(total=0, processed=0, current=None, status="completed", result=result)
         return result
 
@@ -531,257 +554,121 @@ def search_and_rank_candidates_from_pool(
     if role_title:
         role_titles = [item.strip() for item in role_title.split("/") if item.strip()]
 
-    linked = 0
-    errors = 0
-    error_details = []
-
-    # Processa em lotes de 10 candidatos
-    batch_size = 10
-    processed_count = 0
-
     candidates_list = list(candidates)
 
-    for batch_start in range(0, len(candidates_list), batch_size):
-        batch = candidates_list[batch_start : batch_start + batch_size]
-        batch_num = (batch_start // batch_size) + 1
-        total_batches = (len(candidates_list) + batch_size - 1) // batch_size
+    def _structured_payload(candidate) -> dict:
+        """Dados do candidato para avaliacao sem curriculo em PDF."""
+        return {
+            "name": candidate.name or "",
+            "current_title": candidate.current_title or "",
+            "current_company": candidate.current_company or "",
+            "location": candidate.location or "",
+            "skills": candidate.skills or "",
+            "technologies": candidate.technologies or "",
+            "languages": candidate.languages or "",
+            "certifications": candidate.certifications or "",
+            "seniority": candidate.seniority or "",
+            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
+            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
+            "summary": candidate.summary or "",
+        }
 
-        try:
-            # Separa candidatos com PDF (avaliação via currículo completo) dos sem PDF (dados estruturados)
-            with_pdf = []
-            without_pdf = []
-            for candidate in batch:
-                if candidate.resume_pdf and hasattr(candidate.resume_pdf, "path"):
-                    try:
-                        path = Path(candidate.resume_pdf.path)
-                        if path.exists():
-                            with_pdf.append((candidate, path))
-                            continue
-                    except (ValueError, OSError):
-                        pass
-                without_pdf.append(
-                    (
-                        candidate,
-                        {
-                            "name": candidate.name or "",
-                            "current_title": candidate.current_title or "",
-                            "current_company": candidate.current_company or "",
-                            "location": candidate.location or "",
-                            "skills": candidate.skills or "",
-                            "technologies": candidate.technologies or "",
-                            "languages": candidate.languages or "",
-                            "certifications": candidate.certifications or "",
-                            "seniority": candidate.seniority or "",
-                            "experience_time": str(candidate.experience_time)
-                            if candidate.experience_time
-                            else "",
-                            "average_tenure": str(candidate.average_tenure)
-                            if candidate.average_tenure
-                            else "",
-                            "summary": candidate.summary or "",
-                        },
+    def _adherence_of(data: dict) -> dict:
+        return {
+            "adherence": data.get("adherence"),
+            "technical_justification": data.get("technical_justification", ""),
+        }
+
+    def batch_fn(batch, batch_label):
+        """Avalia o lote e devolve um resultado por candidato, na ordem do lote.
+
+        Candidato com curriculo em disco e avaliado pelo PDF; os demais, pelos dados
+        estruturados. Cada grupo vai em uma unica chamada ao LLM.
+        """
+        with_pdf = []
+        without_pdf = []
+        for candidate in batch:
+            path = _resume_path(candidate)
+            if path is not None:
+                with_pdf.append((candidate, path))
+            else:
+                without_pdf.append((candidate, _structured_payload(candidate)))
+
+        results_map = {}
+
+        if with_pdf:
+            llm_results = extract_candidates_batch_with_llm(
+                [path for _, path in with_pdf],
+                job_description=job_description,
+                weights=weights,
+                role_titles=role_titles,
+            )
+            for (candidate, _), data in zip(with_pdf, llm_results, strict=True):
+                results_map[candidate.id] = _adherence_of(data)
+
+        if without_pdf:
+            adherence_results = calculate_adherence_batch_for_candidates(
+                [payload for _, payload in without_pdf],
+                job_description=job_description,
+                weights=weights,
+                role_titles=role_titles,
+            )
+            for (candidate, _), data in zip(without_pdf, adherence_results, strict=True):
+                results_map[candidate.id] = _adherence_of(data)
+
+        return [results_map.get(candidate.id, {}) for candidate in batch]
+
+    def single_fn(candidate, batch_label):
+        path = _resume_path(candidate)
+        if path is not None:
+            try:
+                return _adherence_of(
+                    extract_candidate_with_llm(
+                        path,
+                        job_description=job_description,
+                        weights=weights,
+                        role_titles=role_titles,
                     )
                 )
+            except (ValueError, OSError):
+                # PDF ilegivel: cai para os dados estruturados, como antes da conversao.
+                pass
+        return _adherence_of(
+            calculate_adherence_for_candidate(
+                _structured_payload(candidate),
+                job_description=job_description,
+                weights=weights,
+                role_titles=role_titles,
+            )
+        )
 
-            # Mapa candidato -> {adherence, technical_justification}
-            results_map = {}
+    def persist_fn(data, candidate):
+        _, created = CandidateJob.objects.update_or_create(
+            job_id=job_id,
+            candidate=candidate,
+            defaults={
+                "adherence_score": data.get("adherence"),
+                "technical_justification": data.get("technical_justification", ""),
+            },
+        )
+        return "created" if created else "updated"
 
-            if with_pdf:
-                pdf_paths = [p for _, p in with_pdf]
-                pdf_candidates = [c for c, _ in with_pdf]
-                llm_results = extract_candidates_batch_with_llm(
-                    pdf_paths,
-                    job_description=job_description,
-                    weights=weights,
-                    role_titles=role_titles,
-                )
-                for candidate, data in zip(pdf_candidates, llm_results, strict=True):
-                    results_map[candidate.id] = {
-                        "adherence": data.get("adherence"),
-                        "technical_justification": data.get("technical_justification", ""),
-                    }
-
-            if without_pdf:
-                no_pdf_candidates = [c for c, _ in without_pdf]
-                no_pdf_data = [d for _, d in without_pdf]
-                adherence_results = calculate_adherence_batch_for_candidates(
-                    no_pdf_data,
-                    job_description=job_description,
-                    weights=weights,
-                    role_titles=role_titles,
-                )
-                for candidate, data in zip(no_pdf_candidates, adherence_results, strict=True):
-                    results_map[candidate.id] = {
-                        "adherence": data.get("adherence"),
-                        "technical_justification": data.get("technical_justification", ""),
-                    }
-
-            # Cria CandidateJob para cada candidato
-            for candidate in batch:
-                adherence_data = results_map.get(candidate.id, {})
-                if not adherence_data:
-                    continue  # Candidato sem resultado (não deveria ocorrer)
-                try:
-                    CandidateJob.objects.update_or_create(
-                        job_id=job_id,
-                        candidate=candidate,
-                        defaults={
-                            "adherence_score": adherence_data.get("adherence"),
-                            "technical_justification": adherence_data.get(
-                                "technical_justification", ""
-                            ),
-                        },
-                    )
-                    linked += 1
-                    processed_count += 1
-
-                    if progress_callback:
-                        progress_callback(
-                            total=total_candidates,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {candidate.name}",
-                            status="running",
-                            errors=errors,
-                        )
-                except Exception as save_exc:
-                    errors += 1
-                    error_msg = str(save_exc)
-                    error_details.append(f"{candidate.name}: Erro ao vincular - {error_msg[:100]}")
-                    processed_count += 1
-
-                    if progress_callback:
-                        progress_callback(
-                            total=total_candidates,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {candidate.name} (erro)",
-                            status="running",
-                            errors=errors,
-                        )
-
-            # Aguarda entre lotes
-            if batch_start + batch_size < len(candidates_list):
-                time.sleep(1)
-
-        except Exception as exc:
-            # Se o lote falhar, tenta processar individualmente
-            error_msg = str(exc)
-            for candidate in batch:
-                try:
-                    # Candidato com PDF: envia currículo completo para avaliação mais precisa
-                    if candidate.resume_pdf and hasattr(candidate.resume_pdf, "path"):
-                        try:
-                            path = Path(candidate.resume_pdf.path)
-                            if path.exists():
-                                full_data = extract_candidate_with_llm(
-                                    path,
-                                    job_description=job_description,
-                                    weights=weights,
-                                    role_titles=role_titles,
-                                )
-                                adherence_data = {
-                                    "adherence": full_data.get("adherence"),
-                                    "technical_justification": full_data.get(
-                                        "technical_justification", ""
-                                    ),
-                                }
-                            else:
-                                raise FileNotFoundError("PDF não encontrado")
-                        except (ValueError, OSError, FileNotFoundError):
-                            # Fallback para dados estruturados se PDF inacessível
-                            candidate_data = {
-                                "name": candidate.name or "",
-                                "current_title": candidate.current_title or "",
-                                "current_company": candidate.current_company or "",
-                                "location": candidate.location or "",
-                                "skills": candidate.skills or "",
-                                "technologies": candidate.technologies or "",
-                                "languages": candidate.languages or "",
-                                "certifications": candidate.certifications or "",
-                                "seniority": candidate.seniority or "",
-                                "experience_time": str(candidate.experience_time)
-                                if candidate.experience_time
-                                else "",
-                                "average_tenure": str(candidate.average_tenure)
-                                if candidate.average_tenure
-                                else "",
-                                "summary": candidate.summary or "",
-                            }
-                            adherence_data = calculate_adherence_for_candidate(
-                                candidate_data,
-                                job_description=job_description,
-                                weights=weights,
-                                role_titles=role_titles,
-                            )
-                    else:
-                        # Candidato sem PDF: usa dados estruturados (comportamento atual)
-                        candidate_data = {
-                            "name": candidate.name or "",
-                            "current_title": candidate.current_title or "",
-                            "current_company": candidate.current_company or "",
-                            "location": candidate.location or "",
-                            "skills": candidate.skills or "",
-                            "technologies": candidate.technologies or "",
-                            "languages": candidate.languages or "",
-                            "certifications": candidate.certifications or "",
-                            "seniority": candidate.seniority or "",
-                            "experience_time": str(candidate.experience_time)
-                            if candidate.experience_time
-                            else "",
-                            "average_tenure": str(candidate.average_tenure)
-                            if candidate.average_tenure
-                            else "",
-                            "summary": candidate.summary or "",
-                        }
-                        adherence_data = calculate_adherence_for_candidate(
-                            candidate_data,
-                            job_description=job_description,
-                            weights=weights,
-                            role_titles=role_titles,
-                        )
-
-                    CandidateJob.objects.update_or_create(
-                        job_id=job_id,
-                        candidate=candidate,
-                        defaults={
-                            "adherence_score": adherence_data.get("adherence"),
-                            "technical_justification": adherence_data.get(
-                                "technical_justification", ""
-                            ),
-                        },
-                    )
-                    linked += 1
-                    processed_count += 1
-
-                    if progress_callback:
-                        progress_callback(
-                            total=total_candidates,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {candidate.name}",
-                            status="running",
-                            errors=errors,
-                        )
-                except Exception as individual_exc:
-                    errors += 1
-                    individual_error_msg = str(individual_exc)
-                    error_details.append(f"{candidate.name}: {individual_error_msg[:100]}")
-                    processed_count += 1
-
-                    if progress_callback:
-                        progress_callback(
-                            total=total_candidates,
-                            processed=processed_count,
-                            current=f"Lote {batch_num}/{total_batches}: {candidate.name} (erro)",
-                            status="running",
-                            errors=errors,
-                        )
-
-                time.sleep(2)
+    batch_result, processed_count = _process_in_batches(
+        candidates_list,
+        batch_fn=batch_fn,
+        single_fn=single_fn,
+        persist_fn=persist_fn,
+        progress_callback=progress_callback,
+        # Dicionario de aderencia nao tem nome nem URL: nada aqui e "incompleto".
+        is_incomplete=lambda data: not data,
+        persist_error_label="Erro ao vincular",
+    )
 
     result = {
-        "linked": linked,
-        "errors": errors,
+        "linked": batch_result["created"] + batch_result["updated"],
+        "errors": batch_result["errors"],
         "total": total_candidates,
-        "error_details": error_details[:10],
+        "error_details": batch_result["error_details"],
     }
     if progress_callback:
         progress_callback(

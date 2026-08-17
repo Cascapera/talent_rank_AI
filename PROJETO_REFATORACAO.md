@@ -12,7 +12,7 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 37 (29 originais + 8 achados na execução) |
+| **Itens no backlog** | 38 (29 originais + 9 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
 | **Executado** | **Ondas 0 e 1 completas e em produção** · 15 itens · PRs #13 a #35 |
 
@@ -1505,7 +1505,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Cobertura real (sem `omit`) | 25% | ≥ 55% | **62,30%** | ✅ |
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
-| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **779** | 🟡 |
+| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
 | Linhas em `views.py` | 987 | ≤ 450 | **~975** | ❌ |
 | Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
@@ -2306,6 +2306,37 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **Destrava a conversão do 3º laço** para `_process_in_batches`, que ficou de fora do
     R-10 exatamente por não ter rede.
 
+- [ ] **R-37** · Converter o 3º laço de lotes para `_process_in_batches`
+      risco: médio · 0,5d · produção: transparente · PR: ~300 linhas / 1 arquivo
+      pré-requisito: **R-33** (era ele que faltava desde o R-10)
+      Fecha a pendência aberta no R-10, que converteu 2 dos 3 laços.
+  - [x] `_process_in_batches` generalizado — `is_incomplete` e `persist_error_label`
+        viraram parâmetros, com o default preservando o comportamento da importação
+  - [x] `search_and_rank_candidates_from_pool` convertida
+  - [x] **Os 19 testes do R-33 passam SEM nenhuma alteração** — 235/235
+  - [x] Suíte completa verde · Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — buscar candidatos do banco numa vaga, com e sem PDF
+  - [ ] Commitado — `<hash>`
+  - Status: **em andamento** · Notas: `for batch_start in range` cai de **3 para 1** —
+    D-3 do diagnóstico fechado por completo. `pdf_extractor.py` 779 → **590 linhas**
+    (295 → 254 statements), cobertura do arquivo 88% → **91%**.
+
+    O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: o `is_incomplete`
+    era fixo em `name`/`linkedin_url` e dicionário de aderência não tem nenhum dos dois
+    (tudo viraria "pulado"), e o prefixo da mensagem de erro difere entre os fluxos
+    ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta — o sufixo `(erro)` na
+    mensagem de progresso — foi **eliminado em vez de parametrizado**: agora os dois
+    fluxos marcam a falha ao vivo, o que o fluxo de vaga não fazia.
+
+    Extraído `_resume_path()`, que concentra a regra "o registro no banco não basta, o
+    arquivo tem que existir" — antes escrita 3 vezes com try/except ligeiramente
+    diferentes.
+
+    A cobertura total caiu 62,30% → 62,18%: mesmo efeito do R-10, o código duplicado
+    removido estava coberto. Em absoluto há menos código sem teste.
+
 - [ ] **R-36** · Unificar as três normalizações de termo
       risco: **médio — muda resultado de busca** · 3h · produção: transparente
       **Achado no R-13**, que só unificou o dicionário. O plano supunha que as
@@ -2421,6 +2452,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-35** | 🐛 `_extract_json`: a ordem fixa (array antes de objeto) virou "vence quem começa antes no texto", com fallback. PR #37. | O caso corrigido: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` — o candidato virava a lista de skills dele. O caminho de lote segue intacto porque a resposta em lote é um array de objetos, então o `[` vem antes do primeiro `{`. Achado pelos testes do R-07, corrigido no dia seguinte à descoberta. |
 | 2026-08-17 | **R-36** | As três normalizações de termo viram uma. `views._normalize_term` deletada, `expand_term` passa a usar `normalize()`, `unicodedata` sai do `views.py`. Piso do CI 53 → 55. PR #38. | **Meta de cobertura de 55% da seção 10 batida: 55,94%.** Muda comportamento em dois pontos, ambos para melhor: o filtro das listagens passa a aparar as pontas (antes, `" python "` com espaço sobrando não achava nada) e a busca booleana passa a expandir sinônimo de termo acentuado. Um teste garante que `views._normalize_term` não existe mais, para ninguém reintroduzir por hábito. |
 | 2026-08-17 | **R-33** | 19 characterization tests de `search_and_rank_candidates_from_pool` em `test_search_pool.py` — a última função grande sem teste (309 linhas). Nenhuma linha de aplicação alterada. Piso do CI 55 → 62. | **`pdf_extractor.py` foi de 57% para 88%** e a cobertura total de 55,94% para **62,30%**, ultrapassando a meta da seção 10 com folga. Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o arquivo tem que existir em disco** — um `media/` limpo sem limpar o banco não quebra a busca, o candidato só passa a ser avaliado pelos dados estruturados, em silêncio. Destrava a conversão do 3º laço para `_process_in_batches`, que ficou de fora do R-10 por não ter rede. |
+| 2026-08-17 | **R-37** | 3º laço convertido para `_process_in_batches`. `for batch_start in range` cai de **3 para 1** — D-3 fechado por completo. `pdf_extractor.py` 779 → **590 linhas**, cobertura do arquivo 88% → **91%**. Extraído `_resume_path()`. | **Os 19 testes do R-33 passaram sem tocar em uma linha** — o item foi escrito ontem justamente para isto. O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: `is_incomplete` (era fixo em `name`/`linkedin_url`, e dicionário de aderência não tem nenhum dos dois — tudo viraria "pulado") e `persist_error_label` ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta, o sufixo `(erro)` na mensagem de progresso, foi **eliminado em vez de parametrizado**: os dois fluxos passam a marcar a falha ao vivo, o que o fluxo de vaga não fazia. Cobertura total 62,30% → 62,18%, mesmo efeito do R-10 — o duplicado removido estava coberto. |
 
 ---
 
