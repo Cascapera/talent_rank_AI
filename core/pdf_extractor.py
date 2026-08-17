@@ -160,7 +160,7 @@ def _process_in_batches(
     de quem chama: os dois fluxos divergem nele.
     """
     total = len(items)
-    created = updated = skipped = errors = processed = 0
+    created = updated = unchanged = skipped = errors = processed = 0
     error_details: list[str] = []
 
     if progress_callback:
@@ -206,6 +206,8 @@ def _process_in_batches(
                         created += 1
                     elif outcome == "updated":
                         updated += 1
+                    elif outcome == "unchanged":
+                        unchanged += 1
                     persisted += 1
                     processed += 1
                 except Exception as save_exc:
@@ -247,6 +249,8 @@ def _process_in_batches(
                             created += 1
                         elif outcome == "updated":
                             updated += 1
+                        elif outcome == "unchanged":
+                            unchanged += 1
                         processed += 1
                     except Exception as save_exc:
                         errors += 1
@@ -276,6 +280,11 @@ def _process_in_batches(
     result = {
         "created": created,
         "updated": updated,
+        # R-32: "unchanged" e o candidato que ja existia e no qual nenhum campo mudou.
+        # Antes ele nao entrava em contador nenhum, e a conta da importacao nao fechava:
+        # 10 PDFs podiam virar "3 criados, 2 atualizados" sem explicar os outros 5.
+        # Agora created + updated + unchanged + skipped + errors == total.
+        "unchanged": unchanged,
         "skipped": skipped,
         "errors": errors,
         "total": total,

@@ -2186,15 +2186,23 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-32** · Candidato sem alteração some da contabilidade
       risco: baixo · 3h · produção: transparente · PR: ~40 linhas / 3 arquivos
       pré-requisito: R-30
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Template atualizado para exibir `unchanged`
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + teste invertido
+  - [x] Template atualizado para exibir `unchanged` — **4 pontos**, não 1:
+        `job_detail.html` e `talent_pool.html`, cada um no bloco Django e no JS do poll
+  - [x] Vermelho antes / verde depois provado
+  - [x] Suíte completa verde — 145 testes, cobertura 41,83%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — reimportar lote idêntico e conferir o resumo
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `unchanged` entra no `result` e a conta passa a
+    fechar — o teste afirma `created + updated + unchanged + skipped + errors == total`,
+    que é a garantia de verdade, mais forte que conferir cada contador. Como os dois
+    importadores usam o `_process_in_batches`, os dois ganharam de uma vez. Nos templates
+    usei `|default:0` e `|| 0` porque o cache de status tem TTL de 1h: um payload gravado
+    antes do deploy não tem a chave, e sem o default a tela renderizaria vazio na primeira
+    hora. Esforço real bem abaixo das 3h estimadas.
 
 - [ ] **R-33** · Characterization tests de `search_and_rank_candidates_from_pool` (T-7)
       risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
@@ -2244,6 +2252,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-09** (pendência) / **R-29** | Levantamento das duplicatas rodado no banco de produção via `manage.py dbshell`: **1 grupo, 2 linhas**. Confirmada a assinatura do R-09 e descartada a hipótese de sujeira no dado. Decisão: não mexer no banco. R-29 fechado sem correção — mantém o comportamento atual de sobrescrever o resumo. | Três. (1) O query que estava na descrição do PR #20 **superestimava o problema**: agrupava por `linkedin_url` entre todos os usuários, e duas recrutadoras terem o mesmo perfil é normal. Reescrito para a assinatura real (linha PREMIUM criada depois de outra). (2) A duplicata é da conta do dono do projeto, não da usuária — provável resíduo de teste, não trabalho perdido dela. (3) Achado no caminho: `_find_candidate` devolve `qs.first()` sobre `ordering = ["-updated_at", ...]`, então com duplicata pré-existente a reimportação atualiza a cópia mais recente e deixa a outra parada. O R-09 impede duplicata nova, não resolve as velhas. |
 | 2026-08-17 | **R-01 a R-10 → produção** | Merge `develop` → `main` (PR #26): 26 commits, 13 PRs, `0a8801d` → `b6f431c`. CI verde nas duas versões da matriz; CD concluído em 46s. Superfície real: **1 arquivo de aplicação alterado** (`pdf_extractor.py`), `views.py` intocado, **zero migrations**, nenhum template alterado. | Duas confirmações e nenhuma surpresa. (1) `pip install` no deploy **não baixou, instalou nem desinstalou nada** — os pins do R-02, colhidos do próprio servidor horas antes, bateram exatamente. O item se validou no primeiro deploy. (2) `No migrations to apply` e `0 static files copied, 130 unmodified`, como o pré-voo previa. O `pypdf` segue instalado no servidor (o `pip install` não desinstala) e sem uso — inofensivo, não deve voltar ao `requirements.txt`. |
 | 2026-08-17 | **Verificação em produção** | Fluxo completo exercitado no front pelo dono do projeto: criar vaga, importar candidatos, navegar. Sem erro. 9 itens fechados de ponta a ponta (R-01 a R-06, R-08, R-09, R-10). | Duas verificações ficaram parciais e foram marcadas `[~]` em vez de `[x]`: o caso de 2 lotes do R-10 (exige ZIP com 12+ PDFs) e o caso PREMIUM do R-09 (exige candidato que já exista no pool de outra conta). Ambas cobertas por teste automatizado — 21 testes do R-06 e o teste de regressão do R-09 —, mas registrar como "verificado" seria falsear o registro. Ficam como observação na próxima importação grande da usuária. |
+| 2026-08-17 | **R-30** | Callback final do fluxo de vaga passa a mandar `total`, `processed` e `result`, igual ao `..._no_ranking`. 3 characterization tests do R-06 invertidos. PR #29. | **O diagnóstico do item estava errado e foi refutado antes de escrever código.** Três motivos independentes: (1) não existe barra de progresso — `job_detail.html:711-723` renderiza o ramo `completed` a partir do `result`, sem usar `processed`/`total`; (2) o callback final é sempre sobrescrito por `views.py:557` microssegundos depois, então não sobrevive a um poll de 2s; (3) `processed` nunca esteve errado — `_process_in_batches` incrementa em todos os caminhos, inclusive nos de erro, então `processed == total` sempre. "Processado" significa tentado, não bem-sucedido; o teste do R-06 leu o nome da variável, não a semântica. Sobrou unificar o contrato e fechar uma janela de corrida em que um poll via `completed` sem `result` e a tela mostrava tudo zerado. Estimativa corrigida de 2h para 30min. |
+| 2026-08-17 | **R-32** | `unchanged` entra no `result` do `_process_in_batches` e passa a ser exibido. Teste do R-05 invertido, agora exigindo que a soma feche com o total. | Duas. (1) O plano dizia "3 arquivos" e eram **5**: a exibição vive em **4 lugares**, não 1 — `job_detail.html` e `talent_pool.html`, cada um com um bloco Django e um bloco JS de poll que renderizam a mesma frase de formas diferentes. É a duplicação do D-11 cobrando o preço na prática. (2) O cache de status tem TTL de 1h, então na primeira hora após o deploy existem payloads sem a chave nova — resolvido com `\|default:0` no template e `\|\| 0` no JS. |
 
 ---
 
