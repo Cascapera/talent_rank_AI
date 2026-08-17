@@ -67,8 +67,15 @@ def _search_status_key(job_id: int) -> str:
     return f"search_status_{job_id}"
 
 
-def _talent_pool_import_status_key() -> str:
-    return "talent_pool_import_status"
+def _talent_pool_import_status_key(user_id: int) -> str:
+    """Chave do progresso da importação do banco de talentos, **por usuário** (R-19).
+
+    Era a string fixa `"talent_pool_import_status"`, sem `user_id`: duas contas
+    importando ao mesmo tempo sobrescreviam o progresso uma da outra, e cada uma via a
+    barra da outra. As chaves por vaga (`import_status_{job_id}`) sempre estiveram
+    certas — esta passou despercebida.
+    """
+    return f"talent_pool_import_status_{user_id}"
 
 
 def _parecer_status_key(candidate_job_id: int) -> str:
@@ -83,8 +90,8 @@ def _set_search_status(job_id: int, payload: dict) -> None:
     cache.set(_search_status_key(job_id), payload, timeout=60 * 60)
 
 
-def _set_talent_pool_import_status(payload: dict) -> None:
-    cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
+def _set_talent_pool_import_status(user_id: int, payload: dict) -> None:
+    cache.set(_talent_pool_import_status_key(user_id), payload, timeout=60 * 60)
 
 
 def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
@@ -141,7 +148,7 @@ def _run_talent_pool_import(
     try:
 
         def progress_callback(**kwargs):
-            _set_talent_pool_import_status(kwargs)
+            _set_talent_pool_import_status(user_id, kwargs)
 
         result = import_candidates_from_folder_no_ranking(
             str(folder_path),
@@ -149,9 +156,9 @@ def _run_talent_pool_import(
             shared_pool=shared_pool,
             progress_callback=progress_callback,
         )
-        _set_talent_pool_import_status({"status": "completed", "result": result})
+        _set_talent_pool_import_status(user_id, {"status": "completed", "result": result})
     except Exception as exc:
-        _set_talent_pool_import_status({"status": "error", "message": str(exc)})
+        _set_talent_pool_import_status(user_id, {"status": "error", "message": str(exc)})
     finally:
         shutil.rmtree(folder_path, ignore_errors=True)
 

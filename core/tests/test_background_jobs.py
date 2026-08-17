@@ -13,6 +13,8 @@ modo de falha real aqui: alguém adiciona um job novo e não lembra.
 from unittest.mock import patch
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 
 from core.services import import_service
 from core.services.import_service import (
@@ -20,8 +22,12 @@ from core.services.import_service import (
     _run_parecer_generation,
     _run_search_in_pool,
     _run_talent_pool_import,
+    _set_talent_pool_import_status,
+    _talent_pool_import_status_key,
     background_job,
 )
+
+User = get_user_model()
 
 JOBS = {
     "_run_import_job": _run_import_job,
@@ -90,6 +96,51 @@ class TestBackgroundJobDecorator:
 
         with patch.object(import_service, "close_old_connections"):
             assert trabalho(1, 2, c=3) == (1, 2, 3)
+
+
+@pytest.mark.django_db
+class TestTalentPoolStatusIsPerUser:
+    """R-19: a chave do progresso do banco de talentos era uma string FIXA.
+
+    Duas contas importando ao mesmo tempo sobrescreviam o progresso uma da outra, e cada
+    uma via a barra da outra. As chaves por vaga (`import_status_{job_id}`) sempre
+    estiveram certas — esta passou despercebida.
+    """
+
+    @pytest.fixture(autouse=True)
+    def cache_limpo(self):
+        cache.clear()
+        yield
+        cache.clear()
+
+    def test_two_users_do_not_overwrite_each_other(self, user):
+        outro = User.objects.create_user(username="outra-recrutadora", password="x")
+
+        _set_talent_pool_import_status(user.id, {"status": "running", "processed": 3})
+        _set_talent_pool_import_status(outro.id, {"status": "running", "processed": 99})
+
+        assert cache.get(_talent_pool_import_status_key(user.id))["processed"] == 3
+        assert cache.get(_talent_pool_import_status_key(outro.id))["processed"] == 99
+
+    def test_the_key_carries_the_user(self, user):
+        assert str(user.id) in _talent_pool_import_status_key(user.id)
+
+    def test_status_endpoint_does_not_leak_another_users_import(self, client_logged, user):
+        """O teste que descreve o sintoma: a recrutadora entra na tela dela e vê uma
+        barra de progresso que não é dela."""
+        outro = User.objects.create_user(username="outra-recrutadora", password="x")
+        _set_talent_pool_import_status(outro.id, {"status": "running", "processed": 99})
+
+        resposta = client_logged.get("/talentos/import-status/")
+
+        assert resposta.json() == {"status": "idle"}
+
+    def test_status_endpoint_sees_its_own_import(self, client_logged, user):
+        _set_talent_pool_import_status(user.id, {"status": "running", "processed": 7})
+
+        resposta = client_logged.get("/talentos/import-status/")
+
+        assert resposta.json()["processed"] == 7
 
 
 @pytest.mark.django_db

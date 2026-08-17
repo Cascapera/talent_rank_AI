@@ -174,7 +174,9 @@ def talent_pool(request):
             prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
-                _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
+                _set_talent_pool_import_status(
+                    request.user.id, {"status": "running", "processed": 0, "total": 0}
+                )
                 thread = threading.Thread(
                     target=_run_talent_pool_import,
                     args=(temp_dir, False, request.user.id, shared_pool),
@@ -241,7 +243,7 @@ def talent_pool(request):
         "shared_pool": shared_pool,
         "filters": filters.values,
         "query_string": filters.query_string,
-        "import_status": cache.get(_talent_pool_import_status_key()),
+        "import_status": cache.get(_talent_pool_import_status_key(request.user.id)),
     }
     return render(request, "core/talent_pool.html", context)
 
@@ -250,7 +252,7 @@ def talent_pool(request):
 @required_plan("BASIC")
 def talent_pool_import_status(request):
     """Endpoint AJAX para status da importação do banco de talentos."""
-    payload = cache.get(_talent_pool_import_status_key()) or {"status": "idle"}
+    payload = cache.get(_talent_pool_import_status_key(request.user.id)) or {"status": "idle"}
     return JsonResponse(payload)
 
 

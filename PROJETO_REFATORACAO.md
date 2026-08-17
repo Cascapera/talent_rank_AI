@@ -2166,16 +2166,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-19** · 🐛 [BUGFIX] Chave de cache de importação do pool por usuário
       risco: baixo · 3h · produção: **requer cuidado (P-3)** · PR: ~30 linhas / 3 arquivos
       pré-requisito: R-14
-  - [ ] Confirmado que não há importação rodando no momento do deploy
-  - [ ] Teste de regressão com 2 usuários — falha antes, passa depois
-  - [ ] Correção aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [ ] ⚠️ Confirmado que não há importação rodando no momento do deploy — **depende de
+        você, na hora de subir** (P-3)
+  - [x] Teste de regressão com 2 usuários — **falha antes, passa depois**
+  - [x] Correção aplicada
+  - [x] Suíte completa verde — 290 testes, cobertura 73,38%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — 2 contas importando, cada uma vê seu progresso
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a chave era a string fixa
+    `"talent_pool_import_status"`, sem `user_id`. Virou
+    `talent_pool_import_status_{user_id}`, e o setter passou a receber o usuário.
+
+    4 testes de regressão, todos falhando antes: dois usuários não se sobrescrevem, a
+    chave carrega o id, e o endpoint de status **não vaza a importação de outra conta**
+    nem deixa de ver a própria.
+
+    ⚠️ **P-3 continua valendo:** no momento do deploy, qualquer progresso gravado sob a
+    chave antiga fica órfão e a tela volta a "idle". Sem perda de dado — a importação em
+    si continua —, mas a barra some. Subir quando não houver importação rodando.
 
 - [ ] **R-20a** · Estado do job no banco — modelo + escrita dupla
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~120 linhas / 3 arquivos
