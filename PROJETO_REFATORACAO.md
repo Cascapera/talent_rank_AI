@@ -12,9 +12,9 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 34 (29 originais + 5 achados na execução) |
+| **Itens no backlog** | 35 (29 originais + 6 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | 7 itens em `develop` · PRs #13 a #21 · nada em produção ainda |
+| **Executado** | 9 itens em `develop` · PRs #13 a #23 · nada em produção ainda |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -379,6 +379,13 @@ combinação, testa em outra e faz deploy numa terceira.
 **Se nada for feito:** um release do Django com breaking change entra em produção sozinho,
 num deploy que só mudava um texto.
 
+> ✅ **Resolvido no R-02 (PR #23), e era pior que o diagnosticado.** O `pip freeze` do
+> servidor (2026-08-17) mostrou produção em **Python 3.10.12 / Django 5.2.10** — nem a do
+> venv local, nem a do CI. Eram **quatro** combinações, não três, e a suíte nunca tinha
+> rodado na versão que atende as usuárias. Detalhe agravante: o Django 6.0.6 do venv local
+> **nunca poderia** rodar em produção, porque Django 6.0 exige Python 3.12+. Ver a linha
+> do R-02 no registro de execução para o que foi feito.
+
 ### D-9 · `reports` faz ~500 queries numa página
 
 `views.py:368-382`: para cada vaga, um `links.count()`, oito `links.filter(...).count()` do
@@ -578,6 +585,9 @@ Motivação:   D-8 — venv local com Django 6.0.6/Python 3.14, CI em 3.12, READ
 Arquivos:    requirements.txt, requirements-dev.txt, .github/workflows/ci.yml
 O que muda:  fixa todos os 8 pacotes em `==` na versão hoje validada; adiciona
              `python-requires`; alinha o CI e o venv local em 3.12
+             ⚠️ CORRIGIDO NA EXECUÇÃO: produção roda **3.10.12**, não 3.12. O
+             alinhamento foi para BAIXO (pyproject e ruff em py310) e o CI virou
+             matriz 3.10 + 3.12. Ver R-34 para o upgrade de produção.
 Não muda:    nenhuma linha de aplicação
 Pré-requisito: nenhum
 PR:          3 arquivos · ~20 linhas
@@ -1541,9 +1551,10 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento
-Progresso: 0/34 concluídos de ponta a ponta · 7 itens com código em `develop`
-           (R-01, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o merge
-           `develop` → `main` para fechar · atualizado em 2026-08-15
+Progresso: 0/35 concluídos de ponta a ponta · 9 itens com código em `develop`
+           (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o
+           merge `develop` → `main` para fechar · atualizado em 2026-08-17
+           (o contador dizia "7 itens" e listava 8: erro de contagem, corrigido)
 ```
 
 ### Resultado até aqui
@@ -1588,16 +1599,25 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     que divergiam em 50/20/50.
 
 - [ ] **R-02** · Travar versões das dependências
-      risco: médio · 1h · produção: **requer cuidado (P-1)** · PR: ~20 linhas / 3 arquivos
-  - [ ] **`pip freeze` do servidor conferido por SSH — versões fixadas nas de produção**
-  - [ ] Refatoração aplicada
-  - [ ] Suíte verde em Python 3.12 no CI
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+      risco: médio · 1h · produção: **requer cuidado (P-1)** · PR: ~140 linhas / 7 arquivos
+  - [x] **`pip freeze` do servidor conferido por SSH — versões fixadas nas de produção**
+  - [x] Refatoração aplicada
+  - [x] Suíte verde em Python 3.10 **e** 3.12 no CI (matriz)
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#23**, CI verde (lint 8s, py3.10 1m1s, py3.12 1m2s),
+        mergeado em `develop`
+  - [ ] Implantado (entra em produção no merge `develop` → `main`)
   - [ ] Verificado em produção — `systemctl status` + home e dashboard abrem
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Commitado — `aa814d3` · branch `refat/r-02-travar-dependencias`
+  - Status: **em `develop`** · Notas: o `pip freeze` mostrou produção em **Python 3.10.12
+    / Django 5.2.10**, e não no 3.12 que o projeto inteiro declarava — a suíte nunca tinha
+    rodado na versão que atende as usuárias. O alinhamento foi para **baixo**: `pyproject`
+    e ruff em `py310`, CI vira matriz 3.10 (portão) + 3.12 (prova o upgrade futuro).
+    Travadas as 7 diretas **e as 30 transitivas**, não só as diretas como o plano dizia —
+    um `pydantic` novo derrubaria o `google-genai` do mesmo jeito. `requirements-dev.txt`
+    saiu de `>=` para `==` e o CI passou a lê-lo (antes instalava pytest sem versão e sem
+    ruff). `ruff` unificado em 0.15.17 nos três lugares que divergiam, incluindo o
+    pre-commit em v0.8.0. Upgrade de produção para 3.12 virou **R-34**.
 
 - [ ] **R-03** · Remover 872 linhas de código morto do pdf_extractor
       risco: baixo · 1h · produção: transparente · PR: −910 linhas / 2 arquivos
@@ -2086,6 +2106,23 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Commitado — `<hash>`
   - Status: não iniciado · Notas:
 
+- [ ] ⏳ **R-34** · Subir produção de Python 3.10 para 3.12 — **prazo: outubro/2026**
+      risco: **alto (mexe no servidor)** · 0,5d + janela · produção: requer parada curta
+      pré-requisito: R-02 (a matriz do CI já prova que a suíte passa em 3.12)
+      **Achado na execução do R-02.** O suporte do Python 3.10 acaba em outubro/2026;
+      o Ubuntu do Lightsail não traz 3.12 no apt padrão. Não é refatoração — é
+      manutenção de infra com data marcada. Vale projeto próprio, não item de PR.
+  - [ ] Confirmado como instalar 3.12 no servidor (deadsnakes PPA ou upgrade do Ubuntu)
+  - [ ] Venv novo criado em paralelo, sem tocar no que está no ar
+  - [ ] `pip install -r requirements.txt` no venv novo, sem erro
+  - [ ] Suíte rodada **no servidor**, no venv novo
+  - [ ] Janela de baixo uso combinada com a usuária
+  - [ ] `ExecStart` do systemd apontado para o venv novo + restart
+  - [ ] Verificado em produção — home, dashboard, login e uma importação real
+  - [ ] Venv antigo removido só depois de 1 semana estável
+  - [ ] `pyproject`, ruff e CI subidos de volta para 3.12; matriz simplificada
+  - Status: não iniciado · Notas:
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -2102,6 +2139,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-15 | **R-08** | `_upsert_candidate` + `_candidate_payload` + `_find_candidate`. 4 cópias → 1; lista de campos de 8 ocorrências → 1. `pdf_extractor` 1.102 → 893 linhas. PR #19, `802929a`. | Nenhuma surpresa: **os 45 testes passaram sem uma única alteração**, que era exatamente o critério de sucesso. A separação R-08/R-09 se pagou. |
 | 2026-08-15 | **R-09** | `shared_pool` repassado no fallback (1 linha). Novo `test_import_no_ranking.py` (6 testes). Cobertura 38,92% → 42,12%. PR #20, `0b9b94b`. | O teste falhou antes (`assert 1 == 0`) e passou depois, como planejado. **Pendências abertas:** levantar duplicatas já criadas pelo bug e avisar a usuária. |
 | 2026-08-15 | **R-10** | `_process_in_batches` com 3 callbacks + 3 hooks opcionais. `import_candidates_from_folder` 280 → 134 linhas; `..._no_ranking` 173 → 33. PR #21, `a604872`. | Duas. (1) **Só 2 dos 3 laços convertidos** — o de `search_and_rank` não tem teste; virou R-33. (2) A cobertura **caiu** 42,12% → 41,84% e o piso desceu para 41: o código duplicado removido estava coberto, então numerador e denominador caíram juntos. Não é regressão, mas engana quem olhar só o número. |
+| 2026-08-17 | **R-02** | 7 diretas + 30 transitivas fixadas em `==` nas versões do servidor. `requirements-dev.txt` de `>=` para `==`; o CI passou a instalar dele. `pyproject` `requires-python` e ruff `target-version` de 3.12 para **3.10**. `ci.yml` virou matriz 3.10 + 3.12. `ruff` unificado em 0.15.17 (CI, dev e pre-commit, que estava em v0.8.0). README e DEPLOY_AWS corrigidos. PR #23, `aa814d3`. | Três. (1) **Produção roda Python 3.10.12, não 3.12** — o projeto inteiro (pyproject, ruff, CI, README) declarava 3.12+ e a suíte nunca tinha rodado na versão que atende as usuárias. O alinhamento teve que ser para baixo, e o plano dizia o contrário. (2) **Armadilha ativa:** ruff com `target-version = py312`, regra `UP` ligada e `make format` rodando `ruff check --fix .` podiam reescrever o código em sintaxe 3.12, passar no CI em 3.12 e quebrar em produção no 3.10. (3) Travar só as diretas, como o plano pedia, deixaria ~30 transitivas flutuando — um `pydantic` novo derruba o `google-genai` igual. Fixei tudo. Bônus: o Django 6.0.6 do venv local nunca poderia rodar em produção (Django 6.0 exige 3.12+). Fim do suporte do 3.10 em outubro/2026 virou **R-34**. |
 
 ---
 
@@ -2125,12 +2163,12 @@ refatorar) e na seção 2 (Fora).
 
 Onde a confiança é menor e o que precisa de decisão sua:
 
-1. **Não tenho acesso ao servidor de produção.** As versões reais de Django, Python e
-   pacotes em `/var/www/talent_rank_ai` são desconhecidas — sei apenas que o `.venv`
-   local está em Django 6.0.6 / Python 3.14.3, que o CI usa 3.12 e que o README documenta
-   5.x. **R-02 depende de você conferir isso por SSH.** Da mesma forma, não sei se
-   `DJANGO_SECRET_KEY` existe no `.env` do servidor — e R-21 derruba a aplicação se não
-   existir.
+1. ~~**Não tenho acesso ao servidor de produção.** As versões reais de Django, Python e
+   pacotes em `/var/www/talent_rank_ai` são desconhecidas~~ — **resolvido em 2026-08-17**:
+   o `pip freeze` conferido por SSH mostrou **Python 3.10.12 / Django 5.2.10**, e o R-02
+   travou tudo nessas versões. **Continua valendo para o R-21:** ainda não sei se
+   `DJANGO_SECRET_KEY` existe no `.env` do servidor, e o R-21 derruba a aplicação se não
+   existir. Confira antes (`grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env`).
 
 2. **Não sei o volume real de dados.** Quantidade de candidatos, vagas e importações por
    dia muda a prioridade de toda a Onda 5. Classifiquei R-25 como baixo risco assumindo
