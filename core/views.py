@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .domain.normalization import SYNONYMS, normalize
+from .filters import collect_filters
 from .forms import CandidateForm, JobForm, SignupForm
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
 from .models import Candidate, CandidateJob, Job, Profile
@@ -35,6 +36,38 @@ from .services.import_service import (
     _set_search_status,
     _set_talent_pool_import_status,
     _talent_pool_import_status_key,
+)
+
+# Filtro do banco de talentos -> campo do modelo Candidate.
+# A ORDEM define a ordem dos parâmetros na URL que a usuária vê e compartilha.
+_TALENT_POOL_FILTERS = {
+    "name": "name",
+    "location": "location",
+    "seniority": "seniority",
+    "company": "current_company",
+    "technologies": "technologies",
+    "current_title": "current_title",
+    "skills": "skills",
+    "certifications": "certifications",
+    "languages": "languages",
+}
+
+# Filtro da tela da vaga -> (campo do CandidateJob, prefixo do alias do unaccent).
+# `pipeline_status` e `min_adherence` ficam de fora: não são `icontains`.
+_JOB_CANDIDATE_FILTERS = {
+    "candidate_seniority": ("candidate__seniority", "seniority"),
+    "candidate_location": ("candidate__location", "location"),
+    "candidate_name": ("candidate__name", "name"),
+    "candidate_language": ("candidate__languages", "language"),
+    "candidate_must_have": ("candidate__skills", "skills"),
+    "candidate_technologies": ("candidate__technologies", "technologies"),
+}
+
+# Ordem completa dos filtros da vaga na querystring, incluindo os dois especiais.
+_JOB_FILTERS = (
+    "pipeline_status",
+    *_JOB_CANDIDATE_FILTERS,
+    "min_adherence",
 )
 
 
@@ -208,39 +241,16 @@ def talent_pool(request):
             else:
                 message = "Confira os campos obrigatórios."
 
-    # Filtros
-    name_filter = request.GET.get("name", "").strip()
-    location_filter = request.GET.get("location", "").strip()
-    seniority_filter = request.GET.get("seniority", "").strip()
-    company_filter = request.GET.get("company", "").strip()
-    technologies_filter = request.GET.get("technologies", "").strip()
-    current_title_filter = request.GET.get("current_title", "").strip()
-    skills_filter = request.GET.get("skills", "").strip()
-    certifications_filter = request.GET.get("certifications", "").strip()
-    languages_filter = request.GET.get("languages", "").strip()
+    filters = collect_filters(request, _TALENT_POOL_FILTERS)
 
     candidates = (
         Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
     )
 
-    if name_filter:
-        candidates = candidates.filter(name__icontains=name_filter)
-    if location_filter:
-        candidates = candidates.filter(location__icontains=location_filter)
-    if seniority_filter:
-        candidates = candidates.filter(seniority__icontains=seniority_filter)
-    if company_filter:
-        candidates = candidates.filter(current_company__icontains=company_filter)
-    if technologies_filter:
-        candidates = candidates.filter(technologies__icontains=technologies_filter)
-    if current_title_filter:
-        candidates = candidates.filter(current_title__icontains=current_title_filter)
-    if skills_filter:
-        candidates = candidates.filter(skills__icontains=skills_filter)
-    if certifications_filter:
-        candidates = candidates.filter(certifications__icontains=certifications_filter)
-    if languages_filter:
-        candidates = candidates.filter(languages__icontains=languages_filter)
+    for param, campo in _TALENT_POOL_FILTERS.items():
+        valor = filters[param]
+        if valor:
+            candidates = candidates.filter(**{f"{campo}__icontains": valor})
 
     candidates = candidates.order_by("-updated_at", "-created_at")
 
@@ -249,30 +259,6 @@ def talent_pool(request):
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    # Constrói query string para manter filtros na paginação
-    query_params = {}
-    if name_filter:
-        query_params["name"] = name_filter
-    if location_filter:
-        query_params["location"] = location_filter
-    if seniority_filter:
-        query_params["seniority"] = seniority_filter
-    if company_filter:
-        query_params["company"] = company_filter
-    if technologies_filter:
-        query_params["technologies"] = technologies_filter
-    if current_title_filter:
-        query_params["current_title"] = current_title_filter
-    if skills_filter:
-        query_params["skills"] = skills_filter
-    if certifications_filter:
-        query_params["certifications"] = certifications_filter
-    if languages_filter:
-        query_params["languages"] = languages_filter
-    query_string = urlencode(query_params)
-    if query_string:
-        query_string = "&" + query_string
-
     context = {
         "form": form,
         "candidates": page_obj,
@@ -280,18 +266,8 @@ def talent_pool(request):
         "message": message,
         "import_message": import_message,
         "shared_pool": shared_pool,
-        "filters": {
-            "name": name_filter,
-            "location": location_filter,
-            "seniority": seniority_filter,
-            "company": company_filter,
-            "technologies": technologies_filter,
-            "current_title": current_title_filter,
-            "skills": skills_filter,
-            "certifications": certifications_filter,
-            "languages": languages_filter,
-        },
-        "query_string": query_string,
+        "filters": filters.values,
+        "query_string": filters.query_string,
         "import_status": cache.get(_talent_pool_import_status_key()),
     }
     return render(request, "core/talent_pool.html", context)
@@ -474,21 +450,13 @@ def job_detail(request, job_id: int):
     def split_list(value: str):
         return [item.strip() for item in value.split(",") if item.strip()]
 
-    filter_keys = {
-        "pipeline_status",
-        "candidate_seniority",
-        "candidate_location",
-        "candidate_name",
-        "candidate_language",
-        "candidate_must_have",
-        "candidate_technologies",
-        "min_adherence",
-    }
     filters_storage_key = f"job_filters_{job.id}"
     if request.GET.get("clear_filters") == "1":
         request.session.pop(filters_storage_key, None)
     else:
-        current_params = {k: request.GET.get(k, "").strip() for k in filter_keys}
+        # Era um `set` literal: a ordem dos parâmetros na URL do redirect variava entre
+        # reinícios do servidor (hash randomization). Com a tupla, é estável.
+        current_params = {k: request.GET.get(k, "").strip() for k in _JOB_FILTERS}
         if any(v for v in current_params.values()):
             request.session[filters_storage_key] = current_params
         else:
@@ -496,14 +464,7 @@ def job_detail(request, job_id: int):
             if saved_filters:
                 return redirect(f"{request.path}?{urlencode(saved_filters)}")
 
-    status_filter = request.GET.get("pipeline_status", "").strip()
-    seniority_filter = request.GET.get("candidate_seniority", "").strip()
-    location_filter = request.GET.get("candidate_location", "").strip()
-    name_filter = request.GET.get("candidate_name", "").strip()
-    language_filter = request.GET.get("candidate_language", "").strip()
-    must_have_filter = request.GET.get("candidate_must_have", "").strip()
-    technologies_filter = request.GET.get("candidate_technologies", "").strip()
-    min_adherence_raw = request.GET.get("min_adherence", "").strip()
+    filters = collect_filters(request, _JOB_FILTERS)
 
     import_message = ""
     if request.method == "POST":
@@ -539,62 +500,20 @@ def job_detail(request, job_id: int):
                 import_message = "Nenhum PDF encontrado nos arquivos enviados."
 
     candidate_links = job.candidate_links.select_related("candidate")
-    if status_filter:
-        candidate_links = candidate_links.filter(pipeline_status=status_filter)
-    if seniority_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__seniority", seniority_filter, "seniority"
-        )
-    if location_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__location", location_filter, "location"
-        )
-    if name_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__name", name_filter, "name"
-        )
-    if language_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__languages", language_filter, "language"
-        )
-    if must_have_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__skills", must_have_filter, "skills"
-        )
-    if technologies_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__technologies", technologies_filter, "technologies"
-        )
-    if min_adherence_raw.isdigit():
-        candidate_links = candidate_links.filter(adherence_score__gte=int(min_adherence_raw))
+    if filters["pipeline_status"]:
+        candidate_links = candidate_links.filter(pipeline_status=filters["pipeline_status"])
+    for param, (campo, alias) in _JOB_CANDIDATE_FILTERS.items():
+        valor = filters[param]
+        if valor:
+            candidate_links = _apply_unaccent_filter(candidate_links, campo, valor, alias)
+    if filters["min_adherence"].isdigit():
+        candidate_links = candidate_links.filter(adherence_score__gte=int(filters["min_adherence"]))
     candidate_links = candidate_links.order_by(F("adherence_score").desc(nulls_last=True))
 
     # Paginação: 10 candidatos por página
     paginator = Paginator(candidate_links, 10)
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
-
-    # Constrói query string para manter filtros na paginação
-    query_params = {}
-    if status_filter:
-        query_params["pipeline_status"] = status_filter
-    if seniority_filter:
-        query_params["candidate_seniority"] = seniority_filter
-    if location_filter:
-        query_params["candidate_location"] = location_filter
-    if name_filter:
-        query_params["candidate_name"] = name_filter
-    if language_filter:
-        query_params["candidate_language"] = language_filter
-    if must_have_filter:
-        query_params["candidate_must_have"] = must_have_filter
-    if technologies_filter:
-        query_params["candidate_technologies"] = technologies_filter
-    if min_adherence_raw and min_adherence_raw.strip():
-        query_params["min_adherence"] = min_adherence_raw
-    query_string = urlencode(query_params)
-    if query_string:
-        query_string = "&" + query_string
 
     context = {
         "job": job,
@@ -604,17 +523,8 @@ def job_detail(request, job_id: int):
         "import_message": import_message,
         "candidate_links": page_obj,
         "page_obj": page_obj,
-        "candidate_filters": {
-            "pipeline_status": status_filter,
-            "candidate_seniority": seniority_filter,
-            "candidate_location": location_filter,
-            "candidate_name": name_filter,
-            "candidate_language": language_filter,
-            "candidate_must_have": must_have_filter,
-            "candidate_technologies": technologies_filter,
-            "min_adherence": min_adherence_raw,
-        },
-        "query_string": query_string,
+        "candidate_filters": filters.values,
+        "query_string": filters.query_string,
         "pipeline_status_choices": job.candidate_links.model.PipelineStatus.choices,
         "job_status_choices": Job.Status.choices,
         "import_status": cache.get(_import_status_key(job.id)),
