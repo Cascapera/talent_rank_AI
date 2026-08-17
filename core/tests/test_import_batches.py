@@ -313,6 +313,7 @@ class TestProgressCallback:
             "result": {
                 "created": 2,
                 "updated": 0,
+                "unchanged": 0,
                 "skipped": 0,
                 "errors": 0,
                 "total": 2,
@@ -360,6 +361,7 @@ class TestProgressCallback:
         assert rec.last["result"] == {
             "created": 1,
             "updated": 0,
+            "unchanged": 0,
             "skipped": 0,
             "errors": 0,
             "total": 1,
