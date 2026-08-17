@@ -1887,15 +1887,31 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-12** · Adicionar timeout à chamada do LLM
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
       pré-requisito: R-11
-  - [ ] Valor de timeout decidido (≥120s; 180s se preferir margem)
-  - [ ] Mudança aplicada + teste de timeout
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Valor de timeout decidido — **180s**, a margem que o próprio item sugeria.
+        Timeout curto demais troca um problema raro (thread travada) por um comum
+        (importação lenta que falha). Configurável por `LLM_TIMEOUT_SECONDS`.
+  - [x] Mudança aplicada + 3 testes de timeout
+  - [x] Suíte completa verde — 198 testes, cobertura 53,94%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de lote grande conclui sem estourar
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: uma edição em vez de sete, exatamente como o R-11
+    prometia.
+
+    ⚠️ **Armadilha de unidade, verificada antes de escrever:** `types.HttpOptions.timeout`
+    é documentado no SDK como *"Timeout for the request in milliseconds"*. Passar o valor
+    em segundos daria **180ms** e derrubaria toda chamada ao LLM em produção. O setting
+    fica em segundos (é o que faz sentido para quem configura) e a conversão mora só
+    dentro do `_generate()`, travada por
+    `test_timeout_is_converted_from_seconds_to_milliseconds`.
+
+    **Ganho honesto:** o pior caso passa de *infinito* para *limitado*, não para *curto*.
+    O erro de timeout não casa com RESOURCE_EXHAUSTED nem com 503, então cai no ramo
+    genérico e consome as 4 tentativas — ~12min (4 × 180s + sleeps) até desistir. Melhor
+    que "para sempre", e o número está em setting para poder ser reduzido. Fazer o timeout
+    pular o retry seria mudança de política de retry, ou seja, outro item.
 
 - [ ] **R-13** · Unificar normalização e sinônimos em `domain/normalization.py`
       risco: baixo · 3h · produção: transparente · PR: ~140 linhas / 3 arquivos

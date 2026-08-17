@@ -164,6 +164,18 @@ MEDIA_ROOT = BASE_DIR / "media"
 # para que o candidato seja enviado à LLM para avaliação final.
 POOL_MATCH_MIN_SCORE = int(os.getenv("POOL_MATCH_MIN_SCORE", "40"))
 
+# Timeout de cada chamada ao LLM, em SEGUNDOS (R-12).
+# Sem isso uma chamada travada segura a thread de importacao para sempre: as threads
+# sao daemon e nao tem cancelamento, entao a barra de progresso fica parada ate o
+# proximo restart do servico.
+# 180s e folgado de proposito. Um lote de 10 PDFs e a chamada mais cara do sistema, e
+# timeout curto demais transforma importacao lenta em importacao que falha - trocaria
+# um problema raro por um comum.
+# ATENCAO: o SDK do Gemini recebe este valor em MILISSEGUNDOS (types.HttpOptions.timeout
+# e documentado como "Timeout for the request in milliseconds"). A conversao acontece em
+# core/llm_extractor.py::_generate. Nao passe este numero direto para o SDK.
+LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
+
 # Auth
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
