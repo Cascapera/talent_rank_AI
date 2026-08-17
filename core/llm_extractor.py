@@ -197,23 +197,39 @@ def _normalize_linkedin_url(value: str) -> str:
 
 
 def _extract_json(text: str) -> dict | list:
+    """Parsing heurístico da resposta do LLM: tenta o texto inteiro e, se não for JSON
+    puro, recorta a maior estrutura que encontrar.
+
+    R-35: **a estrutura que começa primeiro no texto vence.** Antes, o array era sempre
+    tentado antes do objeto — e como todo candidato tem `skills`, uma resposta embrulhada
+    em markdown (```json ... ```) fazia o recorte do array interno ganhar e a função
+    devolvia a lista de skills no lugar do candidato inteiro.
+
+    Não disparava em produção porque o prompt pede "apenas JSON válido (sem markdown)" e
+    o `json.loads` do texto inteiro resolvia na primeira tentativa. Bastava o modelo
+    embrulhar a resposta uma vez.
+    """
     text = text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Tenta encontrar array primeiro
-        array_start = text.find("[")
-        array_end = text.rfind("]")
-        if array_start != -1 and array_end != -1 and array_end > array_start:
+        snippets = []
+
+        obj_start, obj_end = text.find("{"), text.rfind("}")
+        if obj_start != -1 and obj_end > obj_start:
+            snippets.append((obj_start, text[obj_start : obj_end + 1]))
+
+        array_start, array_end = text.find("["), text.rfind("]")
+        if array_start != -1 and array_end > array_start:
+            snippets.append((array_start, text[array_start : array_end + 1]))
+
+        for _, snippet in sorted(snippets):
             try:
-                return json.loads(text[array_start : array_end + 1])
+                return json.loads(snippet)
             except json.JSONDecodeError:
-                pass
-        # Tenta encontrar objeto
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(text[start : end + 1])
+                continue
+
+        # Nada recortável: propaga o erro original do texto inteiro, como antes.
         raise
 
 

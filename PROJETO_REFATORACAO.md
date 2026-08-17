@@ -2322,14 +2322,24 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       `test_array_is_tried_before_object`.
       Correção provável: procurar objeto e array e escolher o que começa antes no
       texto, em vez de fixar a ordem.
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Conferido que o caso do array puro (lote) continua funcionando
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + teste invertido
+  - [x] Conferido que o caso do array puro (lote) continua funcionando — a resposta em
+        lote é um array de objetos, então o `[` vem antes do primeiro `{` e o array
+        continua ganhando. Coberto por `test_whichever_structure_starts_first_wins`.
+  - [x] Vermelho antes / verde depois provado
+  - [x] Suíte completa verde — 215 testes, cobertura 54,28%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a ordem fixa (array sempre antes de objeto) virou
+    **"vence quem começa antes no texto"**, com fallback para a outra estrutura se o
+    primeiro recorte não for JSON válido. O `raise` continua propagando o erro original
+    do texto inteiro quando não há nada recortável, como antes.
+
+    ⚠️ **Muda comportamento** — é bugfix, em PR separado, exatamente como R-09 e R-30.
+    O caso que mudou: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` e
+    agora devolve o objeto.
 
 - [ ] ⏳ **R-34** · Subir produção de Python 3.10 para 3.12 — **prazo: outubro/2026**
       risco: **alto (mexe no servidor)** · 0,5d + janela · produção: requer parada curta
