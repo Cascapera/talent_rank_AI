@@ -1,7 +1,6 @@
 import shutil
 import tempfile
 import threading
-import unicodedata
 import zipfile
 from pathlib import Path
 from urllib.parse import urlencode
@@ -17,7 +16,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from .domain.normalization import SYNONYMS
+from .domain.normalization import SYNONYMS, normalize
 from .forms import CandidateForm, JobForm, SignupForm
 from .llm_extractor import generate_parecer
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
@@ -75,17 +74,14 @@ def _uses_shared_pool(user) -> bool:
     return profile.plan == Profile.Plan.PREMIUM
 
 
-def _normalize_term(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
-
-
 def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
     if not term:
         return qs
     if connection.vendor != "postgresql":
         return qs.filter(**{f"{field}__icontains": term})
-    normalized = _normalize_term(term)
+    # R-36: era `_normalize_term`, que não aparava as pontas. Filtrar por " python "
+    # com espaço sobrando procurava literalmente " python " no campo e não achava nada.
+    normalized = normalize(term)
     alias = f"{alias_prefix}_{field.replace('__', '_')}"
     qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
     return qs.filter(Q(**{f"{field}__icontains": term}) | Q(**{f"{alias}__contains": normalized}))
@@ -423,13 +419,11 @@ def _build_boolean_search(job: Job) -> str:
         return [item.strip() for item in value.split(",") if item.strip()]
 
     def expand_term(term: str) -> list[str]:
-        # R-13: o dicionário agora é único (domain/normalization.py). A CHAVE, porém,
-        # continua sendo calculada aqui com `strip().lower()`, sem remover acento —
-        # diferente do `normalize()` que o matching usa. Não unifiquei de propósito:
-        # é mudança de comportamento e virou R-36. Na prática não diverge hoje porque
-        # todas as chaves de SYNONYMS são ASCII.
-        key = term.strip().lower()
-        extra = SYNONYMS.get(key, [])
+        # R-36: a chave passa a sair do mesmo `normalize()` que o pré-match usa. Antes
+        # era `strip().lower()`, sem remover acento — os dois consumidores do dicionário
+        # procuravam por caminhos diferentes e só concordavam porque todas as chaves de
+        # SYNONYMS são ASCII.
+        extra = SYNONYMS.get(normalize(term), [])
         return [term] + extra
 
     def group_terms(terms: list[str]) -> str:

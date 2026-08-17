@@ -67,8 +67,9 @@ branch = true
 # e denominador cairam juntos (1.755 -> 1.684 statements). Em absoluto ha menos
 # codigo sem teste do que antes.
 # O salto do R-07 (41,83 -> 53,58) veio do llm_extractor, que saiu de 20% para
-# 71% com os 50 characterization tests. A meta de 55 esta a um item de distancia.
-fail_under = 53
+# 71% com os 50 characterization tests. -> 55 (R-36).
+# META DE 55% DA SECAO 10 BATIDA em 2026-08-17: 55,94%.
+fail_under = 55
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

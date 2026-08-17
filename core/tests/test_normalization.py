@@ -4,19 +4,19 @@ O R-13 pedia, textualmente: *"Confirme isso com um teste de equivalência ANTES 
 unificar. Se divergirem em algum caso, isto vira mudança de comportamento e precisa de
 decisão."*
 
-Conferido, e **divergem**. O dicionário de sinônimos era idêntico nas duas cópias e foi
-unificado sem risco. As funções de normalização **não** são idênticas — são três
-variantes diferentes — então ficaram onde estavam e viraram o **R-36**.
+Conferido, e **divergiam**. O dicionário de sinônimos era idêntico nas duas cópias e foi
+unificado no R-13, sem risco. As funções de normalização eram **três variantes
+diferentes**, então ficaram onde estavam e viraram o **R-36**.
 
-Estes testes existem para que a divergência seja um fato registrado e não uma surpresa
-para quem for fazer o R-36.
+O R-36 foi feito em seguida: as três viraram uma. Este arquivo registrava a divergência
+caso a caso e agora registra a convergência — de propósito, para que a próxima pessoa
+veja que a unificação foi uma decisão testada e não um descuido.
 """
-
-import pytest
 
 from core import matching, views
 from core.domain import normalization
 from core.domain.normalization import SYNONYMS, normalize
+from core.models import Job
 
 
 class TestNormalize:
@@ -66,45 +66,49 @@ class TestSynonymsUnification:
         assert SYNONYMS[normalize("K8s")] == ["kubernetes"]
 
 
-class TestTheThreeNormalizersDiverge:
-    """⚠️ A prova de que as três variantes NÃO produzem a mesma saída.
+class TestTheThreeNormalizersAreNowOne:
+    """R-36: as três variantes viraram uma. Antes divergiam — este arquivo registrava
+    a divergência caso a caso, e agora registra a convergência."""
 
-    O plano supunha que produziam. Não produzem — daí o R-36.
-    """
+    def test_the_third_variant_no_longer_exists(self):
+        """`views._normalize_term` foi deletada; o filtro usa `normalize()`.
 
-    def test_strip_divergence(self):
-        """`normalize` apara as pontas; `views._normalize_term` não.
+        Vale como teste porque é a garantia de que ninguém a reintroduza por hábito.
+        """
+        assert not hasattr(views, "_normalize_term")
 
-        Onde isso aparece: `_apply_unaccent_filter` monta um `__contains` com o termo
-        já normalizado. Uma recrutadora que digitar " python " com espaço no filtro
-        procura literalmente por " python " no campo, em vez de "python".
+    def test_the_filter_now_strips_the_edges(self):
+        """Era a divergência com consequência prática: `_apply_unaccent_filter` monta
+        um `__contains` com o termo normalizado. Antes, filtrar por `" python "` com
+        espaço sobrando procurava literalmente `" python "` no campo e não achava nada.
         """
         assert normalize("  python  ") == "python"
-        assert views._normalize_term("  python  ") == "  python  "
-        assert normalize("  python  ") != views._normalize_term("  python  ")
 
-    def test_none_divergence(self):
-        """`normalize` tolera `None`; `views._normalize_term` estoura."""
+    def test_the_filter_now_tolerates_none(self):
+        """A variante antiga estourava `TypeError` com `None`. Não acontecia na prática
+        porque `_apply_unaccent_filter` tem um guarda antes, mas era uma mina."""
         assert normalize(None) == ""
 
-        with pytest.raises(TypeError):
-            views._normalize_term(None)
-
-    def test_accent_divergence_in_the_synonym_lookup(self):
-        """A chave usada em `expand_term` é `strip().lower()`, sem remover acento.
-
-        Para um termo acentuado, `normalize` acha o sinônimo e `expand_term` não. Hoje
-        é inócuo porque ninguém escreve "Reáct" — mas é a mesma classe de bug que o
-        R-09 foi: dois caminhos que deveriam concordar e não concordam.
+    def test_boolean_search_now_expands_an_accented_synonym(self):
+        """A chave de `expand_term` era `strip().lower()`, sem remover acento — então
+        um termo acentuado achava o sinônimo no pré-match e não achava na busca
+        booleana. Agora os dois saem do mesmo `normalize()`.
         """
-        termo = "Reáct"
+        job = Job(
+            title="",
+            stack="",
+            seniority="",
+            location="",
+            department="",
+            must_have="Reáct",
+            nice_to_have="",
+            undesirable="",
+        )
 
-        assert normalize(termo) == "react"
-        assert normalize(termo) in SYNONYMS
+        resultado = views._build_boolean_search(job)
 
-        chave_das_views = termo.strip().lower()
-        assert chave_das_views == "reáct"
-        assert chave_das_views not in SYNONYMS
+        assert normalize("Reáct") == "react"
+        assert "reactjs" in resultado, resultado
 
 
 class TestMatchingBehaviorUnchanged:
