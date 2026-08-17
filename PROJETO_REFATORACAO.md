@@ -12,7 +12,7 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 38 (29 originais + 9 achados na execução) |
+| **Itens no backlog** | 39 (29 originais + 10 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
 | **Executado** | **Ondas 0 e 1 completas e em produção** · 15 itens · PRs #13 a #35 |
 
@@ -1502,7 +1502,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 
 | Métrica | Linha de base | Meta | **Hoje** | |
 |---|---:|---:|---:|:--:|
-| Cobertura real (sem `omit`) | 25% | ≥ 55% | **62,30%** | ✅ |
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **72,08%** | ✅ |
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
@@ -1995,9 +1995,40 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     e seguem válidos: o nome continua existindo em `views` (agora importado), e a view o
     referencia pelo global do módulo.
 
+- [x] **R-38** · Characterization tests de filtros e paginação (T-6)
+      risco: baixo · 0,5d · produção: transparente · PR: ~230 linhas / 1 arquivo
+      **Pré-requisito real do R-15**, que faltava. O R-15 declarava depender de
+      "R-19 (testes de filtro)", mas o R-19 é o bugfix de chave de cache por usuário —
+      **referência quebrada no plano**. O T-6 da seção 6 nunca virou item, e não havia
+      teste nenhum tocando em filtro ou querystring.
+  - [x] 25 testes escritos e passando contra o código atual, sem alterá-lo
+  - [x] Suíte completa verde — 260 testes, cobertura **72,08%**
+  - [x] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Commitado — `<hash>`
+  - Status: **em andamento** · Notas: cobrem os 9 filtros do banco de talentos (cada um
+    parametrizado), combinação, valor em branco, o dict `filters` do template, paginação
+    de 10, ordenação, e os filtros da tela da vaga com o comportamento de sessão.
+
+    **`views.py` saiu de 22% para 47%** de cobertura e a total de 62,18% para **72,08%**.
+    Piso do CI subiu 62 → 72.
+
+    Dois comportamentos fixados que o R-15 não pode quebrar:
+    1. A querystring de paginação **já vem com `&` na frente**, para ser colada depois de
+       `?page=N`. Perder isso gera link `?page=2name=Ana`.
+    2. Entrar na vaga **sem nenhum parâmetro redireciona** (302) para a última busca
+       salva na sessão. É conveniente para a usuária e surpreendente para quem espera
+       um GET simples.
+
+    Um teste meu saiu flaky na primeira rodada: `auto_now` empata na resolução do SQLite
+    quando as escritas caem no mesmo instante, e o desempate vira `-created_at`. Passava
+    sozinho e falhava na suíte cheia. Reescrito com `.update()` e timestamps explícitos;
+    confirmado com duas rodadas completas.
+
 - [ ] **R-15** · Extrair o helper de filtros + querystring das views
       risco: baixo · 0,5d · produção: transparente · PR: ~210 linhas / 2 arquivos
-      pré-requisito: R-19 (testes de filtro)
+      pré-requisito: ~~R-19~~ **R-38** (referência corrigida)
   - [ ] Refatoração aplicada
   - [ ] Testes de filtro passam sem alteração
   - [ ] Suíte completa verde

@@ -5,7 +5,7 @@ install:
 	pre-commit install
 
 test:
-	pytest --cov=core --cov-report=term-missing --cov-fail-under=62 -v
+	pytest --cov=core --cov-report=term-missing --cov-fail-under=72 -v
 
 lint:
 	ruff check .
