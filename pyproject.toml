@@ -74,7 +74,7 @@ branch = true
 # pelo mesmo motivo do R-10 e do R-37: o R-15 removeu 90 linhas de views.py que
 # estavam cobertas, entao numerador e denominador cairam juntos. Nenhum teste foi
 # perdido - a suite continua com os mesmos 260.
-fail_under = 72
+fail_under = 75
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

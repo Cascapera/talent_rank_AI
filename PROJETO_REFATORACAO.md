@@ -1515,7 +1515,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Violações de ruff | 0 | 0 | **0** | ✅ |
 | Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
 | Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
-| Queries em `/relatorios/` | ~500 | 2 | **~500** | ⏳ Onda 5 |
+| Queries em `/relatorios/` | ~500 | 2 | **não escala** | ✅ |
 | Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
 
 **Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
@@ -2290,16 +2290,34 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-24** · `reports`: trocar ~500 queries por 2 agregações
       risco: baixo · 0,5d · produção: transparente · PR: ~100 linhas / 2 arquivos
-  - [ ] Teste que fixa a saída atual do contexto escrito primeiro
-  - [ ] Refatoração aplicada
-  - [ ] `assertNumQueries` provando a redução
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Teste que fixa a saída atual do contexto **escrito primeiro** — 8 testes,
+        passando contra o código antigo antes de eu tocar na view
+  - [x] Refatoração aplicada
+  - [x] Contagem de queries provando a redução — **130 queries com 12 vagas → 20**,
+        o mesmo número de 1 vaga
+  - [x] Suíte completa verde — 310 testes, cobertura 75,13%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `/relatorios/` com os mesmos números de antes
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: o laço aninhado virou uma agregação única
+    (`.values("job_id", "pipeline_status").annotate(Count("id"))`) montada em dicionário.
+
+    **A medição confirmou o diagnóstico na mosca:** 130 queries com 12 vagas contra 20
+    com 1 — exatos 10 por vaga, como o D-9 dizia. Com 50 vagas seriam ~500.
+
+    **O teste afirma escala, não um número fixo:** "o número de queries com 12 vagas tem
+    que ser igual ao de 1". Não quebra quando alguém adicionar uma query legítima à tela,
+    mas quebra na hora se o laço aninhado voltar. Há um limite absoluto de 25 junto, só
+    para o número não subir despercebido.
+
+    Um quirk que os characterization tests fixaram e a otimização precisou preservar:
+    `total_candidates` conta **todos** os vínculos, inclusive os sem etapa de funil
+    preenchida — a soma do funil pode ser menor que o total, e isso é correto. Um
+    `sum(por_etapa.values())` ingênuo sobre só as etapas conhecidas teria mudado o número.
+
+    Piso do CI 72 → 75.
 
 - [ ] **R-25** · Índice funcional para `linkedin_url__iexact`
       risco: baixo · 2h · produção: **requer cuidado (P-7)** · PR: ~25 linhas / 1 arquivo
