@@ -1506,8 +1506,8 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **692** | 🟡 |
-| Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
+| Linhas em `views.py` | 987 | ≤ 450 | **665** | ❌ |
+| Arquivos > 500 linhas | 6 | ≤ 2 | **5** | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
 | Cópias do laço de lotes | 3 | 1 | **1** | ✅ |
@@ -2089,17 +2089,53 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-17** · Renomear `pdf_extractor.py` conforme a responsabilidade real
       risco: baixo · 3h · produção: transparente · PR: ~80 linhas + git mv / 5 arquivos
       pré-requisito: R-14
-  - [ ] Movimentação aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes — nenhum import quebrado
-  - [ ] README atualizado (cita `pdf_extractor` nas linhas 53 e 64)
+  - [x] Movimentação aplicada
+  - [x] Suíte completa verde — 272 testes, cobertura 72,64%
+  - [x] Lint e format verdes — nenhum import quebrado
+  - [x] README atualizado (as duas menções a `pdf_extractor`)
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `pdf_extractor.py` deixou de existir. Virou
+    `core/services/candidate_import.py` (579 linhas, a orquestração) e `core/pdf.py`
+    (59 linhas, o que é genuinamente arquivo). O `_prepare_uploaded_files` veio junto do
+    `views.py` — zipfile e diretório temporário saíram do handler HTTP.
 
-- [ ] **Onda 2 concluída** — views.py ≤ 450 linhas, camadas separadas, suíte verde
+    O nome mentia desde o começo: depois do R-03 (940 linhas de código morto) e do R-37
+    (3º laço), o que sobrou não extrai PDF, coordena importação.
+
+    **Uma armadilha na movimentação:** havia um `from .models import ...` **dentro de uma
+    função** — import adiado que meu script não pegou por não estar no topo. Com o módulo
+    um nível mais fundo, virou `core.services.models` e 19 testes quebraram de uma vez. O
+    erro apareceu na hora; é o tipo de coisa que a suíte pega e a revisão de diff não.
+
+- [~] **Onda 2 — itens concluídos, meta de linhas NÃO atingida** (2026-08-17)
+
+      ✅ **Camadas separadas**, que era o objetivo estrutural:
+
+      ```
+      core/
+      ├── views.py                     665   ← só HTTP
+      ├── filters.py                    34
+      ├── pdf.py                        59   ← arquivo: gravar, listar, desempacotar
+      ├── services/
+      │   ├── import_service.py        169   ← jobs de background
+      │   └── candidate_import.py      579   ← orquestração da importação
+      └── domain/                             ← regra pura, sem Django
+          ├── normalization.py          41
+          ├── job_description.py        54
+          └── boolean_search.py         73
+      ```
+
+      ❌ **`views.py` em 665 linhas, contra a meta de ≤450.** Caiu 33% (987 → 665), mas
+      não chegou. O que sobrou ali é majoritariamente handler HTTP de verdade — ~20
+      views. Chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search`
+      e `search_candidates_in_pool`, que **não estavam no escopo desta onda**. A meta era
+      otimista, não o trabalho é que ficou pela metade.
+
+      🟡 **Arquivos > 500 linhas: 5** (era 6), contra a meta de ≤2. Os dois maiores são
+      templates (`job_detail.html` 1.435 e `home.html` 699), que são da **Onda 6**.
 
 ---
 

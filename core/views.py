@@ -1,7 +1,6 @@
 import shutil
 import tempfile
 import threading
-import zipfile
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -24,6 +23,7 @@ from .forms import CandidateForm, JobForm, SignupForm
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
 from .models import Candidate, CandidateJob, Job, Profile
 from .observability import new_correlation_id
+from .pdf import prepare_uploaded_files
 from .plans import required_plan
 from .services.import_service import (
     _import_status_key,
@@ -76,35 +76,6 @@ _JOB_FILTERS = (
 def metrics_view(request):
     """Endpoint Prometheus (texto exposition format)."""
     return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
-
-
-def _prepare_uploaded_files(uploaded_files: list, temp_dir: Path) -> None:
-    """
-    Processa arquivos enviados (ZIPs e PDFs) e coloca todos os PDFs em temp_dir.
-    Suporta: múltiplos ZIPs, múltiplos PDFs, ou combinação.
-    """
-    pdf_counter = 0
-    for f in uploaded_files:
-        dest = temp_dir / f.name
-        with dest.open("wb") as out:
-            for chunk in f.chunks():
-                out.write(chunk)
-        if zipfile.is_zipfile(dest):
-            with zipfile.ZipFile(dest, "r") as zf:
-                for member in zf.namelist():
-                    if member.lower().endswith(".pdf") and not member.endswith("/"):
-                        pdf_counter += 1
-                        out_path = temp_dir / f"{pdf_counter:04d}.pdf"
-                        with zf.open(member) as src, out_path.open("wb") as dst:
-                            dst.write(src.read())
-            dest.unlink(missing_ok=True)
-        elif dest.suffix.lower() == ".pdf":
-            pdf_counter += 1
-            new_path = temp_dir / f"{pdf_counter:04d}.pdf"
-            if dest != new_path:
-                dest.rename(new_path)
-        else:
-            dest.unlink(missing_ok=True)
 
 
 def home(request):
@@ -200,7 +171,7 @@ def talent_pool(request):
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
             temp_dir = Path(tempfile.mkdtemp(prefix="talent_pool_import_"))
-            _prepare_uploaded_files(uploads, temp_dir)
+            prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
                 _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
@@ -406,7 +377,7 @@ def job_detail(request, job_id: int):
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
             temp_dir = Path(tempfile.mkdtemp(prefix="talent_import_"))
-            _prepare_uploaded_files(uploads, temp_dir)
+            prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
                 job_description = build_job_description_from(job)

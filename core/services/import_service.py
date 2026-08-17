@@ -24,7 +24,7 @@ from ..llm_extractor import generate_parecer
 from ..metrics import vacancy_candidate_import_failures_total
 from ..models import CandidateJob
 from ..observability import Timer, ensure_correlation_id, log_event
-from ..pdf_extractor import (
+from .candidate_import import (
     import_candidates_from_folder,
     import_candidates_from_folder_no_ranking,
     search_and_rank_candidates_from_pool,

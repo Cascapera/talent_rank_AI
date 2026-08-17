@@ -50,7 +50,7 @@ Client/UI (browser)
        ↓
 API Layer (Django views + forms)
        ↓
-Application / Service Layer (views, pdf_extractor, llm_extractor)
+Application / Service Layer (views, services/, domain/, llm_extractor)
        ↓
 Domain (scoring rules, pipeline stages)
        ↓
@@ -61,7 +61,7 @@ Background threads (import jobs) ↔ Cache (FileBasedCache)
 LLM Provider (Google GenAI / Gemini)
 ```
 
-The application follows a layered design: views orchestrate the flow, `pdf_extractor` coordinates text extraction and LLM calls, and `llm_extractor` holds all model integration logic. Asynchronous processing uses background threads (not Celery) with status stored in shared cache. The LLM layer is isolated in `llm_extractor`, so you can swap provider or model without changing the rest of the code.
+The application follows a layered design: views handle HTTP only, `services/` coordinates imports and ranking, `domain/` holds pure business rules, and `llm_extractor` holds all model integration logic. Asynchronous processing uses background threads (not Celery) with status stored in shared cache. The LLM layer is isolated in `llm_extractor`, so you can swap provider or model without changing the rest of the code.
 
 ---
 

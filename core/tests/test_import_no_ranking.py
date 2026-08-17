@@ -10,7 +10,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from core.models import Candidate
-from core.pdf_extractor import import_candidates_from_folder_no_ranking
+from core.services.candidate_import import import_candidates_from_folder_no_ranking
 
 pytestmark = pytest.mark.django_db
 
@@ -55,9 +55,9 @@ def make_pdfs(folder, count):
 
 def run(folder, batch_results=None, single_results=None, **kwargs):
     with (
-        patch("core.pdf_extractor.time.sleep"),
-        patch("core.pdf_extractor.extract_candidates_batch_no_ranking") as mock_batch,
-        patch("core.pdf_extractor.extract_candidate_no_ranking") as mock_single,
+        patch("core.services.candidate_import.time.sleep"),
+        patch("core.services.candidate_import.extract_candidates_batch_no_ranking") as mock_batch,
+        patch("core.services.candidate_import.extract_candidate_no_ranking") as mock_single,
     ):
         if batch_results is not None:
             mock_batch.side_effect = batch_results

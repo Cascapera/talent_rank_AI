@@ -1,9 +1,20 @@
+"""Importacao de candidatos: orquestracao com persistencia (R-17).
+
+Era `core/pdf_extractor.py`, e o nome mentia. Depois do R-03 (940 linhas de codigo morto)
+e do R-37 (3o laco unificado), o que sobrou nao extrai PDF: coordena lotes, chama o LLM,
+grava candidato e reporta progresso. O que era de arquivo foi para `core/pdf.py`.
+
+Regra de dependencia (secao 5 do PROJETO_REFATORACAO.md):
+
+    views  ->  services  ->  domain
+                         ->  llm
+                         ->  models (ORM)
+"""
+
 import time
 from pathlib import Path
 
-from django.core.files import File
-
-from .llm_extractor import (
+from ..llm_extractor import (
     calculate_adherence_batch_for_candidates,
     calculate_adherence_for_candidate,
     extract_candidate_no_ranking,
@@ -11,7 +22,7 @@ from .llm_extractor import (
     extract_candidates_batch_no_ranking,
     extract_candidates_batch_with_llm,
 )
-from .metrics import (
+from ..metrics import (
     vacancy_candidate_import_duration_ms,
     vacancy_candidate_imports_total,
     vacancy_candidate_ranking_duration_ms,
@@ -20,31 +31,9 @@ from .metrics import (
     vacancy_ranking_persist_failures_total,
     vacancy_ranking_persist_total,
 )
-from .models import Candidate, CandidateJob
-from .observability import Timer, log_event
-
-
-def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
-    """Salva ou substitui o PDF do currículo no candidato."""
-    with open(pdf_path, "rb") as f:
-        candidate.resume_pdf.save(Path(pdf_path).name, File(f), save=True)
-
-
-def _resume_path(candidate: Candidate) -> Path | None:
-    """Caminho do currículo em disco, ou `None` se não houver arquivo utilizável.
-
-    O registro no banco não basta: o arquivo tem que existir. Um `media/` limpo sem
-    limpar o banco não quebra o ranking — o candidato passa a ser avaliado pelos dados
-    estruturados, em silêncio.
-    """
-    if not candidate.resume_pdf or not hasattr(candidate.resume_pdf, "path"):
-        return None
-    try:
-        path = Path(candidate.resume_pdf.path)
-    except (ValueError, OSError):
-        return None
-    return path if path.exists() else None
-
+from ..models import Candidate, CandidateJob
+from ..observability import Timer, log_event
+from ..pdf import _pdf_files_in, _resume_path, _save_resume_pdf
 
 # Campos de texto do candidato: None nunca chega ao banco neles, vira "".
 _TEXT_FIELDS = (
@@ -317,13 +306,6 @@ def _process_in_batches(
     return result, processed
 
 
-def _pdf_files_in(folder_path: str) -> list[Path]:
-    folder = Path(folder_path)
-    if not folder.exists():
-        raise FileNotFoundError(f"Pasta nao encontrada: {folder}")
-    return [folder] if folder.is_file() else sorted(folder.glob("*.pdf"))
-
-
 def _split_role_titles(role_title: str | None) -> list[str]:
     if not role_title:
         return []
@@ -524,7 +506,7 @@ def search_and_rank_candidates_from_pool(
     esses candidatos. Candidatos com PDF de currículo são avaliados pelo PDF;
     os demais (cadastro manual ou importações antigas) pelos dados estruturados.
     """
-    from .models import Candidate, CandidateJob
+    from ..models import Candidate, CandidateJob
 
     # Busca candidatos do usuário não vinculados à vaga
     linked_candidate_ids = CandidateJob.objects.filter(job_id=job_id).values_list(
