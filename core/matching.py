@@ -8,9 +8,9 @@ acima do mínimo seguem para a avaliação final via LLM (PDF do currículo
 quando disponível, dados estruturados caso contrário).
 """
 
-import unicodedata
-
 from django.conf import settings
+
+from .domain.normalization import SYNONYMS, normalize
 
 # Pesos por categoria. Categorias não preenchidas na vaga são desconsideradas
 # e o score é normalizado pelos pesos das categorias restantes.
@@ -23,21 +23,6 @@ CATEGORY_WEIGHTS = {
 }
 
 DEFAULT_MIN_MATCH_SCORE = 40
-
-SYNONYMS = {
-    "js": ["javascript"],
-    "javascript": ["js"],
-    "node": ["node.js", "nodejs"],
-    "nodejs": ["node.js", "node"],
-    "node.js": ["node", "nodejs"],
-    "react": ["reactjs"],
-    "reactjs": ["react"],
-    "k8s": ["kubernetes"],
-    "kubernetes": ["k8s"],
-    "aws": ["amazon web services"],
-    "gcp": ["google cloud"],
-    "ci/cd": ["cicd", "continuous integration", "continuous delivery"],
-}
 
 # Escada de senioridade: candidato com nível igual ou acima atende a vaga.
 SENIORITY_LADDER = {
@@ -56,18 +41,13 @@ def get_min_match_score() -> int:
     return getattr(settings, "POOL_MATCH_MIN_SCORE", DEFAULT_MIN_MATCH_SCORE)
 
 
-def _normalize(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value or "")
-    return "".join(char for char in normalized if not unicodedata.combining(char)).lower().strip()
-
-
 def _split_terms(value: str) -> list[str]:
     return [item.strip() for item in (value or "").split(",") if item.strip()]
 
 
 def _term_variants(term: str) -> list[str]:
-    normalized = _normalize(term)
-    variants = [normalized] + [_normalize(s) for s in SYNONYMS.get(normalized, [])]
+    normalized = normalize(term)
+    variants = [normalized] + [normalize(s) for s in SYNONYMS.get(normalized, [])]
     return [v for v in variants if v]
 
 
@@ -81,7 +61,7 @@ def _match_ratio(terms: list[str], haystack: str) -> tuple[float, list[str]]:
 
 
 def _seniority_rank(value: str) -> int | None:
-    normalized = _normalize(value)
+    normalized = normalize(value)
     for label, rank in SENIORITY_LADDER.items():
         if label in normalized:
             return rank
@@ -93,8 +73,8 @@ def _seniority_matches(job_seniority: str, candidate_seniority: str) -> bool:
     candidate_rank = _seniority_rank(candidate_seniority)
     if job_rank is not None and candidate_rank is not None:
         return candidate_rank >= job_rank
-    job_norm = _normalize(job_seniority)
-    candidate_norm = _normalize(candidate_seniority)
+    job_norm = normalize(job_seniority)
+    candidate_norm = normalize(candidate_seniority)
     if not job_norm or not candidate_norm:
         return False
     return job_norm in candidate_norm or candidate_norm in job_norm
@@ -117,7 +97,7 @@ def compute_match(job, candidate) -> dict:
 
     Retorna {"score": int 0-100, "matched_terms": [str]}.
     """
-    haystack = _normalize(
+    haystack = normalize(
         " | ".join(
             [
                 candidate.current_title or "",
@@ -157,7 +137,7 @@ def compute_match(job, candidate) -> dict:
             matched_terms.append(job.seniority.strip())
 
     if (job.language or "").strip():
-        languages_haystack = _normalize(candidate.languages or "")
+        languages_haystack = normalize(candidate.languages or "")
         job_languages = _split_terms(job.language)
         fraction, matched = _match_ratio(job_languages, languages_haystack)
         fractions["language"] = fraction
@@ -176,7 +156,7 @@ def compute_match(job, candidate) -> dict:
     seen = set()
     unique_terms = []
     for term in matched_terms:
-        key = _normalize(term)
+        key = normalize(term)
         if key not in seen:
             seen.add(key)
             unique_terms.append(term)

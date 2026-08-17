@@ -12,7 +12,7 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 36 (29 originais + 7 achados na execução) |
+| **Itens no backlog** | 37 (29 originais + 8 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
 | **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
 
@@ -1915,18 +1915,44 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-13** · Unificar normalização e sinônimos em `domain/normalization.py`
       risco: baixo · 3h · produção: transparente · PR: ~140 linhas / 3 arquivos
-  - [ ] **Teste de equivalência provando que as 2 versões produzem a mesma saída**
-  - [ ] Refatoração aplicada
-  - [ ] Os 14 testes de matching passam sem alteração
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] **Teste de equivalência feito — e as versões DIVERGEM.** `test_normalization.py`
+        prova, caso a caso. O dicionário era idêntico (unificado); as normalizações não.
+  - [x] Refatoração aplicada — **só a parte segura**
+  - [x] Os 14 testes de matching passam sem alteração
+  - [x] Suíte completa verde — 213 testes, cobertura 54,11%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — busca booleana + preview de match
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento, escopo reduzido de propósito** · Notas: o item mandava
+    confirmar a equivalência antes de unificar e avisava que divergência viraria decisão.
+    Divergiram — e são **três** variantes, não duas:
 
-- [ ] **Onda 1 concluída** — duplicação estrutural eliminada, suíte verde
+    | Onde | O que faz |
+    |---|---|
+    | `matching._normalize` | NFKD + lower + **strip**, tolera `None` |
+    | `views._normalize_term` | NFKD + lower, **sem strip**, estoura com `None` |
+    | `views._build_boolean_search.expand_term` | strip + lower, **sem remover acento** |
+
+    Então o R-13 entregou só a parte de risco zero: `core/domain/` criado (primeiro
+    módulo da camada de domínio, sem nenhum import de Django) com o `SYNONYMS` único e o
+    `normalize()`, que é o do `matching` movido sem alterar uma linha. As duas pontas
+    passam a apontar para **o mesmo objeto** — adicionar um sinônimo vale nos dois lugares
+    automaticamente, que era o ganho prometido.
+
+    Unificar as três normalizações é mudança de comportamento (o `strip` muda o resultado
+    de filtro com espaço sobrando) e virou **R-36**.
+
+    Achado de brinde, fixado por teste: enquanto todas as chaves de `SYNONYMS` forem
+    ASCII, os dois caminhos de lookup chegam ao mesmo lugar. **Uma chave acentuada faria
+    os dois consumidores discordarem em silêncio** — mesma classe do bug do R-09.
+
+- [x] **Onda 1 concluída** — 2026-08-17. Duplicação estrutural eliminada: o upsert de
+      candidato existe em 1 lugar (era 4), o cliente Gemini em 1 (era 7), o laço de lotes
+      em 1 (era 3, com o 3º bloqueado no R-33), o dicionário de sinônimos em 1 (era 2).
+      213 testes, cobertura 54,11%. R-08 a R-10 já em produção; R-11, R-12 e R-13 em
+      `develop`.
 
 ---
 
@@ -2258,6 +2284,32 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Commitado — `<hash>`
   - Status: não iniciado · Notas:
 
+- [ ] **R-36** · Unificar as três normalizações de termo
+      risco: **médio — muda resultado de busca** · 3h · produção: transparente
+      **Achado no R-13**, que só unificou o dicionário. O plano supunha que as
+      normalizações eram equivalentes; `test_normalization.py` prova que não:
+
+      | Onde | O que faz |
+      |---|---|
+      | `domain.normalization.normalize` | NFKD + lower + **strip**, tolera `None` |
+      | `views._normalize_term` | NFKD + lower, **sem strip**, estoura com `None` |
+      | `views._build_boolean_search.expand_term` | strip + lower, **sem acento** |
+
+      **A decisão de produto:** hoje, filtrar por `" python "` com espaço sobrando
+      procura literalmente `" python "` no campo. Unificar em `normalize()` faz o
+      espaço ser aparado — quase certamente o que a usuária espera, mas é mudança de
+      resultado de busca, então merece PR próprio e marcado.
+  - [ ] Decidido se o `strip` passa a valer no filtro (recomendado: sim)
+  - [ ] `views._normalize_term` e `expand_term` passam a usar `normalize()`
+  - [ ] Testes de divergência de `test_normalization.py` invertidos
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — filtrar com espaço sobrando encontra o candidato
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
 - [ ] 🐛 **R-35** · `_extract_json` devolve o array interno em vez do objeto
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
       **Achado no R-07.** `llm_extractor.py:198-216`: quando o `json.loads` do texto
@@ -2319,6 +2371,9 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-30** | Callback final do fluxo de vaga passa a mandar `total`, `processed` e `result`, igual ao `..._no_ranking`. 3 characterization tests do R-06 invertidos. PR #29. | **O diagnóstico do item estava errado e foi refutado antes de escrever código.** Três motivos independentes: (1) não existe barra de progresso — `job_detail.html:711-723` renderiza o ramo `completed` a partir do `result`, sem usar `processed`/`total`; (2) o callback final é sempre sobrescrito por `views.py:557` microssegundos depois, então não sobrevive a um poll de 2s; (3) `processed` nunca esteve errado — `_process_in_batches` incrementa em todos os caminhos, inclusive nos de erro, então `processed == total` sempre. "Processado" significa tentado, não bem-sucedido; o teste do R-06 leu o nome da variável, não a semântica. Sobrou unificar o contrato e fechar uma janela de corrida em que um poll via `completed` sem `result` e a tela mostrava tudo zerado. Estimativa corrigida de 2h para 30min. |
 | 2026-08-17 | **R-32** | `unchanged` entra no `result` do `_process_in_batches` e passa a ser exibido. Teste do R-05 invertido, agora exigindo que a soma feche com o total. | Duas. (1) O plano dizia "3 arquivos" e eram **5**: a exibição vive em **4 lugares**, não 1 — `job_detail.html` e `talent_pool.html`, cada um com um bloco Django e um bloco JS de poll que renderizam a mesma frase de formas diferentes. É a duplicação do D-11 cobrando o preço na prática. (2) O cache de status tem TTL de 1h, então na primeira hora após o deploy existem payloads sem a chave nova — resolvido com `\|default:0` no template e `\|\| 0` no JS. |
 | 2026-08-17 | **R-07** | 50 characterization tests do cliente LLM em `test_llm_client.py`: `_extract_json`, `_normalize_list`, `_normalize_linkedin_url`, guarda da API key parametrizada nas 7 funções, retry, contratos das 7 públicas e validação de tamanho do lote. Nenhuma linha de aplicação alterada. Piso do CI 41 → 53. | **Maior salto de cobertura do projeto: 41,83% → 53,58%**, com o `llm_extractor` indo de 20% para 71%. A meta de 55% da seção 10 ficou a um item de distância. Três comportamentos fixados que ninguém tinha visto: (1) **`_extract_json` procura array antes de objeto** — resposta embrulhada em ``` com array interno faz o candidato virar a lista de skills dele; virou **R-35** e é o mais sério; (2) o laço **dorme depois da 4ª tentativa** antes de propagar — com rate limit são 30s parados à toa; (3) erro que não é rate limit nem 503 não usa backoff, dorme 3s fixos, mas ainda tenta 4 vezes. |
+| 2026-08-17 | **R-11** | `_generate()` criado: as 7 cópias de `api_key` + `genai.Client` + laço de retry viram 1. `llm_extractor.py` 940 → 661 linhas, 358 → 207 stmts, cobertura 71% → 89%. Diff +74/−241. PR #32. | **Os 50 characterization tests do R-07 passaram sem tocar em uma linha** — era o critério de sucesso, e é a prova de que a extração não mudou comportamento. Uma diferença registrada por honestidade: a guarda da `GEMINI_API_KEY` foi para dentro do `_generate()`, então nas duas funções instrumentadas a `RuntimeError` de chave ausente passa a nascer dentro do `try` e a disparar a métrica de falha. Só ocorre com a chave desconfigurada, e registrar é mais correto que silenciar. |
+| 2026-08-17 | **R-12** | Timeout de 180s em toda chamada ao LLM, via `settings.LLM_TIMEOUT_SECONDS` e `types.HttpOptions`. 3 testes novos. PR #33. | Duas. (1) **Armadilha de unidade:** `HttpOptions.timeout` é em MILISSEGUNDOS — conferido no pacote instalado antes de escrever a linha. Passar segundos daria 180ms e derrubaria toda chamada ao LLM em produção. O setting fica em segundos e a conversão mora só no `_generate()`, travada por teste. (2) **O ganho é "de infinito para limitado", não "para curto":** o erro de timeout cai no ramo genérico do retry e consome as 4 tentativas, ~12min até desistir. Fixado por teste em vez de escondido; encurtar seria mudar a política de retry, ou seja, outro item. |
+| 2026-08-17 | **R-13** | `core/domain/` criado — primeiro módulo da camada de domínio, sem nenhum import de Django. `SYNONYMS` unificado (era 2 cópias) e `normalize()` movido do matching sem alterar uma linha. PR #34. | **O teste de equivalência que o item exigia reprovou a premissa.** O dicionário era idêntico, mas as normalizações não — e são **três** variantes, não duas: `normalize` apara as pontas e tolera `None`; `views._normalize_term` não apara e estoura com `None`; a chave de `expand_term` nem remove acento. Entreguei só a parte de risco zero e a unificação das funções virou **R-36**, porque o `strip` muda resultado de busca. Achado de brinde, fixado por teste: os dois caminhos de lookup só concordam porque **todas as chaves de `SYNONYMS` são ASCII** — uma chave acentuada faria as duas pontas discordarem em silêncio, mesma classe do bug do R-09. |
 
 ---
 
