@@ -1754,7 +1754,9 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     3. Erro que não é rate limit nem 503 **não usa o backoff** — dorme 3s fixos, mas
        ainda assim tenta as 4 vezes.
 
-- [ ] **Onda 0 concluída** — suíte verde, cobertura real exposta, nada em aberto
+- [x] **Onda 0 concluída** — 2026-08-17. Suíte verde, cobertura real exposta e subindo
+      (25% → 53,58%), código morto eliminado, rede de segurança de 145 testes no lugar.
+      R-01 a R-06 já em produção; R-07 em `develop`.
 
 ---
 
@@ -1859,16 +1861,28 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-11** · Extrair `_generate()` — unificar as 7 cópias de client + retry
       risco: médio · 0,5d · produção: transparente · PR: ~235 linhas / 1 arquivo
       pré-requisito: R-07
-  - [ ] Refatoração aplicada
-  - [ ] Testes de R-07 passam sem alteração
-  - [ ] `grep -c "genai.Client"` retorna 1
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Refatoração aplicada
+  - [x] **Testes de R-07 passam SEM nenhuma alteração** — 195/195, incluindo os 3 quirks
+  - [x] `grep -c "genai.Client"` retorna **1** (era 7) · `os.getenv("GEMINI_API_KEY")`
+        também caiu de 7 para 1
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — gerar 1 parecer e importar 1 PDF
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
+    statements, cobertura 71% → **89%**. Diff +74/−241. Os 50 characterization tests do
+    R-07 passaram sem tocar em uma linha, que era o critério de sucesso.
+
+    ⚠️ **Uma mudança de comportamento, pequena e proposital:** a guarda da
+    `GEMINI_API_KEY` saiu do topo de cada função pública e foi para dentro do
+    `_generate()`. Nas duas funções instrumentadas (`extract_candidates_batch_with_llm`
+    e `extract_candidate_with_llm`), a `RuntimeError` de chave ausente agora nasce
+    **dentro** do `try`, então dispara a métrica de falha e o `log_event` de erro — antes
+    escapava antes do bloco e não registrava nada. Só acontece com a chave desconfigurada,
+    e registrar essa falha é mais correto que silenciá-la. Fica anotado por honestidade,
+    não porque preocupe.
 
 - [ ] **R-12** · Adicionar timeout à chamada do LLM
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
