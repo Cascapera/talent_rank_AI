@@ -1498,22 +1498,31 @@ verifique com `SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT i
 
 ## 10. Métricas de sucesso
 
-| Métrica | Hoje | Meta | Como medir |
-|---|---:|---:|---|
-| Cobertura real (sem `omit`) | **25%** | **≥ 55%** | `pytest --cov=core` após R-01 |
-| Cobertura de `pdf_extractor`/`candidate_import` | **6%** | **≥ 70%** | relatório por arquivo |
-| Cobertura de `llm_extractor` | **20%** | **≥ 65%** | relatório por arquivo |
-| Linhas em `pdf_extractor.py` | **1.888** | **≤ 600** | `wc -l` |
-| Linhas em `views.py` | **987** | **≤ 450** | `wc -l` |
-| Arquivos > 500 linhas | **6** | **≤ 2** | script da seção 3 |
-| Funções > 50 linhas | **25** | **≤ 10** | script AST da seção 3 |
-| Cópias do bloco de upsert | **4** | **1** | inspeção |
-| Cópias do cliente Gemini | **7** | **1** | `grep -c "genai.Client"` |
-| Código morto | **872 linhas** | **0** | análise de alcançabilidade AST |
-| Avisos do `check --deploy` | **6** | **≤ 1** | `manage.py check --deploy` |
-| Queries em `/relatorios/` | **~500** | **2** | `assertNumQueries` |
-| Violações de ruff | **0** | **0** | manter |
-| Tempo da suíte | **19s** | **≤ 60s** | com ~2× mais testes, ainda rápida |
+Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
+
+| Métrica | Linha de base | Meta | **Hoje** | |
+|---|---:|---:|---:|:--:|
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **55,94%** | ✅ |
+| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **57%** | 🟡 |
+| Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
+| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **779** | 🟡 |
+| Linhas em `views.py` | 987 | ≤ 450 | **~975** | ❌ |
+| Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
+| Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
+| Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
+| Cópias do laço de lotes | 3 | 1 | **1** | ✅ |
+| Código morto | 872 linhas | 0 | **0** | ✅ |
+| Violações de ruff | 0 | 0 | **0** | ✅ |
+| Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
+| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
+| Queries em `/relatorios/` | ~500 | 2 | **~500** | ⏳ Onda 5 |
+| Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
+
+**Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
+`views.py` **não encolheu** — e não era para encolher ainda: quem faz isso é a Onda 2
+(R-14 a R-17), que move a orquestração para `services/`. `pdf_extractor` fica em 779
+linhas até o R-17 tirar dele o que não é PDF. As duas últimas linhas dependem de ondas
+que nem começaram.
 
 ### Ganho perceptível (o que não cabe em número)
 
@@ -2299,16 +2308,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       procura literalmente `" python "` no campo. Unificar em `normalize()` faz o
       espaço ser aparado — quase certamente o que a usuária espera, mas é mudança de
       resultado de busca, então merece PR próprio e marcado.
-  - [ ] Decidido se o `strip` passa a valer no filtro (recomendado: sim)
-  - [ ] `views._normalize_term` e `expand_term` passam a usar `normalize()`
-  - [ ] Testes de divergência de `test_normalization.py` invertidos
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Decidido: **o `strip` passa a valer no filtro**. Espaço sobrando numa caixa de
+        busca é digitação, não intenção — hoje `" python "` não achava nada.
+  - [x] `views._normalize_term` **deletada**; `expand_term` passa a usar `normalize()`
+  - [x] Testes de divergência de `test_normalization.py` invertidos — a classe
+        `TestTheThreeNormalizersDiverge` virou `TestTheThreeNormalizersAreNowOne`
+  - [x] Suíte completa verde — 216 testes, cobertura **55,94%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — filtrar com espaço sobrando encontra o candidato
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: três normalizações viram uma. `unicodedata` sai do
+    `views.py` (ficou órfão). Um dos testes garante que `views._normalize_term` **não
+    existe mais**, para ninguém reintroduzir por hábito.
+
+    ⚠️ **Muda comportamento em dois pontos, ambos para melhor:** o filtro das listagens
+    passa a aparar as pontas do termo, e a busca booleana passa a expandir sinônimo de
+    termo acentuado. Bugfix em PR separado, como manda a regra do projeto.
+
+    **Com este item, a meta de cobertura de 55% da seção 10 foi batida: 55,94%.**
+    Piso do CI subiu 53 → 55 nos três lugares.
 
 - [ ] 🐛 **R-35** · `_extract_json` devolve o array interno em vez do objeto
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
@@ -2385,6 +2405,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-12** | Timeout de 180s em toda chamada ao LLM, via `settings.LLM_TIMEOUT_SECONDS` e `types.HttpOptions`. 3 testes novos. PR #33. | Duas. (1) **Armadilha de unidade:** `HttpOptions.timeout` é em MILISSEGUNDOS — conferido no pacote instalado antes de escrever a linha. Passar segundos daria 180ms e derrubaria toda chamada ao LLM em produção. O setting fica em segundos e a conversão mora só no `_generate()`, travada por teste. (2) **O ganho é "de infinito para limitado", não "para curto":** o erro de timeout cai no ramo genérico do retry e consome as 4 tentativas, ~12min até desistir. Fixado por teste em vez de escondido; encurtar seria mudar a política de retry, ou seja, outro item. |
 | 2026-08-17 | **R-13** | `core/domain/` criado — primeiro módulo da camada de domínio, sem nenhum import de Django. `SYNONYMS` unificado (era 2 cópias) e `normalize()` movido do matching sem alterar uma linha. PR #34. | **O teste de equivalência que o item exigia reprovou a premissa.** O dicionário era idêntico, mas as normalizações não — e são **três** variantes, não duas: `normalize` apara as pontas e tolera `None`; `views._normalize_term` não apara e estoura com `None`; a chave de `expand_term` nem remove acento. Entreguei só a parte de risco zero e a unificação das funções virou **R-36**, porque o `strip` muda resultado de busca. Achado de brinde, fixado por teste: os dois caminhos de lookup só concordam porque **todas as chaves de `SYNONYMS` são ASCII** — uma chave acentuada faria as duas pontas discordarem em silêncio, mesma classe do bug do R-09. |
 | 2026-08-17 | **Ondas 0 e 1 → produção** | Segundo release (PR #35): 16 commits, 6 PRs, `b6f431c` → `8c2130a`. CI verde nas duas versões da matriz; CD em 1m21s. `No migrations to apply`, `pip install` no-op de novo, `0 static files copied`. **Ondas 0 e 1 completas em produção.** | Nenhuma surpresa no deploy. Diferente do primeiro release, este mexeu em `views.py` e em 2 templates — o R-32 muda o que a usuária lê na tela. Resultado acumulado do dia: testes 100 → **213**, cobertura real 25% → **54,11%**, `pdf_extractor` 2.046 → 779 linhas, `llm_extractor` 940 → 661, cliente Gemini de 7 cópias para 1, upsert de 4 para 1, laço de lotes de 3 para 1, dicionário de sinônimos de 2 para 1, e 1 bug real corrigido (R-09). Falta a verificação manual dos 4 itens marcados. |
+| 2026-08-17 | **R-35** | 🐛 `_extract_json`: a ordem fixa (array antes de objeto) virou "vence quem começa antes no texto", com fallback. PR #37. | O caso corrigido: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` — o candidato virava a lista de skills dele. O caminho de lote segue intacto porque a resposta em lote é um array de objetos, então o `[` vem antes do primeiro `{`. Achado pelos testes do R-07, corrigido no dia seguinte à descoberta. |
+| 2026-08-17 | **R-36** | As três normalizações de termo viram uma. `views._normalize_term` deletada, `expand_term` passa a usar `normalize()`, `unicodedata` sai do `views.py`. Piso do CI 53 → 55. PR #38. | **Meta de cobertura de 55% da seção 10 batida: 55,94%.** Muda comportamento em dois pontos, ambos para melhor: o filtro das listagens passa a aparar as pontas (antes, `" python "` com espaço sobrando não achava nada) e a busca booleana passa a expandir sinônimo de termo acentuado. Um teste garante que `views._normalize_term` não existe mais, para ninguém reintroduzir por hábito. |
 
 ---
 
