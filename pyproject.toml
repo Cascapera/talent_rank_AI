@@ -67,8 +67,14 @@ branch = true
 # e denominador cairam juntos (1.755 -> 1.684 statements). Em absoluto ha menos
 # codigo sem teste do que antes.
 # O salto do R-07 (41,83 -> 53,58) veio do llm_extractor, que saiu de 20% para
-# 71% com os 50 characterization tests. A meta de 55 esta a um item de distancia.
-fail_under = 53
+# 71% com os 50 characterization tests. -> 55 (R-36).
+# META DE 55% DA SECAO 10 BATIDA em 2026-08-17: 55,94%. -> 62 (R-33, search pool),
+# que levou o pdf_extractor de 57% para 88%.
+# 72 (R-38, filtros) -> 71 (R-15). A queda de 72,08 para 71,41 NAO e regressao,
+# pelo mesmo motivo do R-10 e do R-37: o R-15 removeu 90 linhas de views.py que
+# estavam cobertas, entao numerador e denominador cairam juntos. Nenhum teste foi
+# perdido - a suite continua com os mesmos 260.
+fail_under = 72
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

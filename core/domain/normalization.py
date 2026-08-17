@@ -6,18 +6,18 @@ um sinônimo (ex.: "postgres" -> "postgresql") exigia lembrar dos dois lugares, 
 só onde fosse lembrado: o pré-match e a busca booleana passariam a discordar em
 silêncio.
 
-⚠️ **A normalização NÃO foi unificada neste item, de propósito.** Existem três variantes
-no código e elas **não** produzem a mesma saída — ao contrário do que o plano supunha.
-`test_normalization.py` prova a divergência termo a termo. Unificá-las é mudança de
-comportamento e virou item próprio (**R-36**).
+A normalização não foi unificada junto, de propósito: existiam **três** variantes que
+**não** produziam a mesma saída, ao contrário do que o plano supunha. Virou o **R-36**,
+feito em seguida — hoje `normalize()` é a única, usada pelo pré-match, pelo filtro das
+listagens e pela busca booleana.
 """
 
 import unicodedata
 
 # Sinônimos de tecnologia usados tanto pelo pré-match (matching.py) quanto pela geração
-# da busca booleana (views._build_boolean_search). As chaves são todas ASCII, o que é o
-# que permite os dois chamadores procurarem por caminhos ligeiramente diferentes sem
-# divergir na prática — ver R-36.
+# da busca booleana (views._build_boolean_search). Desde o R-36 os dois procuram a chave
+# pelo mesmo `normalize()`, então uma chave acentuada aqui passou a ser segura — antes
+# faria os dois consumidores discordarem em silêncio.
 SYNONYMS = {
     "js": ["javascript"],
     "javascript": ["js"],
@@ -37,9 +37,13 @@ SYNONYMS = {
 def normalize(value: str) -> str:
     """Remove acento, baixa a caixa e apara as pontas. Tolera `None`.
 
-    É a variante do `matching`, movida sem alterar uma linha. As outras duas variantes
-    do código (`views._normalize_term`, sem `strip` e sem tolerar `None`; e a chave de
-    `expand_term`, que nem remove acento) continuam onde estão até o R-36 decidir.
+    Única normalização de termo do sistema (R-36). Usada pelo pré-match (`matching`),
+    pelo filtro com `unaccent` das listagens (`views._apply_unaccent_filter`) e pela
+    busca booleana (`views._build_boolean_search`).
+
+    Era a variante do `matching`; as outras duas foram deletadas. A que valia no filtro
+    não aparava as pontas — filtrar por `" python "` procurava literalmente `" python "`
+    no campo e não achava nada.
     """
     normalized = unicodedata.normalize("NFKD", value or "")
     return "".join(char for char in normalized if not unicodedata.combining(char)).lower().strip()

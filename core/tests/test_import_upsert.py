@@ -19,7 +19,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from core.models import Candidate, CandidateJob, Job
-from core.pdf_extractor import import_candidates_from_folder
+from core.services.candidate_import import import_candidates_from_folder
 
 pytestmark = pytest.mark.django_db
 
@@ -72,7 +72,7 @@ def make_pdfs(folder, count=1):
 def run_import(folder, results, **kwargs):
     """Roda a importação com o LLM mockado devolvendo `results`."""
     with patch(
-        "core.pdf_extractor.extract_candidates_batch_with_llm", return_value=results
+        "core.services.candidate_import.extract_candidates_batch_with_llm", return_value=results
     ) as mock_llm:
         result = import_candidates_from_folder(
             str(folder),

@@ -12,9 +12,9 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 37 (29 originais + 8 achados na execução) |
+| **Itens no backlog** | 39 (29 originais + 10 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
+| **Executado** | **Ondas 0 e 1 completas e em produção** · 15 itens · PRs #13 a #35 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1498,22 +1498,31 @@ verifique com `SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT i
 
 ## 10. Métricas de sucesso
 
-| Métrica | Hoje | Meta | Como medir |
-|---|---:|---:|---|
-| Cobertura real (sem `omit`) | **25%** | **≥ 55%** | `pytest --cov=core` após R-01 |
-| Cobertura de `pdf_extractor`/`candidate_import` | **6%** | **≥ 70%** | relatório por arquivo |
-| Cobertura de `llm_extractor` | **20%** | **≥ 65%** | relatório por arquivo |
-| Linhas em `pdf_extractor.py` | **1.888** | **≤ 600** | `wc -l` |
-| Linhas em `views.py` | **987** | **≤ 450** | `wc -l` |
-| Arquivos > 500 linhas | **6** | **≤ 2** | script da seção 3 |
-| Funções > 50 linhas | **25** | **≤ 10** | script AST da seção 3 |
-| Cópias do bloco de upsert | **4** | **1** | inspeção |
-| Cópias do cliente Gemini | **7** | **1** | `grep -c "genai.Client"` |
-| Código morto | **872 linhas** | **0** | análise de alcançabilidade AST |
-| Avisos do `check --deploy` | **6** | **≤ 1** | `manage.py check --deploy` |
-| Queries em `/relatorios/` | **~500** | **2** | `assertNumQueries` |
-| Violações de ruff | **0** | **0** | manter |
-| Tempo da suíte | **19s** | **≤ 60s** | com ~2× mais testes, ainda rápida |
+Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
+
+| Métrica | Linha de base | Meta | **Hoje** | |
+|---|---:|---:|---:|:--:|
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **72,08%** | ✅ |
+| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
+| Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
+| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
+| Linhas em `views.py` | 987 | ≤ 450 | **665** | ❌ |
+| Arquivos > 500 linhas | 6 | ≤ 2 | **5** | 🟡 |
+| Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
+| Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
+| Cópias do laço de lotes | 3 | 1 | **1** | ✅ |
+| Código morto | 872 linhas | 0 | **0** | ✅ |
+| Violações de ruff | 0 | 0 | **0** | ✅ |
+| Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
+| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
+| Queries em `/relatorios/` | ~500 | 2 | **~500** | ⏳ Onda 5 |
+| Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
+
+**Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
+`views.py` **não encolheu** — e não era para encolher ainda: quem faz isso é a Onda 2
+(R-14 a R-17), que move a orquestração para `services/`. `pdf_extractor` fica em 779
+linhas até o R-17 tirar dele o que não é PDF. As duas últimas linhas dependem de ondas
+que nem começaram.
 
 ### Ganho perceptível (o que não cabe em número)
 
@@ -1737,10 +1746,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         substituído por duplo e `time.sleep` capturado numa lista
   - [x] Suíte completa verde — **195 testes**, cobertura **53,58%**
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: 50 testes em `test_llm_client.py`, divididos em
+  - [x] PR aberto e revisado — **#31**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
+  - [x] Commitado — `e8649dd`
+  - Status: **em produção** · Notas: 50 testes em `test_llm_client.py`, divididos em
     `_extract_json` · `_normalize_list` · `_normalize_linkedin_url` · guarda da API key
     (parametrizada nas 7 funções) · retry · contratos · validação de tamanho do lote.
     **Cobertura do `llm_extractor` foi de 20% para 71%**, e a total de 41,83% para
@@ -1867,11 +1876,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         também caiu de 7 para 1
   - [x] Suíte completa verde
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#32**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — gerar 1 parecer e importar 1 PDF
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
+  - [x] Commitado — `30193a2`
+  - Status: **em produção** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
     statements, cobertura 71% → **89%**. Diff +74/−241. Os 50 characterization tests do
     R-07 passaram sem tocar em uma linha, que era o critério de sucesso.
 
@@ -1893,11 +1902,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Mudança aplicada + 3 testes de timeout
   - [x] Suíte completa verde — 198 testes, cobertura 53,94%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#33**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — importação de lote grande conclui sem estourar
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: uma edição em vez de sete, exatamente como o R-11
+  - [x] Commitado — `7f8e798`
+  - Status: **em produção** · Notas: uma edição em vez de sete, exatamente como o R-11
     prometia.
 
     ⚠️ **Armadilha de unidade, verificada antes de escrever:** `types.HttpOptions.timeout`
@@ -1921,11 +1930,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Os 14 testes de matching passam sem alteração
   - [x] Suíte completa verde — 213 testes, cobertura 54,11%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#34**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — busca booleana + preview de match
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento, escopo reduzido de propósito** · Notas: o item mandava
+  - [x] Commitado — `967c4af`
+  - Status: **em produção, escopo reduzido de propósito** · Notas: o item mandava
     confirmar a equivalência antes de unificar e avisava que divergência viraria decisão.
     Divergiram — e são **três** variantes, não duas:
 
@@ -1961,55 +1970,172 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-14** · Criar `core/services/` e mover a orquestração de importação
       risco: baixo · 0,5d · produção: transparente · PR: ~460 linhas / 4 arquivos
       pré-requisito: R-10
-  - [ ] Movimentação aplicada — **diff reconhecível como recorte e cola**
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Movimentação aplicada — **diff reconhecível como recorte e cola**: −187/+15 em
+        `views.py`, e o `import_service.py` é o recorte literal, feito por script
+  - [x] Suíte completa verde — 235 testes, sem alteração em nenhum
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `core/services/` criado com os **12 blocos** de
+    orquestração — as 4 funções `_run_*` mais as 4 chaves de cache e os 4 setters de
+    status. `views.py` **975 → 837 linhas**.
+
+    A movimentação foi feita por script (recorte de bloco por AST-ish, não transcrição)
+    exatamente para o diff ser revisável como recorte e cola. Nenhum corpo de função foi
+    reescrito.
+
+    **Uma exceção, documentada:** `_run_parecer_generation` chama
+    `_build_job_description`, que ainda mora em `views.py` — import de módulo criaria
+    ciclo. Ficou como **import adiado dentro da função**, com comentário apontando o
+    R-16, que move essa função para `domain/` e transforma isto em import normal.
+
+    Os testes de `test_views_parecer.py` continuam mockando `core.views._run_parecer_generation`
+    e seguem válidos: o nome continua existindo em `views` (agora importado), e a view o
+    referencia pelo global do módulo.
+
+- [x] **R-38** · Characterization tests de filtros e paginação (T-6)
+      risco: baixo · 0,5d · produção: transparente · PR: ~230 linhas / 1 arquivo
+      **Pré-requisito real do R-15**, que faltava. O R-15 declarava depender de
+      "R-19 (testes de filtro)", mas o R-19 é o bugfix de chave de cache por usuário —
+      **referência quebrada no plano**. O T-6 da seção 6 nunca virou item, e não havia
+      teste nenhum tocando em filtro ou querystring.
+  - [x] 25 testes escritos e passando contra o código atual, sem alterá-lo
+  - [x] Suíte completa verde — 260 testes, cobertura **72,08%**
+  - [x] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Commitado — `<hash>`
+  - Status: **em andamento** · Notas: cobrem os 9 filtros do banco de talentos (cada um
+    parametrizado), combinação, valor em branco, o dict `filters` do template, paginação
+    de 10, ordenação, e os filtros da tela da vaga com o comportamento de sessão.
+
+    **`views.py` saiu de 22% para 47%** de cobertura e a total de 62,18% para **72,08%**.
+    Piso do CI subiu 62 → 72.
+
+    Dois comportamentos fixados que o R-15 não pode quebrar:
+    1. A querystring de paginação **já vem com `&` na frente**, para ser colada depois de
+       `?page=N`. Perder isso gera link `?page=2name=Ana`.
+    2. Entrar na vaga **sem nenhum parâmetro redireciona** (302) para a última busca
+       salva na sessão. É conveniente para a usuária e surpreendente para quem espera
+       um GET simples.
+
+    Um teste meu saiu flaky na primeira rodada: `auto_now` empata na resolução do SQLite
+    quando as escritas caem no mesmo instante, e o desempate vira `-created_at`. Passava
+    sozinho e falhava na suíte cheia. Reescrito com `.update()` e timestamps explícitos;
+    confirmado com duas rodadas completas.
 
 - [ ] **R-15** · Extrair o helper de filtros + querystring das views
       risco: baixo · 0,5d · produção: transparente · PR: ~210 linhas / 2 arquivos
-      pré-requisito: R-19 (testes de filtro)
-  - [ ] Refatoração aplicada
-  - [ ] Testes de filtro passam sem alteração
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+      pré-requisito: ~~R-19~~ **R-38** (referência corrigida)
+  - [x] Refatoração aplicada
+  - [x] **Os 25 testes de filtro do R-38 passam sem alteração** — 260/260
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — 3 filtros + paginação preservando os filtros
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `core/filters.py` com `collect_filters(request,
+    params) -> Filters`. As duas views passam a **declarar só os campos**; a mecânica de
+    ler, aparar, montar o dict do template e remontar a querystring mora num lugar só.
+
+    `views.py` **837 → 746 linhas** (−144/+54). Os 9 `if` do banco de talentos e os 6 da
+    tela da vaga viraram laços sobre dicionários de especificação, onde a **ordem da
+    declaração é a ordem na URL** — está comentado no código, porque reordenar muda o
+    link que a usuária compartilha.
+
+    **Achado no caminho:** o `filter_keys` da tela da vaga era um `set` literal, então a
+    ordem dos parâmetros na URL do *redirect* de filtro salvo variava entre reinícios do
+    servidor (hash randomization do Python). Virou tupla ordenada — a URL passa a ser
+    estável. Cosmético, mas era não-determinismo de verdade.
+
+    Piso do CI **72 → 71**: a cobertura caiu de 72,08% para 71,41% porque removi 90
+    linhas de `views.py` que estavam cobertas. Mesmo efeito do R-10 e do R-37; nenhum
+    teste foi perdido.
 
 - [ ] **R-16** · Mover construção de prompt e busca booleana para `domain/`
       risco: médio · 0,5d · produção: transparente · PR: ~240 linhas / 4 arquivos
       pré-requisito: R-13, R-14
-  - [ ] **Teste de igualdade EXATA da string do prompt (antes vs depois)**
-  - [ ] Movimentação aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] **Teste de igualdade EXATA da string do prompt (antes vs depois)** — as strings
+        foram capturadas rodando a implementação antiga e coladas literalmente em
+        `test_job_prompts.py`. 12 testes golden.
+  - [x] Movimentação aplicada
+  - [x] Suíte completa verde — 272 testes, cobertura 72,58%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — busca booleana gera a mesma string de antes
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `domain/job_description.py` e
+    `domain/boolean_search.py` criados. `views.py` **746 → 692 linhas**.
+
+    As funções puras recebem **campos**, não o objeto `Job` — é o que mantém o `domain/`
+    sem Django. Cada uma ganhou um atalho `*_from(job)` que só **lê atributos**: não
+    importa o ORM, funciona com um `SimpleNamespace`, e evita repetir a lista de campos
+    em cada chamador. Os 12 testes golden rodam **sem banco e sem HTTP, em 0,06s** —
+    antes, testar isso exigia subir uma request.
+
+    **O remendo do R-14 foi desfeito:** `import_service` importava
+    `views._build_job_description` de forma adiada para não criar ciclo. Agora importa
+    `domain.job_description` normalmente.
+
+    Um teste do R-13 precisou mudar de alvo: ele afirmava que `views.SYNONYMS` e o
+    domínio eram o mesmo objeto, mas o `views.py` não consome mais o dicionário — quem
+    consome é `domain.boolean_search`. A afirmação (`is`, não `==`) continua idêntica;
+    só o consumidor mudou de lugar. Piso do CI 71 → 72.
 
 - [ ] **R-17** · Renomear `pdf_extractor.py` conforme a responsabilidade real
       risco: baixo · 3h · produção: transparente · PR: ~80 linhas + git mv / 5 arquivos
       pré-requisito: R-14
-  - [ ] Movimentação aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes — nenhum import quebrado
-  - [ ] README atualizado (cita `pdf_extractor` nas linhas 53 e 64)
+  - [x] Movimentação aplicada
+  - [x] Suíte completa verde — 272 testes, cobertura 72,64%
+  - [x] Lint e format verdes — nenhum import quebrado
+  - [x] README atualizado (as duas menções a `pdf_extractor`)
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `pdf_extractor.py` deixou de existir. Virou
+    `core/services/candidate_import.py` (579 linhas, a orquestração) e `core/pdf.py`
+    (59 linhas, o que é genuinamente arquivo). O `_prepare_uploaded_files` veio junto do
+    `views.py` — zipfile e diretório temporário saíram do handler HTTP.
 
-- [ ] **Onda 2 concluída** — views.py ≤ 450 linhas, camadas separadas, suíte verde
+    O nome mentia desde o começo: depois do R-03 (940 linhas de código morto) e do R-37
+    (3º laço), o que sobrou não extrai PDF, coordena importação.
+
+    **Uma armadilha na movimentação:** havia um `from .models import ...` **dentro de uma
+    função** — import adiado que meu script não pegou por não estar no topo. Com o módulo
+    um nível mais fundo, virou `core.services.models` e 19 testes quebraram de uma vez. O
+    erro apareceu na hora; é o tipo de coisa que a suíte pega e a revisão de diff não.
+
+- [~] **Onda 2 — itens concluídos, meta de linhas NÃO atingida** (2026-08-17)
+
+      ✅ **Camadas separadas**, que era o objetivo estrutural:
+
+      ```
+      core/
+      ├── views.py                     665   ← só HTTP
+      ├── filters.py                    34
+      ├── pdf.py                        59   ← arquivo: gravar, listar, desempacotar
+      ├── services/
+      │   ├── import_service.py        169   ← jobs de background
+      │   └── candidate_import.py      579   ← orquestração da importação
+      └── domain/                             ← regra pura, sem Django
+          ├── normalization.py          41
+          ├── job_description.py        54
+          └── boolean_search.py         73
+      ```
+
+      ❌ **`views.py` em 665 linhas, contra a meta de ≤450.** Caiu 33% (987 → 665), mas
+      não chegou. O que sobrou ali é majoritariamente handler HTTP de verdade — ~20
+      views. Chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search`
+      e `search_candidates_in_pool`, que **não estavam no escopo desta onda**. A meta era
+      otimista, não o trabalho é que ficou pela metade.
+
+      🟡 **Arquivos > 500 linhas: 5** (era 6), contra a meta de ≤2. Os dois maiores são
+      templates (`job_detail.html` 1.435 e `home.html` 699), que são da **Onda 6**.
 
 ---
 
@@ -2227,12 +2353,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         com `KeyError: 'result'` no código anterior
   - [x] Suíte completa verde — 145 testes, cobertura 41,84% (inalterada)
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
+  - [x] PR aberto e revisado — **#29**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
+  - [x] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
         de qualquer forma. Não há efeito observável, e isso é o próprio achado.
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: investigado antes de escrever código e a premissa
+  - [x] Commitado — `de94f08`
+  - Status: **CONCLUÍDO** · Notas: investigado antes de escrever código e a premissa
     caiu — não existe barra de progresso, o callback final é sempre sobrescrito, e
     `processed` já era o número certo (conta tentativa, não sucesso). Sobrou unificar o
     contrato: o fluxo de vaga passa a mandar `result` como o `..._no_ranking` já fazia,
@@ -2261,11 +2387,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Vermelho antes / verde depois provado
   - [x] Suíte completa verde — 145 testes, cobertura 41,83%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#30**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — reimportar lote idêntico e conferir o resumo
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: `unchanged` entra no `result` e a conta passa a
+  - [x] Commitado — `547970b`
+  - Status: **em produção** · Notas: `unchanged` entra no `result` e a conta passa a
     fechar — o teste afirma `created + updated + unchanged + skipped + errors == total`,
     que é a garantia de verdade, mais forte que conferir cada contador. Como os dois
     importadores usam o `_process_in_batches`, os dois ganharam de uma vez. Nos templates
@@ -2276,13 +2402,57 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-33** · Characterization tests de `search_and_rank_candidates_from_pool` (T-7)
       risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
       **destrava a conversão do 3º laço, que ficou fora do R-10**
-  - [ ] Testes escritos e passando contra o código atual, sem alterá-lo
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Testes escritos e passando contra o código atual, **sem alterá-lo**
+  - [x] Suíte completa verde — **235 testes**, cobertura **62,30%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: 19 testes em `test_search_pool.py`, cobrindo
+    seleção (vinculado é pulado, `user_id` vs `shared_pool`, `candidate_ids`), caso
+    vazio, separação com-PDF / sem-PDF, persistência do `CandidateJob`, fallback
+    individual e progresso.
+
+    **`pdf_extractor.py` saiu de 57% para 88%** de cobertura e a total de 55,94% para
+    **62,30%**. Piso do CI subiu 55 → 62.
+
+    Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o
+    arquivo tem que existir em disco.** Um `media/` limpo sem limpar o banco não quebra
+    a busca — o candidato só passa a ser avaliado pelos dados estruturados, em silêncio.
+
+    **Destrava a conversão do 3º laço** para `_process_in_batches`, que ficou de fora do
+    R-10 exatamente por não ter rede.
+
+- [ ] **R-37** · Converter o 3º laço de lotes para `_process_in_batches`
+      risco: médio · 0,5d · produção: transparente · PR: ~300 linhas / 1 arquivo
+      pré-requisito: **R-33** (era ele que faltava desde o R-10)
+      Fecha a pendência aberta no R-10, que converteu 2 dos 3 laços.
+  - [x] `_process_in_batches` generalizado — `is_incomplete` e `persist_error_label`
+        viraram parâmetros, com o default preservando o comportamento da importação
+  - [x] `search_and_rank_candidates_from_pool` convertida
+  - [x] **Os 19 testes do R-33 passam SEM nenhuma alteração** — 235/235
+  - [x] Suíte completa verde · Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — buscar candidatos do banco numa vaga, com e sem PDF
+  - [ ] Commitado — `<hash>`
+  - Status: **em andamento** · Notas: `for batch_start in range` cai de **3 para 1** —
+    D-3 do diagnóstico fechado por completo. `pdf_extractor.py` 779 → **590 linhas**
+    (295 → 254 statements), cobertura do arquivo 88% → **91%**.
+
+    O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: o `is_incomplete`
+    era fixo em `name`/`linkedin_url` e dicionário de aderência não tem nenhum dos dois
+    (tudo viraria "pulado"), e o prefixo da mensagem de erro difere entre os fluxos
+    ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta — o sufixo `(erro)` na
+    mensagem de progresso — foi **eliminado em vez de parametrizado**: agora os dois
+    fluxos marcam a falha ao vivo, o que o fluxo de vaga não fazia.
+
+    Extraído `_resume_path()`, que concentra a regra "o registro no banco não basta, o
+    arquivo tem que existir" — antes escrita 3 vezes com try/except ligeiramente
+    diferentes.
+
+    A cobertura total caiu 62,30% → 62,18%: mesmo efeito do R-10, o código duplicado
+    removido estava coberto. Em absoluto há menos código sem teste.
 
 - [ ] **R-36** · Unificar as três normalizações de termo
       risco: **médio — muda resultado de busca** · 3h · produção: transparente
@@ -2299,16 +2469,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       procura literalmente `" python "` no campo. Unificar em `normalize()` faz o
       espaço ser aparado — quase certamente o que a usuária espera, mas é mudança de
       resultado de busca, então merece PR próprio e marcado.
-  - [ ] Decidido se o `strip` passa a valer no filtro (recomendado: sim)
-  - [ ] `views._normalize_term` e `expand_term` passam a usar `normalize()`
-  - [ ] Testes de divergência de `test_normalization.py` invertidos
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Decidido: **o `strip` passa a valer no filtro**. Espaço sobrando numa caixa de
+        busca é digitação, não intenção — hoje `" python "` não achava nada.
+  - [x] `views._normalize_term` **deletada**; `expand_term` passa a usar `normalize()`
+  - [x] Testes de divergência de `test_normalization.py` invertidos — a classe
+        `TestTheThreeNormalizersDiverge` virou `TestTheThreeNormalizersAreNowOne`
+  - [x] Suíte completa verde — 216 testes, cobertura **55,94%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — filtrar com espaço sobrando encontra o candidato
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: três normalizações viram uma. `unicodedata` sai do
+    `views.py` (ficou órfão). Um dos testes garante que `views._normalize_term` **não
+    existe mais**, para ninguém reintroduzir por hábito.
+
+    ⚠️ **Muda comportamento em dois pontos, ambos para melhor:** o filtro das listagens
+    passa a aparar as pontas do termo, e a busca booleana passa a expandir sinônimo de
+    termo acentuado. Bugfix em PR separado, como manda a regra do projeto.
+
+    **Com este item, a meta de cobertura de 55% da seção 10 foi batida: 55,94%.**
+    Piso do CI subiu 53 → 55 nos três lugares.
 
 - [ ] 🐛 **R-35** · `_extract_json` devolve o array interno em vez do objeto
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
@@ -2322,14 +2503,24 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       `test_array_is_tried_before_object`.
       Correção provável: procurar objeto e array e escolher o que começa antes no
       texto, em vez de fixar a ordem.
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Conferido que o caso do array puro (lote) continua funcionando
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + teste invertido
+  - [x] Conferido que o caso do array puro (lote) continua funcionando — a resposta em
+        lote é um array de objetos, então o `[` vem antes do primeiro `{` e o array
+        continua ganhando. Coberto por `test_whichever_structure_starts_first_wins`.
+  - [x] Vermelho antes / verde depois provado
+  - [x] Suíte completa verde — 215 testes, cobertura 54,28%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a ordem fixa (array sempre antes de objeto) virou
+    **"vence quem começa antes no texto"**, com fallback para a outra estrutura se o
+    primeiro recorte não for JSON válido. O `raise` continua propagando o erro original
+    do texto inteiro quando não há nada recortável, como antes.
+
+    ⚠️ **Muda comportamento** — é bugfix, em PR separado, exatamente como R-09 e R-30.
+    O caso que mudou: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` e
+    agora devolve o objeto.
 
 - [ ] ⏳ **R-34** · Subir produção de Python 3.10 para 3.12 — **prazo: outubro/2026**
       risco: **alto (mexe no servidor)** · 0,5d + janela · produção: requer parada curta
@@ -2374,6 +2565,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-11** | `_generate()` criado: as 7 cópias de `api_key` + `genai.Client` + laço de retry viram 1. `llm_extractor.py` 940 → 661 linhas, 358 → 207 stmts, cobertura 71% → 89%. Diff +74/−241. PR #32. | **Os 50 characterization tests do R-07 passaram sem tocar em uma linha** — era o critério de sucesso, e é a prova de que a extração não mudou comportamento. Uma diferença registrada por honestidade: a guarda da `GEMINI_API_KEY` foi para dentro do `_generate()`, então nas duas funções instrumentadas a `RuntimeError` de chave ausente passa a nascer dentro do `try` e a disparar a métrica de falha. Só ocorre com a chave desconfigurada, e registrar é mais correto que silenciar. |
 | 2026-08-17 | **R-12** | Timeout de 180s em toda chamada ao LLM, via `settings.LLM_TIMEOUT_SECONDS` e `types.HttpOptions`. 3 testes novos. PR #33. | Duas. (1) **Armadilha de unidade:** `HttpOptions.timeout` é em MILISSEGUNDOS — conferido no pacote instalado antes de escrever a linha. Passar segundos daria 180ms e derrubaria toda chamada ao LLM em produção. O setting fica em segundos e a conversão mora só no `_generate()`, travada por teste. (2) **O ganho é "de infinito para limitado", não "para curto":** o erro de timeout cai no ramo genérico do retry e consome as 4 tentativas, ~12min até desistir. Fixado por teste em vez de escondido; encurtar seria mudar a política de retry, ou seja, outro item. |
 | 2026-08-17 | **R-13** | `core/domain/` criado — primeiro módulo da camada de domínio, sem nenhum import de Django. `SYNONYMS` unificado (era 2 cópias) e `normalize()` movido do matching sem alterar uma linha. PR #34. | **O teste de equivalência que o item exigia reprovou a premissa.** O dicionário era idêntico, mas as normalizações não — e são **três** variantes, não duas: `normalize` apara as pontas e tolera `None`; `views._normalize_term` não apara e estoura com `None`; a chave de `expand_term` nem remove acento. Entreguei só a parte de risco zero e a unificação das funções virou **R-36**, porque o `strip` muda resultado de busca. Achado de brinde, fixado por teste: os dois caminhos de lookup só concordam porque **todas as chaves de `SYNONYMS` são ASCII** — uma chave acentuada faria as duas pontas discordarem em silêncio, mesma classe do bug do R-09. |
+| 2026-08-17 | **Ondas 0 e 1 → produção** | Segundo release (PR #35): 16 commits, 6 PRs, `b6f431c` → `8c2130a`. CI verde nas duas versões da matriz; CD em 1m21s. `No migrations to apply`, `pip install` no-op de novo, `0 static files copied`. **Ondas 0 e 1 completas em produção.** | Nenhuma surpresa no deploy. Diferente do primeiro release, este mexeu em `views.py` e em 2 templates — o R-32 muda o que a usuária lê na tela. Resultado acumulado do dia: testes 100 → **213**, cobertura real 25% → **54,11%**, `pdf_extractor` 2.046 → 779 linhas, `llm_extractor` 940 → 661, cliente Gemini de 7 cópias para 1, upsert de 4 para 1, laço de lotes de 3 para 1, dicionário de sinônimos de 2 para 1, e 1 bug real corrigido (R-09). Falta a verificação manual dos 4 itens marcados. |
+| 2026-08-17 | **R-35** | 🐛 `_extract_json`: a ordem fixa (array antes de objeto) virou "vence quem começa antes no texto", com fallback. PR #37. | O caso corrigido: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` — o candidato virava a lista de skills dele. O caminho de lote segue intacto porque a resposta em lote é um array de objetos, então o `[` vem antes do primeiro `{`. Achado pelos testes do R-07, corrigido no dia seguinte à descoberta. |
+| 2026-08-17 | **R-36** | As três normalizações de termo viram uma. `views._normalize_term` deletada, `expand_term` passa a usar `normalize()`, `unicodedata` sai do `views.py`. Piso do CI 53 → 55. PR #38. | **Meta de cobertura de 55% da seção 10 batida: 55,94%.** Muda comportamento em dois pontos, ambos para melhor: o filtro das listagens passa a aparar as pontas (antes, `" python "` com espaço sobrando não achava nada) e a busca booleana passa a expandir sinônimo de termo acentuado. Um teste garante que `views._normalize_term` não existe mais, para ninguém reintroduzir por hábito. |
+| 2026-08-17 | **R-33** | 19 characterization tests de `search_and_rank_candidates_from_pool` em `test_search_pool.py` — a última função grande sem teste (309 linhas). Nenhuma linha de aplicação alterada. Piso do CI 55 → 62. | **`pdf_extractor.py` foi de 57% para 88%** e a cobertura total de 55,94% para **62,30%**, ultrapassando a meta da seção 10 com folga. Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o arquivo tem que existir em disco** — um `media/` limpo sem limpar o banco não quebra a busca, o candidato só passa a ser avaliado pelos dados estruturados, em silêncio. Destrava a conversão do 3º laço para `_process_in_batches`, que ficou de fora do R-10 por não ter rede. |
+| 2026-08-17 | **R-37** | 3º laço convertido para `_process_in_batches`. `for batch_start in range` cai de **3 para 1** — D-3 fechado por completo. `pdf_extractor.py` 779 → **590 linhas**, cobertura do arquivo 88% → **91%**. Extraído `_resume_path()`. | **Os 19 testes do R-33 passaram sem tocar em uma linha** — o item foi escrito ontem justamente para isto. O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: `is_incomplete` (era fixo em `name`/`linkedin_url`, e dicionário de aderência não tem nenhum dos dois — tudo viraria "pulado") e `persist_error_label` ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta, o sufixo `(erro)` na mensagem de progresso, foi **eliminado em vez de parametrizado**: os dois fluxos passam a marcar a falha ao vivo, o que o fluxo de vaga não fazia. Cobertura total 62,30% → 62,18%, mesmo efeito do R-10 — o duplicado removido estava coberto. |
+| 2026-08-17 | **R-14** | `core/services/` criado. Os **12 blocos** de orquestração saem do `views.py`: as 4 funções `_run_*`, as 4 chaves de cache e os 4 setters de status. `views.py` **975 → 837 linhas** (−187/+15). | Movimentação feita por **script**, recortando blocos inteiros em vez de transcrever — é o que garante o diff revisável como recorte e cola, que era o critério do item. Nenhum corpo de função reescrito; 235 testes passando sem alteração. **Uma exceção documentada:** `_run_parecer_generation` chama `_build_job_description`, que ainda mora no `views.py`; import de módulo criaria ciclo, então ficou como **import adiado dentro da função**, com comentário apontando o R-16 — que move essa função para `domain/` e desfaz o remendo. |
 
 ---
 

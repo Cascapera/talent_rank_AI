@@ -1,8 +1,6 @@
 import shutil
 import tempfile
 import threading
-import unicodedata
-import zipfile
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -17,53 +15,67 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from .domain.normalization import SYNONYMS
+from .domain.boolean_search import build_boolean_search_from
+from .domain.job_description import build_job_description_from
+from .domain.normalization import normalize
+from .filters import collect_filters
 from .forms import CandidateForm, JobForm, SignupForm
-from .llm_extractor import generate_parecer
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
-from .metrics import vacancy_candidate_import_failures_total
 from .models import Candidate, CandidateJob, Job, Profile
-from .observability import Timer, ensure_correlation_id, log_event, new_correlation_id
-from .pdf_extractor import (
-    import_candidates_from_folder,
-    import_candidates_from_folder_no_ranking,
-    search_and_rank_candidates_from_pool,
-)
+from .observability import new_correlation_id
+from .pdf import prepare_uploaded_files
 from .plans import required_plan
+from .services.import_service import (
+    _import_status_key,
+    _parecer_status_key,
+    _run_import_job,
+    _run_parecer_generation,
+    _run_search_in_pool,
+    _run_talent_pool_import,
+    _search_status_key,
+    _set_import_status,
+    _set_parecer_status,
+    _set_search_status,
+    _set_talent_pool_import_status,
+    _talent_pool_import_status_key,
+)
+
+# Filtro do banco de talentos -> campo do modelo Candidate.
+# A ORDEM define a ordem dos parâmetros na URL que a usuária vê e compartilha.
+_TALENT_POOL_FILTERS = {
+    "name": "name",
+    "location": "location",
+    "seniority": "seniority",
+    "company": "current_company",
+    "technologies": "technologies",
+    "current_title": "current_title",
+    "skills": "skills",
+    "certifications": "certifications",
+    "languages": "languages",
+}
+
+# Filtro da tela da vaga -> (campo do CandidateJob, prefixo do alias do unaccent).
+# `pipeline_status` e `min_adherence` ficam de fora: não são `icontains`.
+_JOB_CANDIDATE_FILTERS = {
+    "candidate_seniority": ("candidate__seniority", "seniority"),
+    "candidate_location": ("candidate__location", "location"),
+    "candidate_name": ("candidate__name", "name"),
+    "candidate_language": ("candidate__languages", "language"),
+    "candidate_must_have": ("candidate__skills", "skills"),
+    "candidate_technologies": ("candidate__technologies", "technologies"),
+}
+
+# Ordem completa dos filtros da vaga na querystring, incluindo os dois especiais.
+_JOB_FILTERS = (
+    "pipeline_status",
+    *_JOB_CANDIDATE_FILTERS,
+    "min_adherence",
+)
 
 
 def metrics_view(request):
     """Endpoint Prometheus (texto exposition format)."""
     return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
-
-
-def _prepare_uploaded_files(uploaded_files: list, temp_dir: Path) -> None:
-    """
-    Processa arquivos enviados (ZIPs e PDFs) e coloca todos os PDFs em temp_dir.
-    Suporta: múltiplos ZIPs, múltiplos PDFs, ou combinação.
-    """
-    pdf_counter = 0
-    for f in uploaded_files:
-        dest = temp_dir / f.name
-        with dest.open("wb") as out:
-            for chunk in f.chunks():
-                out.write(chunk)
-        if zipfile.is_zipfile(dest):
-            with zipfile.ZipFile(dest, "r") as zf:
-                for member in zf.namelist():
-                    if member.lower().endswith(".pdf") and not member.endswith("/"):
-                        pdf_counter += 1
-                        out_path = temp_dir / f"{pdf_counter:04d}.pdf"
-                        with zf.open(member) as src, out_path.open("wb") as dst:
-                            dst.write(src.read())
-            dest.unlink(missing_ok=True)
-        elif dest.suffix.lower() == ".pdf":
-            pdf_counter += 1
-            new_path = temp_dir / f"{pdf_counter:04d}.pdf"
-            if dest != new_path:
-                dest.rename(new_path)
-        else:
-            dest.unlink(missing_ok=True)
 
 
 def home(request):
@@ -75,17 +87,14 @@ def _uses_shared_pool(user) -> bool:
     return profile.plan == Profile.Plan.PREMIUM
 
 
-def _normalize_term(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
-
-
 def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
     if not term:
         return qs
     if connection.vendor != "postgresql":
         return qs.filter(**{f"{field}__icontains": term})
-    normalized = _normalize_term(term)
+    # R-36: era `_normalize_term`, que não aparava as pontas. Filtrar por " python "
+    # com espaço sobrando procurava literalmente " python " no campo e não achava nada.
+    normalized = normalize(term)
     alias = f"{alias_prefix}_{field.replace('__', '_')}"
     qs = qs.annotate(**{alias: Lower(Func(F(field), function="unaccent"))})
     return qs.filter(Q(**{f"{field}__icontains": term}) | Q(**{f"{alias}__contains": normalized}))
@@ -162,7 +171,7 @@ def talent_pool(request):
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
             temp_dir = Path(tempfile.mkdtemp(prefix="talent_pool_import_"))
-            _prepare_uploaded_files(uploads, temp_dir)
+            prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
                 _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
@@ -205,39 +214,16 @@ def talent_pool(request):
             else:
                 message = "Confira os campos obrigatórios."
 
-    # Filtros
-    name_filter = request.GET.get("name", "").strip()
-    location_filter = request.GET.get("location", "").strip()
-    seniority_filter = request.GET.get("seniority", "").strip()
-    company_filter = request.GET.get("company", "").strip()
-    technologies_filter = request.GET.get("technologies", "").strip()
-    current_title_filter = request.GET.get("current_title", "").strip()
-    skills_filter = request.GET.get("skills", "").strip()
-    certifications_filter = request.GET.get("certifications", "").strip()
-    languages_filter = request.GET.get("languages", "").strip()
+    filters = collect_filters(request, _TALENT_POOL_FILTERS)
 
     candidates = (
         Candidate.objects.all() if shared_pool else Candidate.objects.filter(user=request.user)
     )
 
-    if name_filter:
-        candidates = candidates.filter(name__icontains=name_filter)
-    if location_filter:
-        candidates = candidates.filter(location__icontains=location_filter)
-    if seniority_filter:
-        candidates = candidates.filter(seniority__icontains=seniority_filter)
-    if company_filter:
-        candidates = candidates.filter(current_company__icontains=company_filter)
-    if technologies_filter:
-        candidates = candidates.filter(technologies__icontains=technologies_filter)
-    if current_title_filter:
-        candidates = candidates.filter(current_title__icontains=current_title_filter)
-    if skills_filter:
-        candidates = candidates.filter(skills__icontains=skills_filter)
-    if certifications_filter:
-        candidates = candidates.filter(certifications__icontains=certifications_filter)
-    if languages_filter:
-        candidates = candidates.filter(languages__icontains=languages_filter)
+    for param, campo in _TALENT_POOL_FILTERS.items():
+        valor = filters[param]
+        if valor:
+            candidates = candidates.filter(**{f"{campo}__icontains": valor})
 
     candidates = candidates.order_by("-updated_at", "-created_at")
 
@@ -246,30 +232,6 @@ def talent_pool(request):
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    # Constrói query string para manter filtros na paginação
-    query_params = {}
-    if name_filter:
-        query_params["name"] = name_filter
-    if location_filter:
-        query_params["location"] = location_filter
-    if seniority_filter:
-        query_params["seniority"] = seniority_filter
-    if company_filter:
-        query_params["company"] = company_filter
-    if technologies_filter:
-        query_params["technologies"] = technologies_filter
-    if current_title_filter:
-        query_params["current_title"] = current_title_filter
-    if skills_filter:
-        query_params["skills"] = skills_filter
-    if certifications_filter:
-        query_params["certifications"] = certifications_filter
-    if languages_filter:
-        query_params["languages"] = languages_filter
-    query_string = urlencode(query_params)
-    if query_string:
-        query_string = "&" + query_string
-
     context = {
         "form": form,
         "candidates": page_obj,
@@ -277,43 +239,11 @@ def talent_pool(request):
         "message": message,
         "import_message": import_message,
         "shared_pool": shared_pool,
-        "filters": {
-            "name": name_filter,
-            "location": location_filter,
-            "seniority": seniority_filter,
-            "company": company_filter,
-            "technologies": technologies_filter,
-            "current_title": current_title_filter,
-            "skills": skills_filter,
-            "certifications": certifications_filter,
-            "languages": languages_filter,
-        },
-        "query_string": query_string,
+        "filters": filters.values,
+        "query_string": filters.query_string,
         "import_status": cache.get(_talent_pool_import_status_key()),
     }
     return render(request, "core/talent_pool.html", context)
-
-
-def _run_talent_pool_import(
-    folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
-):
-    """Executa importação de candidatos no banco de talentos do usuário em background."""
-    try:
-
-        def progress_callback(**kwargs):
-            _set_talent_pool_import_status(kwargs)
-
-        result = import_candidates_from_folder_no_ranking(
-            str(folder_path),
-            user_id=user_id,
-            shared_pool=shared_pool,
-            progress_callback=progress_callback,
-        )
-        _set_talent_pool_import_status({"status": "completed", "result": result})
-    except Exception as exc:
-        _set_talent_pool_import_status({"status": "error", "message": str(exc)})
-    finally:
-        shutil.rmtree(folder_path, ignore_errors=True)
 
 
 @login_required
@@ -418,148 +348,6 @@ def job_create(request):
     return render(request, "core/job_create.html", {"form": form})
 
 
-def _build_boolean_search(job: Job) -> str:
-    def normalize_list(value: str) -> list[str]:
-        return [item.strip() for item in value.split(",") if item.strip()]
-
-    def expand_term(term: str) -> list[str]:
-        # R-13: o dicionário agora é único (domain/normalization.py). A CHAVE, porém,
-        # continua sendo calculada aqui com `strip().lower()`, sem remover acento —
-        # diferente do `normalize()` que o matching usa. Não unifiquei de propósito:
-        # é mudança de comportamento e virou R-36. Na prática não diverge hoje porque
-        # todas as chaves de SYNONYMS são ASCII.
-        key = term.strip().lower()
-        extra = SYNONYMS.get(key, [])
-        return [term] + extra
-
-    def group_terms(terms: list[str]) -> str:
-        expanded = []
-        for term in terms:
-            expanded.extend(expand_term(term))
-        expanded = [t for t in expanded if t]
-        if not expanded:
-            return ""
-        if len(expanded) == 1:
-            return f'"{expanded[0]}"'
-        return "(" + " OR ".join(f'"{t}"' for t in expanded) + ")"
-
-    parts = []
-    for base_term in [job.title, job.stack, job.seniority, job.location, job.department]:
-        if base_term:
-            parts.append(group_terms([base_term]))
-
-    must = normalize_list(job.must_have)
-    if must:
-        parts.append(" AND ".join(group_terms([item]) for item in must if item))
-
-    nice = normalize_list(job.nice_to_have)
-    if nice:
-        nice_groups = [group_terms([item]) for item in nice if item]
-        nice_groups = [g for g in nice_groups if g]
-        if nice_groups:
-            parts.append("(" + " OR ".join(nice_groups) + ")")
-
-    undesirable = normalize_list(job.undesirable)
-    if undesirable:
-        not_groups = [group_terms([item]) for item in undesirable if item]
-        not_groups = [g for g in not_groups if g]
-        if not_groups:
-            parts.append("NOT (" + " OR ".join(not_groups) + ")")
-
-    parts = [p for p in parts if p]
-    return " AND ".join(parts).strip()
-
-
-def _build_job_description(job: Job) -> str:
-    parts = [
-        f"Título: {job.title}",
-        f"Resumo: {job.summary or '-'}",
-        f"Senioridade: {job.seniority or '-'}",
-        f"Localização: {job.location or '-'}",
-        f"Stack: {job.stack or '-'}",
-        f"Tipo de contratação: {job.contract_type or '-'}",
-        f"Idioma: {job.language or '-'}",
-        f"Skills obrigatórias: {job.must_have or '-'}",
-        f"Skills desejáveis: {job.nice_to_have or '-'}",
-        f"Não desejáveis: {job.undesirable or '-'}",
-        f"Observações: {job.notes or '-'}",
-    ]
-    return "\n".join(parts)
-
-
-def _import_status_key(job_id: int) -> str:
-    return f"import_status_{job_id}"
-
-
-def _search_status_key(job_id: int) -> str:
-    return f"search_status_{job_id}"
-
-
-def _talent_pool_import_status_key() -> str:
-    return "talent_pool_import_status"
-
-
-def _set_import_status(job_id: int, payload: dict) -> None:
-    cache.set(_import_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_search_status(job_id: int, payload: dict) -> None:
-    cache.set(_search_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_talent_pool_import_status(payload: dict) -> None:
-    cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
-
-
-def _parecer_status_key(candidate_job_id: int) -> str:
-    return f"parecer_status_{candidate_job_id}"
-
-
-def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
-    cache.set(_parecer_status_key(candidate_job_id), payload, timeout=60 * 30)
-
-
-def _run_import_job(
-    job_id: int,
-    folder_path: Path,
-    job_description: str,
-    role_title: str,
-    user_id: int,
-    shared_pool: bool = False,
-    correlation_id: str | None = None,
-):
-    ensure_correlation_id(correlation_id)
-    outer_timer = Timer()
-    try:
-
-        def progress_callback(**kwargs):
-            _set_import_status(job_id, kwargs)
-
-        result = import_candidates_from_folder(
-            str(folder_path),
-            job_description=job_description,
-            weights={"skills": 40, "technologies": 35, "experience": 25},
-            role_title=role_title,
-            job_id=job_id,
-            user_id=user_id,
-            shared_pool=shared_pool,
-            progress_callback=progress_callback,
-        )
-        _set_import_status(job_id, {"status": "completed", "result": result})
-    except Exception as exc:
-        _set_import_status(job_id, {"status": "error", "message": str(exc)})
-        vacancy_candidate_import_failures_total.inc()
-        log_event(
-            "vacancy_candidate_import_failed",
-            status="error",
-            vacancy_id=job_id,
-            duration_ms=outer_timer.elapsed_ms(),
-            error=str(exc),
-        )
-    finally:
-        shutil.rmtree(folder_path, ignore_errors=True)
-
-
 @login_required
 @required_plan("BASIC")
 def job_detail(request, job_id: int):
@@ -568,21 +356,13 @@ def job_detail(request, job_id: int):
     def split_list(value: str):
         return [item.strip() for item in value.split(",") if item.strip()]
 
-    filter_keys = {
-        "pipeline_status",
-        "candidate_seniority",
-        "candidate_location",
-        "candidate_name",
-        "candidate_language",
-        "candidate_must_have",
-        "candidate_technologies",
-        "min_adherence",
-    }
     filters_storage_key = f"job_filters_{job.id}"
     if request.GET.get("clear_filters") == "1":
         request.session.pop(filters_storage_key, None)
     else:
-        current_params = {k: request.GET.get(k, "").strip() for k in filter_keys}
+        # Era um `set` literal: a ordem dos parâmetros na URL do redirect variava entre
+        # reinícios do servidor (hash randomization). Com a tupla, é estável.
+        current_params = {k: request.GET.get(k, "").strip() for k in _JOB_FILTERS}
         if any(v for v in current_params.values()):
             request.session[filters_storage_key] = current_params
         else:
@@ -590,24 +370,17 @@ def job_detail(request, job_id: int):
             if saved_filters:
                 return redirect(f"{request.path}?{urlencode(saved_filters)}")
 
-    status_filter = request.GET.get("pipeline_status", "").strip()
-    seniority_filter = request.GET.get("candidate_seniority", "").strip()
-    location_filter = request.GET.get("candidate_location", "").strip()
-    name_filter = request.GET.get("candidate_name", "").strip()
-    language_filter = request.GET.get("candidate_language", "").strip()
-    must_have_filter = request.GET.get("candidate_must_have", "").strip()
-    technologies_filter = request.GET.get("candidate_technologies", "").strip()
-    min_adherence_raw = request.GET.get("min_adherence", "").strip()
+    filters = collect_filters(request, _JOB_FILTERS)
 
     import_message = ""
     if request.method == "POST":
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
             temp_dir = Path(tempfile.mkdtemp(prefix="talent_import_"))
-            _prepare_uploaded_files(uploads, temp_dir)
+            prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
-                job_description = _build_job_description(job)
+                job_description = build_job_description_from(job)
                 role_title = job.title
                 _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
                 shared_pool = _uses_shared_pool(request.user)
@@ -633,62 +406,20 @@ def job_detail(request, job_id: int):
                 import_message = "Nenhum PDF encontrado nos arquivos enviados."
 
     candidate_links = job.candidate_links.select_related("candidate")
-    if status_filter:
-        candidate_links = candidate_links.filter(pipeline_status=status_filter)
-    if seniority_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__seniority", seniority_filter, "seniority"
-        )
-    if location_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__location", location_filter, "location"
-        )
-    if name_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__name", name_filter, "name"
-        )
-    if language_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__languages", language_filter, "language"
-        )
-    if must_have_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__skills", must_have_filter, "skills"
-        )
-    if technologies_filter:
-        candidate_links = _apply_unaccent_filter(
-            candidate_links, "candidate__technologies", technologies_filter, "technologies"
-        )
-    if min_adherence_raw.isdigit():
-        candidate_links = candidate_links.filter(adherence_score__gte=int(min_adherence_raw))
+    if filters["pipeline_status"]:
+        candidate_links = candidate_links.filter(pipeline_status=filters["pipeline_status"])
+    for param, (campo, alias) in _JOB_CANDIDATE_FILTERS.items():
+        valor = filters[param]
+        if valor:
+            candidate_links = _apply_unaccent_filter(candidate_links, campo, valor, alias)
+    if filters["min_adherence"].isdigit():
+        candidate_links = candidate_links.filter(adherence_score__gte=int(filters["min_adherence"]))
     candidate_links = candidate_links.order_by(F("adherence_score").desc(nulls_last=True))
 
     # Paginação: 10 candidatos por página
     paginator = Paginator(candidate_links, 10)
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
-
-    # Constrói query string para manter filtros na paginação
-    query_params = {}
-    if status_filter:
-        query_params["pipeline_status"] = status_filter
-    if seniority_filter:
-        query_params["candidate_seniority"] = seniority_filter
-    if location_filter:
-        query_params["candidate_location"] = location_filter
-    if name_filter:
-        query_params["candidate_name"] = name_filter
-    if language_filter:
-        query_params["candidate_language"] = language_filter
-    if must_have_filter:
-        query_params["candidate_must_have"] = must_have_filter
-    if technologies_filter:
-        query_params["candidate_technologies"] = technologies_filter
-    if min_adherence_raw and min_adherence_raw.strip():
-        query_params["min_adherence"] = min_adherence_raw
-    query_string = urlencode(query_params)
-    if query_string:
-        query_string = "&" + query_string
 
     context = {
         "job": job,
@@ -698,17 +429,8 @@ def job_detail(request, job_id: int):
         "import_message": import_message,
         "candidate_links": page_obj,
         "page_obj": page_obj,
-        "candidate_filters": {
-            "pipeline_status": status_filter,
-            "candidate_seniority": seniority_filter,
-            "candidate_location": location_filter,
-            "candidate_name": name_filter,
-            "candidate_language": language_filter,
-            "candidate_must_have": must_have_filter,
-            "candidate_technologies": technologies_filter,
-            "min_adherence": min_adherence_raw,
-        },
-        "query_string": query_string,
+        "candidate_filters": filters.values,
+        "query_string": filters.query_string,
         "pipeline_status_choices": job.candidate_links.model.PipelineStatus.choices,
         "job_status_choices": Job.Status.choices,
         "import_status": cache.get(_import_status_key(job.id)),
@@ -733,36 +455,6 @@ def job_search_status(request, job_id: int):
     get_object_or_404(Job, id=job_id, user=request.user)
     payload = cache.get(_search_status_key(job_id)) or {"status": "idle"}
     return JsonResponse(payload)
-
-
-def _run_search_in_pool(
-    job_id: int,
-    job_description: str,
-    role_title: str,
-    candidate_ids: list[int],
-    user_id: int | None = None,
-    shared_pool: bool = False,
-):
-    """Executa rankeamento via LLM dos candidatos pré-aprovados no match, em background."""
-    try:
-
-        def progress_callback(**kwargs):
-            _set_search_status(job_id, kwargs)
-
-        weights = {"skills": 40, "technologies": 35, "experience": 25}
-        result = search_and_rank_candidates_from_pool(
-            job_id=job_id,
-            job_description=job_description,
-            weights=weights,
-            role_title=role_title,
-            progress_callback=progress_callback,
-            candidate_ids=candidate_ids,
-            user_id=user_id,
-            shared_pool=shared_pool,
-        )
-        _set_search_status(job_id, {"status": "completed", "result": result})
-    except Exception as exc:
-        _set_search_status(job_id, {"status": "error", "message": str(exc)})
 
 
 def _parse_min_score(request) -> int:
@@ -878,7 +570,7 @@ def search_candidates_in_pool(request, job_id: int):
         )
 
     candidate_ids = [match["candidate"].id for match in matches]
-    job_description = _build_job_description(job)
+    job_description = build_job_description_from(job)
 
     _set_search_status(job.id, {"status": "running", "processed": 0, "total": len(candidate_ids)})
     thread = threading.Thread(
@@ -902,60 +594,6 @@ def search_candidates_in_pool(request, job_id: int):
             "compatível(is). Acompanhe o progresso abaixo.",
         }
     )
-
-
-def _run_parecer_generation(candidate_job_id: int, parecer_type: str) -> None:
-    """Executa geração de parecer em background."""
-    try:
-        candidate_job = CandidateJob.objects.select_related("job", "candidate").get(
-            id=candidate_job_id
-        )
-        job = candidate_job.job
-        candidate = candidate_job.candidate
-
-        job_description = _build_job_description(job)
-        candidate_data = {
-            "name": candidate.name,
-            "current_title": candidate.current_title or "",
-            "current_company": candidate.current_company or "",
-            "location": candidate.location or "",
-            "skills": candidate.skills or "",
-            "technologies": candidate.technologies or "",
-            "languages": candidate.languages or "",
-            "certifications": candidate.certifications or "",
-            "seniority": candidate.seniority or "",
-            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
-            "summary": candidate.summary or "",
-        }
-        resume_path = None
-        if candidate.resume_pdf:
-            try:
-                resume_path = candidate.resume_pdf.path
-            except (ValueError, NotImplementedError):
-                pass
-
-        parecer_text = generate_parecer(
-            job_description=job_description,
-            candidate_data=candidate_data,
-            parecer_type=parecer_type,
-            role_title=job.title,
-            resume_pdf_path=resume_path,
-        )
-
-        candidate_job.parecer = parecer_text
-        candidate_job.parecer_type = parecer_type
-        candidate_job.save(update_fields=["parecer", "parecer_type", "updated_at"])
-
-        _set_parecer_status(
-            candidate_job_id,
-            {"status": "completed", "parecer": parecer_text, "parecer_type": parecer_type},
-        )
-    except Exception as exc:
-        _set_parecer_status(
-            candidate_job_id,
-            {"status": "error", "message": str(exc)},
-        )
 
 
 @login_required
@@ -1106,7 +744,7 @@ def generate_boolean_search(request, job_id: int):
 
     try:
         job = get_object_or_404(Job, id=job_id, user=request.user)
-        job.boolean_search = _build_boolean_search(job)
+        job.boolean_search = build_boolean_search_from(job)
         job.save(update_fields=["boolean_search"])
         return JsonResponse(
             {
@@ -1127,7 +765,7 @@ def job_edit(request, job_id: int):
         if form.is_valid():
             if request.POST.get("action") == "generate":
                 job = form.save(commit=False)
-                job.boolean_search = _build_boolean_search(job)
+                job.boolean_search = build_boolean_search_from(job)
                 job.save()
             else:
                 form.save()

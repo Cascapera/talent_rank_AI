@@ -128,21 +128,33 @@ class TestExtractJson:
     def test_garbage_before_and_after_object(self):
         assert _extract_json('Claro! Segue:\n{"a": 1}\nEspero ter ajudado.') == {"a": 1}
 
-    def test_array_is_tried_before_object(self):
-        """QUIRK COM DENTE: o array é procurado ANTES do objeto. Quando o texto não é
-        JSON puro e o objeto contém um array interno, o slice do array vence e a função
-        devolve o array INTERNO, perdendo o objeto inteiro.
+    def test_object_with_inner_array_survives_markdown(self):
+        """R-35: o candidato não vira mais a lista de skills dele.
 
-        Hoje isso não quebra a importação porque o prompt pede "apenas JSON válido (sem
-        markdown)" e o `json.loads` do texto inteiro resolve na primeira tentativa. Mas
-        basta o modelo embrulhar a resposta em ``` uma vez para o candidato virar a
-        lista de skills dele. Fixado aqui para não sumir na refatoração do R-11.
+        ANTES da correção este mesmo texto devolvia `["Python", "Go"]` — o array era
+        procurado antes do objeto, e o recorte do array interno ganhava. Como todo
+        candidato tem `skills`, bastava o modelo embrulhar a resposta em markdown uma
+        vez para a importação gravar lixo.
         """
-        assert _extract_json('```json\n{"skills": ["Python", "Go"]}\n```') == ["Python", "Go"]
+        assert _extract_json('```json\n{"skills": ["Python", "Go"]}\n```') == {
+            "skills": ["Python", "Go"]
+        }
 
     def test_object_without_inner_array_survives_markdown(self):
-        """Contraprova do teste acima: sem array interno, o objeto é devolvido certo."""
         assert _extract_json('```json\n{"name": "Ana"}\n```') == {"name": "Ana"}
+
+    def test_whichever_structure_starts_first_wins(self):
+        """A regra que substituiu a ordem fixa: vence quem começa antes no texto.
+
+        É o que mantém o caminho de lote funcionando — a resposta em lote é um array de
+        objetos, então o `[` vem antes do primeiro `{` e o array continua ganhando.
+        """
+        assert _extract_json('```json\n[{"name": "Ana"}]\n```') == [{"name": "Ana"}]
+        assert _extract_json('```json\n{"name": "Ana"}\n```') == {"name": "Ana"}
+
+    def test_falls_back_to_the_other_structure_when_the_first_does_not_parse(self):
+        """Se o recorte que começa antes não for JSON válido, o outro ainda é tentado."""
+        assert _extract_json('nota [rascunho] e o dado: {"name": "Ana"}') == {"name": "Ana"}
 
     def test_invalid_json_propagates(self):
         import json as _json

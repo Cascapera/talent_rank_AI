@@ -6,7 +6,7 @@ A cobertura do fluxo vivo — importação em lote, upsert de candidato e rankin
 em R-05 e R-06 como characterization tests.
 """
 
-from core.pdf_extractor import (
+from core.services.candidate_import import (
     import_candidates_from_folder,
     import_candidates_from_folder_no_ranking,
     search_and_rank_candidates_from_pool,
