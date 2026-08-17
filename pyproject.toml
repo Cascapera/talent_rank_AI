@@ -62,10 +62,13 @@ branch = true
 # Piso = cobertura real de hoje menos 1 ponto, para o CI travar em regressão
 # sem travar o dia a dia. Sobe a cada onda do PROJETO_REFATORACAO.md (meta: 55).
 # 27 -> 34 (R-05, upsert) -> 37 (R-06, lotes) -> 42 (R-09, banco de talentos)
-# -> 41 (R-10). A queda de 42,12 para 41,84 nao e regressao: o codigo duplicado
-# removido em R-10 estava coberto, entao numerador e denominador cairam juntos
-# (1.755 -> 1.684 statements). Em absoluto ha menos codigo sem teste do que antes.
-fail_under = 41
+# -> 41 (R-10) -> 53 (R-07, cliente LLM). A queda de 42,12 para 41,84 nao e
+# regressao: o codigo duplicado removido em R-10 estava coberto, entao numerador
+# e denominador cairam juntos (1.755 -> 1.684 statements). Em absoluto ha menos
+# codigo sem teste do que antes.
+# O salto do R-07 (41,83 -> 53,58) veio do llm_extractor, que saiu de 20% para
+# 71% com os 50 characterization tests. A meta de 55 esta a um item de distancia.
+fail_under = 53
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
