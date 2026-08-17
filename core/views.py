@@ -18,17 +18,24 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .domain.normalization import SYNONYMS, normalize
 from .forms import CandidateForm, JobForm, SignupForm
-from .llm_extractor import generate_parecer
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
-from .metrics import vacancy_candidate_import_failures_total
 from .models import Candidate, CandidateJob, Job, Profile
-from .observability import Timer, ensure_correlation_id, log_event, new_correlation_id
-from .pdf_extractor import (
-    import_candidates_from_folder,
-    import_candidates_from_folder_no_ranking,
-    search_and_rank_candidates_from_pool,
-)
+from .observability import new_correlation_id
 from .plans import required_plan
+from .services.import_service import (
+    _import_status_key,
+    _parecer_status_key,
+    _run_import_job,
+    _run_parecer_generation,
+    _run_search_in_pool,
+    _run_talent_pool_import,
+    _search_status_key,
+    _set_import_status,
+    _set_parecer_status,
+    _set_search_status,
+    _set_talent_pool_import_status,
+    _talent_pool_import_status_key,
+)
 
 
 def metrics_view(request):
@@ -290,28 +297,6 @@ def talent_pool(request):
     return render(request, "core/talent_pool.html", context)
 
 
-def _run_talent_pool_import(
-    folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
-):
-    """Executa importação de candidatos no banco de talentos do usuário em background."""
-    try:
-
-        def progress_callback(**kwargs):
-            _set_talent_pool_import_status(kwargs)
-
-        result = import_candidates_from_folder_no_ranking(
-            str(folder_path),
-            user_id=user_id,
-            shared_pool=shared_pool,
-            progress_callback=progress_callback,
-        )
-        _set_talent_pool_import_status({"status": "completed", "result": result})
-    except Exception as exc:
-        _set_talent_pool_import_status({"status": "error", "message": str(exc)})
-    finally:
-        shutil.rmtree(folder_path, ignore_errors=True)
-
-
 @login_required
 @required_plan("BASIC")
 def talent_pool_import_status(request):
@@ -479,79 +464,6 @@ def _build_job_description(job: Job) -> str:
         f"Observações: {job.notes or '-'}",
     ]
     return "\n".join(parts)
-
-
-def _import_status_key(job_id: int) -> str:
-    return f"import_status_{job_id}"
-
-
-def _search_status_key(job_id: int) -> str:
-    return f"search_status_{job_id}"
-
-
-def _talent_pool_import_status_key() -> str:
-    return "talent_pool_import_status"
-
-
-def _set_import_status(job_id: int, payload: dict) -> None:
-    cache.set(_import_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_search_status(job_id: int, payload: dict) -> None:
-    cache.set(_search_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_talent_pool_import_status(payload: dict) -> None:
-    cache.set(_talent_pool_import_status_key(), payload, timeout=60 * 60)
-
-
-def _parecer_status_key(candidate_job_id: int) -> str:
-    return f"parecer_status_{candidate_job_id}"
-
-
-def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
-    cache.set(_parecer_status_key(candidate_job_id), payload, timeout=60 * 30)
-
-
-def _run_import_job(
-    job_id: int,
-    folder_path: Path,
-    job_description: str,
-    role_title: str,
-    user_id: int,
-    shared_pool: bool = False,
-    correlation_id: str | None = None,
-):
-    ensure_correlation_id(correlation_id)
-    outer_timer = Timer()
-    try:
-
-        def progress_callback(**kwargs):
-            _set_import_status(job_id, kwargs)
-
-        result = import_candidates_from_folder(
-            str(folder_path),
-            job_description=job_description,
-            weights={"skills": 40, "technologies": 35, "experience": 25},
-            role_title=role_title,
-            job_id=job_id,
-            user_id=user_id,
-            shared_pool=shared_pool,
-            progress_callback=progress_callback,
-        )
-        _set_import_status(job_id, {"status": "completed", "result": result})
-    except Exception as exc:
-        _set_import_status(job_id, {"status": "error", "message": str(exc)})
-        vacancy_candidate_import_failures_total.inc()
-        log_event(
-            "vacancy_candidate_import_failed",
-            status="error",
-            vacancy_id=job_id,
-            duration_ms=outer_timer.elapsed_ms(),
-            error=str(exc),
-        )
-    finally:
-        shutil.rmtree(folder_path, ignore_errors=True)
 
 
 @login_required
@@ -729,36 +641,6 @@ def job_search_status(request, job_id: int):
     return JsonResponse(payload)
 
 
-def _run_search_in_pool(
-    job_id: int,
-    job_description: str,
-    role_title: str,
-    candidate_ids: list[int],
-    user_id: int | None = None,
-    shared_pool: bool = False,
-):
-    """Executa rankeamento via LLM dos candidatos pré-aprovados no match, em background."""
-    try:
-
-        def progress_callback(**kwargs):
-            _set_search_status(job_id, kwargs)
-
-        weights = {"skills": 40, "technologies": 35, "experience": 25}
-        result = search_and_rank_candidates_from_pool(
-            job_id=job_id,
-            job_description=job_description,
-            weights=weights,
-            role_title=role_title,
-            progress_callback=progress_callback,
-            candidate_ids=candidate_ids,
-            user_id=user_id,
-            shared_pool=shared_pool,
-        )
-        _set_search_status(job_id, {"status": "completed", "result": result})
-    except Exception as exc:
-        _set_search_status(job_id, {"status": "error", "message": str(exc)})
-
-
 def _parse_min_score(request) -> int:
     """Lê o % mínimo de match informado pela recrutadora (fallback: padrão do sistema)."""
     raw = request.POST.get("min_score", "").strip()
@@ -896,60 +778,6 @@ def search_candidates_in_pool(request, job_id: int):
             "compatível(is). Acompanhe o progresso abaixo.",
         }
     )
-
-
-def _run_parecer_generation(candidate_job_id: int, parecer_type: str) -> None:
-    """Executa geração de parecer em background."""
-    try:
-        candidate_job = CandidateJob.objects.select_related("job", "candidate").get(
-            id=candidate_job_id
-        )
-        job = candidate_job.job
-        candidate = candidate_job.candidate
-
-        job_description = _build_job_description(job)
-        candidate_data = {
-            "name": candidate.name,
-            "current_title": candidate.current_title or "",
-            "current_company": candidate.current_company or "",
-            "location": candidate.location or "",
-            "skills": candidate.skills or "",
-            "technologies": candidate.technologies or "",
-            "languages": candidate.languages or "",
-            "certifications": candidate.certifications or "",
-            "seniority": candidate.seniority or "",
-            "experience_time": str(candidate.experience_time) if candidate.experience_time else "",
-            "average_tenure": str(candidate.average_tenure) if candidate.average_tenure else "",
-            "summary": candidate.summary or "",
-        }
-        resume_path = None
-        if candidate.resume_pdf:
-            try:
-                resume_path = candidate.resume_pdf.path
-            except (ValueError, NotImplementedError):
-                pass
-
-        parecer_text = generate_parecer(
-            job_description=job_description,
-            candidate_data=candidate_data,
-            parecer_type=parecer_type,
-            role_title=job.title,
-            resume_pdf_path=resume_path,
-        )
-
-        candidate_job.parecer = parecer_text
-        candidate_job.parecer_type = parecer_type
-        candidate_job.save(update_fields=["parecer", "parecer_type", "updated_at"])
-
-        _set_parecer_status(
-            candidate_job_id,
-            {"status": "completed", "parecer": parecer_text, "parecer_type": parecer_type},
-        )
-    except Exception as exc:
-        _set_parecer_status(
-            candidate_job_id,
-            {"status": "error", "message": str(exc)},
-        )
 
 
 @login_required

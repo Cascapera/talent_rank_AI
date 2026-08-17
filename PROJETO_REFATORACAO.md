@@ -1506,7 +1506,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **~975** | ❌ |
+| Linhas em `views.py` | 987 | ≤ 450 | **837** | 🟡 |
 | Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
@@ -1970,14 +1970,30 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-14** · Criar `core/services/` e mover a orquestração de importação
       risco: baixo · 0,5d · produção: transparente · PR: ~460 linhas / 4 arquivos
       pré-requisito: R-10
-  - [ ] Movimentação aplicada — **diff reconhecível como recorte e cola**
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Movimentação aplicada — **diff reconhecível como recorte e cola**: −187/+15 em
+        `views.py`, e o `import_service.py` é o recorte literal, feito por script
+  - [x] Suíte completa verde — 235 testes, sem alteração em nenhum
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `core/services/` criado com os **12 blocos** de
+    orquestração — as 4 funções `_run_*` mais as 4 chaves de cache e os 4 setters de
+    status. `views.py` **975 → 837 linhas**.
+
+    A movimentação foi feita por script (recorte de bloco por AST-ish, não transcrição)
+    exatamente para o diff ser revisável como recorte e cola. Nenhum corpo de função foi
+    reescrito.
+
+    **Uma exceção, documentada:** `_run_parecer_generation` chama
+    `_build_job_description`, que ainda mora em `views.py` — import de módulo criaria
+    ciclo. Ficou como **import adiado dentro da função**, com comentário apontando o
+    R-16, que move essa função para `domain/` e transforma isto em import normal.
+
+    Os testes de `test_views_parecer.py` continuam mockando `core.views._run_parecer_generation`
+    e seguem válidos: o nome continua existindo em `views` (agora importado), e a view o
+    referencia pelo global do módulo.
 
 - [ ] **R-15** · Extrair o helper de filtros + querystring das views
       risco: baixo · 0,5d · produção: transparente · PR: ~210 linhas / 2 arquivos
@@ -2453,6 +2469,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-36** | As três normalizações de termo viram uma. `views._normalize_term` deletada, `expand_term` passa a usar `normalize()`, `unicodedata` sai do `views.py`. Piso do CI 53 → 55. PR #38. | **Meta de cobertura de 55% da seção 10 batida: 55,94%.** Muda comportamento em dois pontos, ambos para melhor: o filtro das listagens passa a aparar as pontas (antes, `" python "` com espaço sobrando não achava nada) e a busca booleana passa a expandir sinônimo de termo acentuado. Um teste garante que `views._normalize_term` não existe mais, para ninguém reintroduzir por hábito. |
 | 2026-08-17 | **R-33** | 19 characterization tests de `search_and_rank_candidates_from_pool` em `test_search_pool.py` — a última função grande sem teste (309 linhas). Nenhuma linha de aplicação alterada. Piso do CI 55 → 62. | **`pdf_extractor.py` foi de 57% para 88%** e a cobertura total de 55,94% para **62,30%**, ultrapassando a meta da seção 10 com folga. Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o arquivo tem que existir em disco** — um `media/` limpo sem limpar o banco não quebra a busca, o candidato só passa a ser avaliado pelos dados estruturados, em silêncio. Destrava a conversão do 3º laço para `_process_in_batches`, que ficou de fora do R-10 por não ter rede. |
 | 2026-08-17 | **R-37** | 3º laço convertido para `_process_in_batches`. `for batch_start in range` cai de **3 para 1** — D-3 fechado por completo. `pdf_extractor.py` 779 → **590 linhas**, cobertura do arquivo 88% → **91%**. Extraído `_resume_path()`. | **Os 19 testes do R-33 passaram sem tocar em uma linha** — o item foi escrito ontem justamente para isto. O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: `is_incomplete` (era fixo em `name`/`linkedin_url`, e dicionário de aderência não tem nenhum dos dois — tudo viraria "pulado") e `persist_error_label` ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta, o sufixo `(erro)` na mensagem de progresso, foi **eliminado em vez de parametrizado**: os dois fluxos passam a marcar a falha ao vivo, o que o fluxo de vaga não fazia. Cobertura total 62,30% → 62,18%, mesmo efeito do R-10 — o duplicado removido estava coberto. |
+| 2026-08-17 | **R-14** | `core/services/` criado. Os **12 blocos** de orquestração saem do `views.py`: as 4 funções `_run_*`, as 4 chaves de cache e os 4 setters de status. `views.py` **975 → 837 linhas** (−187/+15). | Movimentação feita por **script**, recortando blocos inteiros em vez de transcrever — é o que garante o diff revisável como recorte e cola, que era o critério do item. Nenhum corpo de função reescrito; 235 testes passando sem alteração. **Uma exceção documentada:** `_run_parecer_generation` chama `_build_job_description`, que ainda mora no `views.py`; import de módulo criaria ciclo, então ficou como **import adiado dentro da função**, com comentário apontando o R-16 — que move essa função para `domain/` e desfaz o remendo. |
 
 ---
 
