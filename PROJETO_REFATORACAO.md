@@ -2144,14 +2144,24 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-18** · Fechar conexões de banco nas threads
       risco: baixo · 3h · produção: transparente · PR: ~20 linhas / 1 arquivo
       pré-requisito: R-14
-  - [ ] Correção aplicada + teste
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + 14 testes
+  - [x] Suíte completa verde — 286 testes, cobertura 73,27%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `pg_stat_activity` volta ao patamar após importação
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: em vez de repetir `try/finally` nas 4 funções,
+    criei o decorator `background_job` — fecha na entrada e no `finally`, num lugar só.
+
+    Fecha **na entrada** também porque a thread herda o estado do processo e pode pegar
+    uma conexão já expirada pelo `CONN_MAX_AGE`. E o `finally` é o que importa de
+    verdade: é justamente quando o job estoura que a conexão ficaria pendurada.
+
+    **O teste que mais vale não é o do decorator, é o que verifica que as 4 funções
+    estão decoradas.** O modo de falha real aqui não é o decorator estar errado — é
+    alguém adicionar um job novo daqui a três meses e esquecer de decorá-lo. O teste é
+    parametrizado sobre as 4 e falha com mensagem explícita.
 
 - [ ] **R-19** · 🐛 [BUGFIX] Chave de cache de importação do pool por usuário
       risco: baixo · 3h · produção: **requer cuidado (P-3)** · PR: ~30 linhas / 3 arquivos
