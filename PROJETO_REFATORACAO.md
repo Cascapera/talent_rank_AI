@@ -14,7 +14,7 @@
 | **Foco** | Global |
 | **Itens no backlog** | 37 (29 originais + 8 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
+| **Executado** | **Ondas 0 e 1 completas e em produção** · 15 itens · PRs #13 a #35 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1737,10 +1737,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         substituído por duplo e `time.sleep` capturado numa lista
   - [x] Suíte completa verde — **195 testes**, cobertura **53,58%**
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: 50 testes em `test_llm_client.py`, divididos em
+  - [x] PR aberto e revisado — **#31**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
+  - [x] Commitado — `e8649dd`
+  - Status: **em produção** · Notas: 50 testes em `test_llm_client.py`, divididos em
     `_extract_json` · `_normalize_list` · `_normalize_linkedin_url` · guarda da API key
     (parametrizada nas 7 funções) · retry · contratos · validação de tamanho do lote.
     **Cobertura do `llm_extractor` foi de 20% para 71%**, e a total de 41,83% para
@@ -1867,11 +1867,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         também caiu de 7 para 1
   - [x] Suíte completa verde
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#32**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — gerar 1 parecer e importar 1 PDF
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
+  - [x] Commitado — `30193a2`
+  - Status: **em produção** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
     statements, cobertura 71% → **89%**. Diff +74/−241. Os 50 characterization tests do
     R-07 passaram sem tocar em uma linha, que era o critério de sucesso.
 
@@ -1893,11 +1893,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Mudança aplicada + 3 testes de timeout
   - [x] Suíte completa verde — 198 testes, cobertura 53,94%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#33**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — importação de lote grande conclui sem estourar
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: uma edição em vez de sete, exatamente como o R-11
+  - [x] Commitado — `7f8e798`
+  - Status: **em produção** · Notas: uma edição em vez de sete, exatamente como o R-11
     prometia.
 
     ⚠️ **Armadilha de unidade, verificada antes de escrever:** `types.HttpOptions.timeout`
@@ -1921,11 +1921,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Os 14 testes de matching passam sem alteração
   - [x] Suíte completa verde — 213 testes, cobertura 54,11%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#34**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — busca booleana + preview de match
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento, escopo reduzido de propósito** · Notas: o item mandava
+  - [x] Commitado — `967c4af`
+  - Status: **em produção, escopo reduzido de propósito** · Notas: o item mandava
     confirmar a equivalência antes de unificar e avisava que divergência viraria decisão.
     Divergiram — e são **três** variantes, não duas:
 
@@ -2227,12 +2227,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         com `KeyError: 'result'` no código anterior
   - [x] Suíte completa verde — 145 testes, cobertura 41,84% (inalterada)
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
+  - [x] PR aberto e revisado — **#29**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
+  - [x] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
         de qualquer forma. Não há efeito observável, e isso é o próprio achado.
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: investigado antes de escrever código e a premissa
+  - [x] Commitado — `de94f08`
+  - Status: **CONCLUÍDO** · Notas: investigado antes de escrever código e a premissa
     caiu — não existe barra de progresso, o callback final é sempre sobrescrito, e
     `processed` já era o número certo (conta tentativa, não sucesso). Sobrou unificar o
     contrato: o fluxo de vaga passa a mandar `result` como o `..._no_ranking` já fazia,
@@ -2261,11 +2261,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Vermelho antes / verde depois provado
   - [x] Suíte completa verde — 145 testes, cobertura 41,83%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#30**, CI verde nos 3 jobs
+  - [x] Implantado — **2026-08-17**, PR #35, deploy `8c2130a`
   - [ ] Verificado em produção — reimportar lote idêntico e conferir o resumo
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: `unchanged` entra no `result` e a conta passa a
+  - [x] Commitado — `547970b`
+  - Status: **em produção** · Notas: `unchanged` entra no `result` e a conta passa a
     fechar — o teste afirma `created + updated + unchanged + skipped + errors == total`,
     que é a garantia de verdade, mais forte que conferir cada contador. Como os dois
     importadores usam o `_process_in_batches`, os dois ganharam de uma vez. Nos templates
@@ -2374,6 +2374,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-11** | `_generate()` criado: as 7 cópias de `api_key` + `genai.Client` + laço de retry viram 1. `llm_extractor.py` 940 → 661 linhas, 358 → 207 stmts, cobertura 71% → 89%. Diff +74/−241. PR #32. | **Os 50 characterization tests do R-07 passaram sem tocar em uma linha** — era o critério de sucesso, e é a prova de que a extração não mudou comportamento. Uma diferença registrada por honestidade: a guarda da `GEMINI_API_KEY` foi para dentro do `_generate()`, então nas duas funções instrumentadas a `RuntimeError` de chave ausente passa a nascer dentro do `try` e a disparar a métrica de falha. Só ocorre com a chave desconfigurada, e registrar é mais correto que silenciar. |
 | 2026-08-17 | **R-12** | Timeout de 180s em toda chamada ao LLM, via `settings.LLM_TIMEOUT_SECONDS` e `types.HttpOptions`. 3 testes novos. PR #33. | Duas. (1) **Armadilha de unidade:** `HttpOptions.timeout` é em MILISSEGUNDOS — conferido no pacote instalado antes de escrever a linha. Passar segundos daria 180ms e derrubaria toda chamada ao LLM em produção. O setting fica em segundos e a conversão mora só no `_generate()`, travada por teste. (2) **O ganho é "de infinito para limitado", não "para curto":** o erro de timeout cai no ramo genérico do retry e consome as 4 tentativas, ~12min até desistir. Fixado por teste em vez de escondido; encurtar seria mudar a política de retry, ou seja, outro item. |
 | 2026-08-17 | **R-13** | `core/domain/` criado — primeiro módulo da camada de domínio, sem nenhum import de Django. `SYNONYMS` unificado (era 2 cópias) e `normalize()` movido do matching sem alterar uma linha. PR #34. | **O teste de equivalência que o item exigia reprovou a premissa.** O dicionário era idêntico, mas as normalizações não — e são **três** variantes, não duas: `normalize` apara as pontas e tolera `None`; `views._normalize_term` não apara e estoura com `None`; a chave de `expand_term` nem remove acento. Entreguei só a parte de risco zero e a unificação das funções virou **R-36**, porque o `strip` muda resultado de busca. Achado de brinde, fixado por teste: os dois caminhos de lookup só concordam porque **todas as chaves de `SYNONYMS` são ASCII** — uma chave acentuada faria as duas pontas discordarem em silêncio, mesma classe do bug do R-09. |
+| 2026-08-17 | **Ondas 0 e 1 → produção** | Segundo release (PR #35): 16 commits, 6 PRs, `b6f431c` → `8c2130a`. CI verde nas duas versões da matriz; CD em 1m21s. `No migrations to apply`, `pip install` no-op de novo, `0 static files copied`. **Ondas 0 e 1 completas em produção.** | Nenhuma surpresa no deploy. Diferente do primeiro release, este mexeu em `views.py` e em 2 templates — o R-32 muda o que a usuária lê na tela. Resultado acumulado do dia: testes 100 → **213**, cobertura real 25% → **54,11%**, `pdf_extractor` 2.046 → 779 linhas, `llm_extractor` 940 → 661, cliente Gemini de 7 cópias para 1, upsert de 4 para 1, laço de lotes de 3 para 1, dicionário de sinônimos de 2 para 1, e 1 bug real corrigido (R-09). Falta a verificação manual dos 4 itens marcados. |
 
 ---
 
