@@ -310,11 +310,25 @@ class TestProgressCallback:
             "processed": 2,
             "current": None,
             "status": "completed",
+            "result": {
+                "created": 2,
+                "updated": 0,
+                "skipped": 0,
+                "errors": 0,
+                "total": 2,
+                "error_details": [],
+            },
         }
 
-    def test_final_call_claims_everything_processed_even_after_errors(self, pdf_dir, user):
-        """QUIRK: o callback final envia processed=total_files, não o contador real.
-        Uma importação que falhou em tudo ainda termina mostrando 100%."""
+    def test_final_call_carries_the_errors_when_everything_failed(self, pdf_dir, user):
+        """R-30: o callback final agora leva o `result`, então uma importação que
+        falhou em tudo termina anunciando `errors=2` em vez de um `completed` mudo.
+
+        `processed=2` NÃO é otimismo, e é por isso que este número não mudou com o
+        R-30: `_process_in_batches` conta tentativa, não sucesso — incrementa em todos
+        os caminhos, inclusive nos de erro. Os 2 arquivos foram processados; os 2
+        falharam, e quem diz isso é o `result`.
+        """
         make_pdfs(pdf_dir, 2)
         rec = Recorder()
         run(
@@ -325,22 +339,32 @@ class TestProgressCallback:
             progress_callback=rec,
         )
 
-        assert rec.last == {
-            "total": 2,
-            "processed": 2,
-            "current": None,
-            "status": "completed",
-        }
+        assert rec.last["status"] == "completed"
+        assert rec.last["processed"] == 2
+        assert rec.last["total"] == 2
+        assert rec.last["result"]["errors"] == 2
+        assert rec.last["result"]["created"] == 0
 
-    def test_final_call_does_not_carry_the_result(self, pdf_dir, user):
-        """QUIRK: import_candidates_from_folder não envia `result` no callback final,
-        mas import_candidates_from_folder_no_ranking envia. Quem consome os dois
-        precisa tratar as duas formas."""
+    def test_final_call_carries_the_result(self, pdf_dir, user):
+        """R-30: os dois importadores passam a mandar `result` no callback final.
+
+        Antes só o `..._no_ranking` mandava, e quem consumia os dois precisava tratar
+        duas formas. Consequência prática do contrato antigo: um poll que caísse entre
+        o callback final e a gravação de `views.py:557` via `status="completed"` sem
+        `result`, e a tela renderizava "0 criados, 0 atualizados, 0 ignorados".
+        """
         make_pdfs(pdf_dir, 1)
         rec = Recorder()
         run(pdf_dir, [[llm_row(0)]], user_id=user.id, progress_callback=rec)
 
-        assert "result" not in rec.last
+        assert rec.last["result"] == {
+            "created": 1,
+            "updated": 0,
+            "skipped": 0,
+            "errors": 0,
+            "total": 1,
+            "error_details": [],
+        }
 
     def test_works_without_a_callback(self, pdf_dir, user):
         make_pdfs(pdf_dir, 1)

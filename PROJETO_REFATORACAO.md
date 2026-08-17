@@ -1250,23 +1250,43 @@ Esforço:     2h
 Ganho:       para de destruir trabalho manual da recrutadora
 Prioridade:  ALTA — é o item de maior impacto direto no uso diário
 
-[R-30] 🐛 [BUGFIX] Barra de progresso mostra 100% mesmo quando tudo falhou
-Motivação:   descoberto em R-06. O callback final de `import_candidates_from_folder`
-             envia `processed=total_files` em vez do contador real. Uma importação que
-             falhou em TODOS os PDFs termina exibindo 100%.
+[R-30] Unificar o payload final do callback de importação
+⚠️ ESTE ITEM FOI DIAGNOSTICADO ERRADO. Título e motivação originais, mantidos para
+   registro: "🐛 [BUGFIX] Barra de progresso mostra 100% mesmo quando tudo falhou —
+   o callback final envia `processed=total_files` em vez do contador real".
+   **Investigado em 2026-08-17, antes de escrever código, e a premissa não se sustenta
+   por três motivos independentes:**
+   1. NÃO EXISTE BARRA. `job_detail.html:711-723` renderiza o ramo `completed` a partir
+      do `result` ("X criados, Y atualizados, N erro(s)"), sem usar `processed`/`total`.
+      O `processed/total` só aparece como texto durante o `running`, e ali já é real.
+   2. O CALLBACK FINAL É SEMPRE SOBRESCRITO. `views.py:557` (e :311 e :772) grava
+      `{"status": "completed", "result": result}` microssegundos depois do retorno.
+      O payload do `pdf_extractor` não sobrevive a um poll de 2s.
+   3. O NÚMERO NUNCA ESTEVE ERRADO. `_process_in_batches` incrementa `processed` em
+      TODOS os caminhos, inclusive nos de erro. Ao final, `processed == total` sempre —
+      então `processed=total_files` e o contador real dão o mesmo valor. "Processado"
+      significa tentado, não bem-sucedido; o teste do R-06 leu o nome, não a semântica.
+Motivação:   o que sobrou de real: o fluxo de vaga não mandava `result` no callback
+             final e o `..._no_ranking` mandava. Dois contratos para o mesmo consumidor,
+             e uma janela de corrida em que um poll via `completed` sem `result` e a
+             tela exibia "0 criados, 0 atualizados, 0 ignorados".
 Arquivos:    core/pdf_extractor.py, core/tests/test_import_batches.py
-O que muda:  ⚠️ MUDA COMPORTAMENTO: envia o contador real, como já faz o
-             `..._no_ranking`. Unifica os dois contratos de callback final de quebra.
-Não muda:    o dicionário de resultado
-Pré-requisito: nenhum (R-10 já unificou o laço, então é 1 linha)
-PR:          2 arquivos · ~20 linhas
+O que muda:  o callback final do fluxo de vaga passa a mandar `total`, `processed` e
+             `result`, idêntico ao `..._no_ranking`
+Não muda:    o dicionário de resultado, nem o número de `processed` (ver ponto 3)
+Pré-requisito: nenhum
+PR:          2 arquivos · ~50 linhas (3 characterization tests invertidos)
 Produção:    transparente
-Como validar: `test_final_call_claims_everything_processed_even_after_errors` inverte
-Verificação pós-deploy: importar 1 PDF que falha e conferir que a barra não completa
+Como validar: os 3 testes de `final_call` falham antes (`KeyError: 'result'`) e passam
+             depois
+Verificação pós-deploy: nenhuma observável — o payload corrigido é sobrescrito de todo
+             jeito. É higiene de contrato, não correção visível.
 Risco:       baixo
 Reversão:    reverter o commit
-Esforço:     2h
-Ganho:       a recrutadora deixa de achar que a importação deu certo quando não deu
+Esforço:     30 min (não 2h — a estimativa vinha do diagnóstico errado)
+Ganho:       um contrato só, e a janela de corrida fechada. **Ganho pequeno e honesto:
+             a recrutadora nunca viu 100% falso.** O item que de fato mexe no que ela
+             lê é o R-32.
 
 [R-31] PDFs órfãos acumulam no disco a cada reimportação
 Motivação:   descoberto em R-05. `_upsert_candidate` sempre regrava o currículo, e o
@@ -2130,16 +2150,25 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     duas linhas verificadas, o que sugere que o recurso ainda é pouco usado — parte de
     por que o custo de manter como está é baixo hoje.
 
-- [ ] 🐛 **R-30** · Barra de progresso mostra 100% mesmo quando tudo falhou
-      risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+- [ ] **R-30** · Unificar o payload final do callback de importação
+      risco: baixo · 30min · produção: transparente · PR: ~50 linhas / 2 arquivos
+      ⚠️ **diagnóstico original refutado** — ver a entrada na seção 7
+  - [x] Correção aplicada + 3 characterization tests invertidos
+  - [x] Vermelho antes / verde depois provado — os 3 testes de `final_call` falham
+        com `KeyError: 'result'` no código anterior
+  - [x] Suíte completa verde — 145 testes, cobertura 41,84% (inalterada)
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
-  - [ ] Verificado em produção — importar 1 PDF que falha, barra não completa
+  - [ ] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
+        de qualquer forma. Não há efeito observável, e isso é o próprio achado.
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: investigado antes de escrever código e a premissa
+    caiu — não existe barra de progresso, o callback final é sempre sobrescrito, e
+    `processed` já era o número certo (conta tentativa, não sucesso). Sobrou unificar o
+    contrato: o fluxo de vaga passa a mandar `result` como o `..._no_ranking` já fazia,
+    fechando uma janela de corrida em que um poll via `completed` sem `result` e a tela
+    mostrava tudo zerado. Estimativa corrigida de 2h para 30min.
 
 - [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos

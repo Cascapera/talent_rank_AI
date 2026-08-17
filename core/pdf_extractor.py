@@ -403,7 +403,7 @@ def import_candidates_from_folder(
             error=error_msg[:500],
         )
 
-    result, _processed = _process_in_batches(
+    result, processed = _process_in_batches(
         pdf_files,
         batch_fn=batch_fn,
         single_fn=single_fn,
@@ -425,10 +425,16 @@ def import_candidates_from_folder(
             duration_ms=import_ms,
         )
     if progress_callback:
-        # Envia total_files, nao o contador real: importacao que falhou em tudo
-        # ainda termina mostrando 100%. Comportamento preservado de proposito.
+        # Mesmo payload final de `..._no_ranking`: contador real e `result` junto.
+        # O `result` importa: quem consome sobrescreve este payload logo em seguida
+        # (views.py:557), mas um poll que caia na janela entre as duas gravações
+        # via `status="completed"` sem `result` e exibia "0 criados, 0 atualizados".
         progress_callback(
-            total=total_files, processed=total_files, current=None, status="completed"
+            total=result["total"],
+            processed=processed,
+            current=None,
+            status="completed",
+            result=result,
         )
     return result
 
