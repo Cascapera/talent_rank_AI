@@ -15,9 +15,11 @@ Regra de dependencia (secao 5 do PROJETO_REFATORACAO.md):
 """
 
 import shutil
+from functools import wraps
 from pathlib import Path
 
 from django.core.cache import cache
+from django.db import close_old_connections
 
 from ..domain.job_description import build_job_description_from
 from ..llm_extractor import generate_parecer
@@ -29,6 +31,32 @@ from .candidate_import import (
     import_candidates_from_folder_no_ranking,
     search_and_rank_candidates_from_pool,
 )
+
+
+def background_job(fn):
+    """Devolve a conexão de banco ao terminar. **Obrigatório em toda função de thread.**
+
+    O Django fecha conexões no sinal `request_finished`, que thread manual não dispara.
+    Sem isto, cada importação abre uma conexão Postgres e a deixa aberta para sempre —
+    elas acumulam até o banco recusar novas (D-6 do diagnóstico: `close_old_connections`
+    não existia em nenhum lugar do projeto).
+
+    Fecha também na **entrada**, porque a thread herda o estado do processo e pode pegar
+    uma conexão já expirada pelo `CONN_MAX_AGE`.
+
+    O `finally` garante o fechamento mesmo quando o job estoura — que é justamente o
+    caso em que a conexão ficaria pendurada.
+    """
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        close_old_connections()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            close_old_connections()
+
+    return wrapper
 
 
 def _import_status_key(job_id: int) -> str:
@@ -63,6 +91,7 @@ def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
     cache.set(_parecer_status_key(candidate_job_id), payload, timeout=60 * 30)
 
 
+@background_job
 def _run_import_job(
     job_id: int,
     folder_path: Path,
@@ -104,6 +133,7 @@ def _run_import_job(
         shutil.rmtree(folder_path, ignore_errors=True)
 
 
+@background_job
 def _run_talent_pool_import(
     folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
 ):
@@ -126,6 +156,7 @@ def _run_talent_pool_import(
         shutil.rmtree(folder_path, ignore_errors=True)
 
 
+@background_job
 def _run_search_in_pool(
     job_id: int,
     job_description: str,
@@ -156,6 +187,7 @@ def _run_search_in_pool(
         _set_search_status(job_id, {"status": "error", "message": str(exc)})
 
 
+@background_job
 def _run_parecer_generation(candidate_job_id: int, parecer_type: str) -> None:
     """Executa geração de parecer em background."""
     try:
