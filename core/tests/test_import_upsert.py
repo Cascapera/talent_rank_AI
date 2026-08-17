@@ -200,9 +200,15 @@ class TestUpdate:
         assert result["updated"] == 1
         assert Candidate.objects.count() == 1
 
-    def test_unchanged_candidate_counts_neither_created_nor_updated(self, pdf_dir, user):
-        """QUIRK: quando nada muda, o candidato não entra em `created` nem em `updated` —
-        some da contabilidade, embora tenha sido processado."""
+    def test_unchanged_candidate_is_counted_and_the_totals_add_up(self, pdf_dir, user):
+        """R-32: candidato que já existia e no qual nada mudou entra em `unchanged`.
+
+        Antes ele sumia da contabilidade: não era `created`, não era `updated`, não era
+        `skipped` nem `errors`. A recrutadora reimportava 10 PDFs idênticos e lia
+        "0 criados, 0 atualizados, 0 ignorados" — números que não fecham com o total.
+
+        A asserção que importa é a última: a soma tem que bater com `total`.
+        """
         Candidate.objects.create(
             user=user,
             name="Ana Souza",
@@ -224,8 +230,18 @@ class TestUpdate:
 
         assert result["created"] == 0
         assert result["updated"] == 0
+        assert result["unchanged"] == 1
+        assert result["skipped"] == 0
         assert result["errors"] == 0
         assert result["total"] == 1
+        assert (
+            result["created"]
+            + result["updated"]
+            + result["unchanged"]
+            + result["skipped"]
+            + result["errors"]
+            == result["total"]
+        )
 
     def test_resume_pdf_is_resaved_even_when_nothing_changed(self, pdf_dir, user):
         """QUIRK: o PDF é regravado em disco em toda importação, mesmo sem alteração
@@ -399,6 +415,7 @@ class TestFolder:
         assert result == {
             "created": 0,
             "updated": 0,
+            "unchanged": 0,
             "skipped": 0,
             "errors": 0,
             "total": 0,

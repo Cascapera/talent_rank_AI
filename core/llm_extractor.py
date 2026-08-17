@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from google import genai
 from google.genai import types
 
@@ -216,6 +217,75 @@ def _extract_json(text: str) -> dict | list:
         raise
 
 
+def _generate(payload: list, *, model: str = DEFAULT_GEMINI_MODEL) -> tuple[str, str]:
+    """Único ponto do sistema que fala com o Gemini.
+
+    Antes de R-11 este bloco existia em **7 cópias idênticas**, uma em cada função
+    pública deste módulo. Trocar de modelo, adicionar timeout, mudar a política de
+    backoff, instrumentar custo de token ou trocar de provedor custava 7 edições — e
+    tinha 7 chances de ficar inconsistente.
+
+    Devolve `(texto_da_resposta, modelo_usado)`. O `.text` do SDK pode vir `None`; quem
+    precisa de string garantida trata na saída (`generate_parecer` faz `or ""`).
+
+    R-12: aplica `settings.LLM_TIMEOUT_SECONDS` a toda chamada. Antes, uma requisição
+    travada segurava a thread de importação para sempre — as threads são `daemon` e não
+    têm cancelamento. Com timeout, o pior caso passa a ser **limitado**: 4 tentativas ×
+    timeout + os sleeps do backoff. Limitado, não curto: com o default de 180s, uma
+    indisponibilidade prolongada leva ~12min para desistir. Ainda assim é melhor que
+    "para sempre", e o número está em setting justamente para poder ser reduzido.
+
+    Comportamento preservado das 7 cópias, incluindo os dois quirks que os
+    characterization tests do R-07 fixaram — se forem corrigidos, é em PR próprio:
+      - dorme **depois da 4ª tentativa** também, antes de propagar o erro: com rate
+        limit são 30s parados sem nenhuma tentativa pela frente;
+      - erro que não é rate limit nem 503 **não usa o backoff**, dorme 3s fixos, mas
+        ainda assim consome as 4 tentativas.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
+
+    # R-12: `HttpOptions.timeout` é em MILISSEGUNDOS. O setting é em segundos porque é
+    # o que faz sentido para quem configura; a conversão mora aqui, num lugar só.
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=settings.LLM_TIMEOUT_SECONDS * 1000),
+    )
+
+    last_error = None
+    model_candidates = [model]
+    backoff_seconds = [3, 8, 15, 30]
+    response = None
+    model_used = model
+    for attempt in range(4):
+        for model_name in model_candidates:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=payload,
+                )
+                model_used = model_name
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+        if not last_error:
+            break
+        error_str = str(last_error)
+        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+            time.sleep(wait_time)
+        elif "503" in error_str or "UNAVAILABLE" in error_str:
+            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
+        else:
+            time.sleep(3)
+    if last_error:
+        raise last_error
+    assert response is not None
+    return response.text, model_used
+
+
 def extract_candidates_batch_with_llm(
     pdf_paths: list[str | Path],
     job_description: str,
@@ -226,10 +296,6 @@ def extract_candidates_batch_with_llm(
     batch_id: str | None = None,
 ) -> list[dict]:
     """Processa múltiplos PDFs em uma única requisição ao LLM."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     timer = Timer()
     model_used: str | None = None
     if vacancy_id is not None:
@@ -247,8 +313,6 @@ def extract_candidates_batch_with_llm(
         system_prompt = _build_system_prompt(
             job_description, weights, role_titles or [], is_batch=True
         )
-        client = genai.Client(api_key=api_key)
-
         payload = []
         for pdf_path in pdf_paths:
             with open(pdf_path, "rb") as pdf_file:
@@ -257,37 +321,9 @@ def extract_candidates_batch_with_llm(
                 )
         payload.append(system_prompt)
 
-        last_error = None
-        model_candidates = [DEFAULT_GEMINI_MODEL]
-        backoff_seconds = [3, 8, 15, 30]
-        response = None
-        for attempt in range(4):
-            for model_name in model_candidates:
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=payload,
-                    )
-                    model_used = model_name
-                    last_error = None
-                    break
-                except Exception as exc:
-                    last_error = exc
-            if not last_error:
-                break
-            error_str = str(last_error)
-            if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-                wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                time.sleep(wait_time)
-            elif "503" in error_str or "UNAVAILABLE" in error_str:
-                time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-            else:
-                time.sleep(3)
-        if last_error:
-            raise last_error
-        assert response is not None
+        response_text, model_used = _generate(payload)
 
-        data = _extract_json(response.text)
+        data = _extract_json(response_text)
 
         # Garante que é uma lista
         if not isinstance(data, list):
@@ -366,10 +402,6 @@ def extract_candidate_with_llm(
     vacancy_id: int | None = None,
     batch_id: str | None = None,
 ) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     timer = Timer()
     model_used: str | None = None
     if vacancy_id is not None:
@@ -387,45 +419,14 @@ def extract_candidate_with_llm(
         system_prompt = _build_system_prompt(
             job_description, weights, role_titles or [], is_batch=False
         )
-        client = genai.Client(api_key=api_key)
-
         with open(pdf_path, "rb") as pdf_file:
             payload = [
                 types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"),
                 system_prompt,
             ]
-            last_error = None
-            model_candidates = [
-                DEFAULT_GEMINI_MODEL,
-            ]
-            backoff_seconds = [3, 8, 15, 30]
-            response = None
-            for attempt in range(4):
-                for model_name in model_candidates:
-                    try:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=payload,
-                        )
-                        model_used = model_name
-                        last_error = None
-                        break
-                    except Exception as exc:
-                        last_error = exc
-                if not last_error:
-                    break
-                error_str = str(last_error)
-                if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-                    wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                    time.sleep(wait_time)
-                elif "503" in error_str or "UNAVAILABLE" in error_str:
-                    time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-                else:
-                    time.sleep(3)
-            if last_error:
-                raise last_error
-        assert response is not None
-        data = _extract_json(response.text)
+            response_text, model_used = _generate(payload)
+
+        data = _extract_json(response_text)
 
         result = {
             "name": data.get("name") or "",
@@ -484,12 +485,7 @@ def extract_candidates_batch_no_ranking(
     pdf_paths: list[str | Path],
 ) -> list[dict]:
     """Processa múltiplos PDFs em uma única requisição ao LLM sem rankeamento."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     system_prompt = _build_system_prompt_no_ranking(is_batch=True)
-    client = genai.Client(api_key=api_key)
 
     payload = []
     for pdf_path in pdf_paths:
@@ -497,34 +493,9 @@ def extract_candidates_batch_no_ranking(
             payload.append(types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"))
     payload.append(system_prompt)
 
-    last_error = None
-    model_candidates = [DEFAULT_GEMINI_MODEL]
-    backoff_seconds = [3, 8, 15, 30]
-    for attempt in range(4):
-        for model_name in model_candidates:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=payload,
-                )
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-        if not last_error:
-            break
-        error_str = str(last_error)
-        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-            time.sleep(wait_time)
-        elif "503" in error_str or "UNAVAILABLE" in error_str:
-            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-        else:
-            time.sleep(3)
-    if last_error:
-        raise last_error
+    response_text, _model_used = _generate(payload)
 
-    data = _extract_json(response.text)
+    data = _extract_json(response_text)
 
     # Garante que é uma lista
     if not isinstance(data, list):
@@ -566,10 +537,6 @@ def calculate_adherence_for_candidate(
     role_titles: list[str] | None = None,
 ) -> dict:
     """Calcula aderência e justificativa para um candidato já no banco."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     weights_json = json.dumps(weights, ensure_ascii=False)
     titles = ", ".join(role_titles) if role_titles else "N/A"
 
@@ -608,37 +575,9 @@ def calculate_adherence_for_candidate(
         "}\n"
     )
 
-    client = genai.Client(api_key=api_key)
-    payload = [system_prompt]
+    response_text, _model_used = _generate([system_prompt])
 
-    last_error = None
-    model_candidates = [DEFAULT_GEMINI_MODEL]
-    backoff_seconds = [3, 8, 15, 30]
-    for attempt in range(4):
-        for model_name in model_candidates:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=payload,
-                )
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-        if not last_error:
-            break
-        error_str = str(last_error)
-        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-            time.sleep(wait_time)
-        elif "503" in error_str or "UNAVAILABLE" in error_str:
-            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-        else:
-            time.sleep(3)
-    if last_error:
-        raise last_error
-
-    data = _extract_json(response.text)
+    data = _extract_json(response_text)
 
     return {
         "adherence": data.get("adherence"),
@@ -653,10 +592,6 @@ def calculate_adherence_batch_for_candidates(
     role_titles: list[str] | None = None,
 ) -> list[dict]:
     """Calcula aderência e justificativa para múltiplos candidatos em lote."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     weights_json = json.dumps(weights, ensure_ascii=False)
     titles = ", ".join(role_titles) if role_titles else "N/A"
 
@@ -701,37 +636,9 @@ def calculate_adherence_batch_for_candidates(
         "]\n"
     )
 
-    client = genai.Client(api_key=api_key)
-    payload = [system_prompt]
+    response_text, _model_used = _generate([system_prompt])
 
-    last_error = None
-    model_candidates = [DEFAULT_GEMINI_MODEL]
-    backoff_seconds = [3, 8, 15, 30]
-    for attempt in range(4):
-        for model_name in model_candidates:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=payload,
-                )
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-        if not last_error:
-            break
-        error_str = str(last_error)
-        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-            time.sleep(wait_time)
-        elif "503" in error_str or "UNAVAILABLE" in error_str:
-            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-        else:
-            time.sleep(3)
-    if last_error:
-        raise last_error
-
-    data = _extract_json(response.text)
+    data = _extract_json(response_text)
 
     # Garante que é uma lista
     if not isinstance(data, list):
@@ -760,47 +667,16 @@ def extract_candidate_no_ranking(
     pdf_path: str | Path,
 ) -> dict:
     """Processa um único PDF sem rankeamento."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     system_prompt = _build_system_prompt_no_ranking(is_batch=False)
-    client = genai.Client(api_key=api_key)
 
     with open(pdf_path, "rb") as pdf_file:
         payload = [
             types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"),
             system_prompt,
         ]
-        last_error = None
-        model_candidates = [
-            DEFAULT_GEMINI_MODEL,
-        ]
-        backoff_seconds = [3, 8, 15, 30]
-        for attempt in range(4):
-            for model_name in model_candidates:
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=payload,
-                    )
-                    last_error = None
-                    break
-                except Exception as exc:
-                    last_error = exc
-            if not last_error:
-                break
-            error_str = str(last_error)
-            if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-                wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                time.sleep(wait_time)
-            elif "503" in error_str or "UNAVAILABLE" in error_str:
-                time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-            else:
-                time.sleep(3)
-        if last_error:
-            raise last_error
-    data = _extract_json(response.text)
+        response_text, _model_used = _generate(payload)
+
+    data = _extract_json(response_text)
 
     return {
         "name": data.get("name") or "",
@@ -829,10 +705,6 @@ def generate_parecer(
     Gera um parecer profissional do candidato em relação à vaga.
     parecer_type: RESUMIDO (1 parágrafo, 5 linhas), COMPLETO (2 parágrafos, 10 linhas), ROBUSTO (4 parágrafos, 20 linhas).
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
-
     format_rules = {
         "RESUMIDO": "1 parágrafo com no máximo 5 linhas. Seja resumido e conciso.",
         "COMPLETO": "2 parágrafos com no máximo 10 linhas no total. Um pouco mais completo.",
@@ -869,7 +741,6 @@ def generate_parecer(
         "Retorne APENAS o texto do parecer, sem título, sem introdução, sem markdown."
     )
 
-    client = genai.Client(api_key=api_key)
     payload: list = []
 
     if resume_pdf_path and Path(resume_pdf_path).exists():
@@ -877,31 +748,6 @@ def generate_parecer(
             payload.append(types.Part.from_bytes(data=pdf_file.read(), mime_type="application/pdf"))
     payload.append(system_prompt)
 
-    last_error = None
-    model_candidates = [DEFAULT_GEMINI_MODEL]
-    backoff_seconds = [3, 8, 15, 30]
-    for attempt in range(4):
-        for model_name in model_candidates:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=payload,
-                )
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-        if not last_error:
-            break
-        error_str = str(last_error)
-        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-            wait_time = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-            time.sleep(wait_time)
-        elif "503" in error_str or "UNAVAILABLE" in error_str:
-            time.sleep(backoff_seconds[min(attempt, len(backoff_seconds) - 1)])
-        else:
-            time.sleep(3)
-    if last_error:
-        raise last_error
+    response_text, _model_used = _generate(payload)
 
-    return (response.text or "").strip()
+    return (response_text or "").strip()

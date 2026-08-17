@@ -12,9 +12,9 @@
 | **Data do plano** | 2026-08-15 |
 | **Escopo** | Global |
 | **Foco** | Global |
-| **Itens no backlog** | 35 (29 originais + 6 achados na execução) |
+| **Itens no backlog** | 37 (29 originais + 8 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | 9 itens em `develop` · PRs #13 a #23 · nada em produção ainda |
+| **Executado** | 9 itens **em produção** desde 2026-08-17 · PRs #13 a #26 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1250,23 +1250,43 @@ Esforço:     2h
 Ganho:       para de destruir trabalho manual da recrutadora
 Prioridade:  ALTA — é o item de maior impacto direto no uso diário
 
-[R-30] 🐛 [BUGFIX] Barra de progresso mostra 100% mesmo quando tudo falhou
-Motivação:   descoberto em R-06. O callback final de `import_candidates_from_folder`
-             envia `processed=total_files` em vez do contador real. Uma importação que
-             falhou em TODOS os PDFs termina exibindo 100%.
+[R-30] Unificar o payload final do callback de importação
+⚠️ ESTE ITEM FOI DIAGNOSTICADO ERRADO. Título e motivação originais, mantidos para
+   registro: "🐛 [BUGFIX] Barra de progresso mostra 100% mesmo quando tudo falhou —
+   o callback final envia `processed=total_files` em vez do contador real".
+   **Investigado em 2026-08-17, antes de escrever código, e a premissa não se sustenta
+   por três motivos independentes:**
+   1. NÃO EXISTE BARRA. `job_detail.html:711-723` renderiza o ramo `completed` a partir
+      do `result` ("X criados, Y atualizados, N erro(s)"), sem usar `processed`/`total`.
+      O `processed/total` só aparece como texto durante o `running`, e ali já é real.
+   2. O CALLBACK FINAL É SEMPRE SOBRESCRITO. `views.py:557` (e :311 e :772) grava
+      `{"status": "completed", "result": result}` microssegundos depois do retorno.
+      O payload do `pdf_extractor` não sobrevive a um poll de 2s.
+   3. O NÚMERO NUNCA ESTEVE ERRADO. `_process_in_batches` incrementa `processed` em
+      TODOS os caminhos, inclusive nos de erro. Ao final, `processed == total` sempre —
+      então `processed=total_files` e o contador real dão o mesmo valor. "Processado"
+      significa tentado, não bem-sucedido; o teste do R-06 leu o nome, não a semântica.
+Motivação:   o que sobrou de real: o fluxo de vaga não mandava `result` no callback
+             final e o `..._no_ranking` mandava. Dois contratos para o mesmo consumidor,
+             e uma janela de corrida em que um poll via `completed` sem `result` e a
+             tela exibia "0 criados, 0 atualizados, 0 ignorados".
 Arquivos:    core/pdf_extractor.py, core/tests/test_import_batches.py
-O que muda:  ⚠️ MUDA COMPORTAMENTO: envia o contador real, como já faz o
-             `..._no_ranking`. Unifica os dois contratos de callback final de quebra.
-Não muda:    o dicionário de resultado
-Pré-requisito: nenhum (R-10 já unificou o laço, então é 1 linha)
-PR:          2 arquivos · ~20 linhas
+O que muda:  o callback final do fluxo de vaga passa a mandar `total`, `processed` e
+             `result`, idêntico ao `..._no_ranking`
+Não muda:    o dicionário de resultado, nem o número de `processed` (ver ponto 3)
+Pré-requisito: nenhum
+PR:          2 arquivos · ~50 linhas (3 characterization tests invertidos)
 Produção:    transparente
-Como validar: `test_final_call_claims_everything_processed_even_after_errors` inverte
-Verificação pós-deploy: importar 1 PDF que falha e conferir que a barra não completa
+Como validar: os 3 testes de `final_call` falham antes (`KeyError: 'result'`) e passam
+             depois
+Verificação pós-deploy: nenhuma observável — o payload corrigido é sobrescrito de todo
+             jeito. É higiene de contrato, não correção visível.
 Risco:       baixo
 Reversão:    reverter o commit
-Esforço:     2h
-Ganho:       a recrutadora deixa de achar que a importação deu certo quando não deu
+Esforço:     30 min (não 2h — a estimativa vinha do diagnóstico errado)
+Ganho:       um contrato só, e a janela de corrida fechada. **Ganho pequeno e honesto:
+             a recrutadora nunca viu 100% falso.** O item que de fato mexe no que ela
+             lê é o R-32.
 
 [R-31] PDFs órfãos acumulam no disco a cada reimportação
 Motivação:   descoberto em R-05. `_upsert_candidate` sempre regrava o currículo, e o
@@ -1550,16 +1570,37 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ## 13. Checklist de acompanhamento
 
 ```
-Status: em andamento
-Progresso: 0/35 concluídos de ponta a ponta · 9 itens com código em `develop`
-           (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o
-           merge `develop` → `main` para fechar · 1 item fechado sem correção
-           (R-29, decisão de produto) · atualizado em 2026-08-17
-           (o contador dizia "7 itens" e listava 8: erro de contagem, corrigido)
+Status: em andamento — **Ondas 0 e 1 EM PRODUÇÃO desde 2026-08-17**
+Progresso: 9 itens implantados, aguardando só a verificação manual em produção
+           (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10) · 1 item fechado
+           sem correção (R-29, decisão de produto) · 35 no backlog
+           atualizado em 2026-08-17
 
-           ✅ As duas pendências que dependiam do dono do projeto foram resolvidas em
-           2026-08-17: `pip freeze` do servidor (R-02) e levantamento das duplicatas
-           (R-09). **Nada mais bloqueia o merge `develop` → `main`.**
+           🚀 **Merge `develop` → `main` feito: PR #26, 26 commits, 13 PRs.**
+           `main` saiu de `0a8801d` (12/06) para `b6f431c`. CI verde (lint, py3.10,
+           py3.12); CD concluído em 46s. O deploy confirmou as duas previsões do
+           pré-voo: `No migrations to apply` e `pip install` sem baixar, instalar ou
+           desinstalar nada — os pins do R-02 bateram exatamente com o servidor.
+           `0 static files copied, 130 unmodified`.
+
+           ✅ As duas pendências que dependiam do dono do projeto foram resolvidas
+           antes do merge: `pip freeze` do servidor (R-02) e levantamento das
+           duplicatas (R-09).
+
+           ✅ **Verificado em produção em 2026-08-17:** fluxo completo no front — criar
+           vaga, importar candidatos e navegar — sem erro.
+
+           ⚠️ **As ondas NÃO estão fechadas.** Foi para produção o que estava pronto:
+           R-01 a R-06, R-08, R-09, R-10. Ainda faltam **R-07** (Onda 0) e **R-11, R-12,
+           R-13** (Onda 1). O que já subiu é a maior parte do ganho — a duplicação
+           estrutural do `pdf_extractor` acabou —, mas as 7 cópias do cliente Gemini
+           (D-4) continuam de pé, e é R-07 que destrava elas.
+
+           Duas verificações ficaram parciais, marcadas `[~]` e cobertas por teste
+           automatizado: o caso de 2 lotes do R-10 (ZIP com 12+ PDFs) e o caso PREMIUM
+           do R-09 (candidato que já existe no pool de outra conta). Nenhuma das duas
+           justifica segurar o projeto; ficam como observação na próxima importação
+           grande da usuária.
 ```
 
 ### Resultado até aqui
@@ -1595,8 +1636,9 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#14**, CI verde (lint 8s, test 49s), mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
-  - [ ] Verificado em produção
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [x] Verificado em produção — n/a em runtime (só configuração de cobertura); o CI da
+        `main` rodou verde com o `fail_under` novo
   - [x] Commitado — `21eb996` · branch `refat/r-01-cobertura-real`
   - Status: **código pronto** · Notas: executado DEPOIS de R-03, então o `fail_under`
     ficou em **27** (não 24 como planejado) — o delete do código morto subiu a cobertura
@@ -1611,8 +1653,9 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#23**, CI verde (lint 8s, py3.10 1m1s, py3.12 1m2s),
         mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
-  - [ ] Verificado em produção — `systemctl status` + home e dashboard abrem
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [x] Verificado em produção — 2026-08-17, fluxo completo no front (criar vaga,
+        importar, navegar) sem erro
   - [x] Commitado — `aa814d3` · branch `refat/r-02-travar-dependencias`
   - Status: **em `develop`** · Notas: o `pip freeze` mostrou produção em **Python 3.10.12
     / Django 5.2.10**, e não no 3.12 que o projeto inteiro declarava — a suíte nunca tinha
@@ -1631,8 +1674,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde (94 testes)
   - [x] Lint e format verdes — sem import órfão
   - [x] PR aberto e revisado — **#13**, CI verde (lint 9s, test 55s), mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
-  - [ ] Verificado em produção — importação de 1 PDF numa vaga de teste
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [x] Verificado em produção — 2026-08-17, importação real numa vaga nova funcionou.
+        É a prova mais forte do R-03: se alguma das 940 linhas deletadas fosse alcançável,
+        a importação era o caminho que quebraria.
   - [x] Commitado — `4403ca8` · branch `refat/r-03-remover-codigo-morto`
   - Status: **código pronto** · Notas: removidas **940 linhas** (872 de corpo de função +
     a constante `SECTION_TITLES` + linhas em branco). `pdf_extractor.py`: 2.046 → 1.106
@@ -1650,8 +1695,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#15**, CI verde (lint 6s, test 56s)
-  - [ ] Implantado (entra em produção no merge `develop` → `main`, no fim da onda)
-  - [ ] Verificado em produção — página inicial abre
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [x] Verificado em produção — 2026-08-17, front navegado sem erro
   - [x] Commitado — `958038b` · branch `refat/r-04-arquivos-orfaos`
   - Status: **código pronto** · Notas: `git grep` por "landing" não retornou nenhuma
     referência em `.py`, `.html`, `.conf` ou `.md`; o Nginx só declara `location /static/`
@@ -1664,7 +1709,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#17**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [x] Commitado — `653de97`
   - Status: **em `develop`** · Notas: 24 testes. Cobertura 28,46% → 34,83%,
     `pdf_extractor` 2% → 24%. Fixou 3 quirks que viraram itens novos do backlog:
@@ -1678,7 +1723,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#18**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
   - [x] Commitado — `1edfc17`
   - Status: **em `develop`** · Notas: 21 testes. Cobertura 34,83% → 37,47%,
     `pdf_extractor` 24% → 34%. Fixou mais 3 quirks: fallback é por lote (aceitável,
@@ -1687,16 +1732,31 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-07** · Characterization tests: cliente LLM, retry e parsing
       risco: baixo · 1d · produção: transparente · PR: ~200 linhas / 1 arquivo
-  - [ ] Testes escritos e passando contra o código atual
-  - [ ] Confirmado que nenhum teste chama a API do Gemini de verdade
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Testes escritos e passando contra o código atual, **sem alterá-lo**
+  - [x] Confirmado que nenhum teste chama a API do Gemini de verdade — `genai.Client`
+        substituído por duplo e `time.sleep` capturado numa lista
+  - [x] Suíte completa verde — **195 testes**, cobertura **53,58%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: 50 testes em `test_llm_client.py`, divididos em
+    `_extract_json` · `_normalize_list` · `_normalize_linkedin_url` · guarda da API key
+    (parametrizada nas 7 funções) · retry · contratos · validação de tamanho do lote.
+    **Cobertura do `llm_extractor` foi de 20% para 71%**, e a total de 41,83% para
+    53,58% — o maior salto de uma tacada só no projeto. Piso do CI subiu 41 → 53 nos
+    três lugares. A meta de 55% da seção 10 está a um item de distância.
 
-- [ ] **Onda 0 concluída** — suíte verde, cobertura real exposta, nada em aberto
+    Três comportamentos fixados que ninguém tinha visto:
+    1. **`_extract_json` procura array ANTES de objeto** — virou **R-35**, é o mais sério.
+    2. O laço **dorme depois da 4ª tentativa** também, antes de propagar: com rate
+       limit são 30s parados sem nenhuma tentativa pela frente.
+    3. Erro que não é rate limit nem 503 **não usa o backoff** — dorme 3s fixos, mas
+       ainda assim tenta as 4 vezes.
+
+- [x] **Onda 0 concluída** — 2026-08-17. Suíte verde, cobertura real exposta e subindo
+      (25% → 53,58%), código morto eliminado, rede de segurança de 145 testes no lugar.
+      R-01 a R-06 já em produção; R-07 em `develop`.
 
 ---
 
@@ -1710,8 +1770,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#19**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
-  - [ ] Verificado em produção — 2 PDFs (1 novo, 1 existente), created/updated corretos
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [x] Verificado em produção — 2026-08-17, importação real gravou candidato pela
+        `_upsert_candidate` nova, sem erro. O par novo/existente não foi isolado, mas os
+        24 testes do R-05 cobrem os dois ramos.
   - [x] Commitado — `802929a`
   - Status: **em `develop`** · Notas: o item central do plano, entregue como previsto.
     4 cópias → 1 (`_upsert_candidate`, apoiado por `_candidate_payload` e
@@ -1734,8 +1796,13 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Usuária avisada da mudança de comportamento — **stakes baixas depois do
         levantamento**: a única duplicata existente é da conta do dono do projeto, não da
         dela. O aviso vira cortesia ("importar deixa de duplicar"), não contenção de dano.
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
-  - [ ] Verificado em produção — PREMIUM importa candidato do pool: atualiza, não duplica
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [~] Verificado em produção **parcialmente** — 2026-08-17, importação real como PREMIUM
+        funcionou, mas **o caso específico (candidato que já existe no pool de outra conta)
+        não foi isolado**. Coberto pelo teste de regressão de `test_import_no_ranking.py`,
+        que falha antes da correção e passa depois. Sinal prático de que está certo: parar
+        de aparecer duplicata nova. A query de `duplicatas-r09.sql` reconfirma quando você
+        quiser — hoje o número de referência é **1 grupo**.
   - [x] Commitado — `0b9b94b`
   - Status: **em `develop`, sem pendência de dado** · Notas: correção de 1 linha,
     exatamente como previsto — R-08 preparou o terreno. Novo arquivo
@@ -1776,8 +1843,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#21**, CI verde, mergeado em `develop`
-  - [ ] Implantado (entra em produção no merge `develop` → `main`)
-  - [ ] Verificado em produção — ZIP com 12 PDFs (2 lotes), progresso do início ao fim
+  - [x] Implantado — **2026-08-17**, PR #26, deploy `b6f431c` em 46s
+  - [~] Verificado em produção **parcialmente** — 2026-08-17, importação real passou pelo
+        `_process_in_batches`. **O caso de 2 lotes (ZIP com 12+ PDFs) não foi exercitado
+        em produção**; está coberto pelos 21 testes do R-06. Fica como observação na
+        próxima importação grande da usuária.
   - [x] Commitado — `a604872`
   - Status: **em `develop`, parcial** · Notas: `_process_in_batches` com 3 callbacks
     obrigatórios + 3 hooks opcionais de instrumentação; o fluxo de vaga mantém todas as
@@ -1791,44 +1861,98 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-11** · Extrair `_generate()` — unificar as 7 cópias de client + retry
       risco: médio · 0,5d · produção: transparente · PR: ~235 linhas / 1 arquivo
       pré-requisito: R-07
-  - [ ] Refatoração aplicada
-  - [ ] Testes de R-07 passam sem alteração
-  - [ ] `grep -c "genai.Client"` retorna 1
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Refatoração aplicada
+  - [x] **Testes de R-07 passam SEM nenhuma alteração** — 195/195, incluindo os 3 quirks
+  - [x] `grep -c "genai.Client"` retorna **1** (era 7) · `os.getenv("GEMINI_API_KEY")`
+        também caiu de 7 para 1
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — gerar 1 parecer e importar 1 PDF
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `llm_extractor.py` 940 → 661 linhas, 358 → 207
+    statements, cobertura 71% → **89%**. Diff +74/−241. Os 50 characterization tests do
+    R-07 passaram sem tocar em uma linha, que era o critério de sucesso.
+
+    ⚠️ **Uma mudança de comportamento, pequena e proposital:** a guarda da
+    `GEMINI_API_KEY` saiu do topo de cada função pública e foi para dentro do
+    `_generate()`. Nas duas funções instrumentadas (`extract_candidates_batch_with_llm`
+    e `extract_candidate_with_llm`), a `RuntimeError` de chave ausente agora nasce
+    **dentro** do `try`, então dispara a métrica de falha e o `log_event` de erro — antes
+    escapava antes do bloco e não registrava nada. Só acontece com a chave desconfigurada,
+    e registrar essa falha é mais correto que silenciá-la. Fica anotado por honestidade,
+    não porque preocupe.
 
 - [ ] **R-12** · Adicionar timeout à chamada do LLM
       risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
       pré-requisito: R-11
-  - [ ] Valor de timeout decidido (≥120s; 180s se preferir margem)
-  - [ ] Mudança aplicada + teste de timeout
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Valor de timeout decidido — **180s**, a margem que o próprio item sugeria.
+        Timeout curto demais troca um problema raro (thread travada) por um comum
+        (importação lenta que falha). Configurável por `LLM_TIMEOUT_SECONDS`.
+  - [x] Mudança aplicada + 3 testes de timeout
+  - [x] Suíte completa verde — 198 testes, cobertura 53,94%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — importação de lote grande conclui sem estourar
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: uma edição em vez de sete, exatamente como o R-11
+    prometia.
+
+    ⚠️ **Armadilha de unidade, verificada antes de escrever:** `types.HttpOptions.timeout`
+    é documentado no SDK como *"Timeout for the request in milliseconds"*. Passar o valor
+    em segundos daria **180ms** e derrubaria toda chamada ao LLM em produção. O setting
+    fica em segundos (é o que faz sentido para quem configura) e a conversão mora só
+    dentro do `_generate()`, travada por
+    `test_timeout_is_converted_from_seconds_to_milliseconds`.
+
+    **Ganho honesto:** o pior caso passa de *infinito* para *limitado*, não para *curto*.
+    O erro de timeout não casa com RESOURCE_EXHAUSTED nem com 503, então cai no ramo
+    genérico e consome as 4 tentativas — ~12min (4 × 180s + sleeps) até desistir. Melhor
+    que "para sempre", e o número está em setting para poder ser reduzido. Fazer o timeout
+    pular o retry seria mudança de política de retry, ou seja, outro item.
 
 - [ ] **R-13** · Unificar normalização e sinônimos em `domain/normalization.py`
       risco: baixo · 3h · produção: transparente · PR: ~140 linhas / 3 arquivos
-  - [ ] **Teste de equivalência provando que as 2 versões produzem a mesma saída**
-  - [ ] Refatoração aplicada
-  - [ ] Os 14 testes de matching passam sem alteração
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] **Teste de equivalência feito — e as versões DIVERGEM.** `test_normalization.py`
+        prova, caso a caso. O dicionário era idêntico (unificado); as normalizações não.
+  - [x] Refatoração aplicada — **só a parte segura**
+  - [x] Os 14 testes de matching passam sem alteração
+  - [x] Suíte completa verde — 213 testes, cobertura 54,11%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — busca booleana + preview de match
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento, escopo reduzido de propósito** · Notas: o item mandava
+    confirmar a equivalência antes de unificar e avisava que divergência viraria decisão.
+    Divergiram — e são **três** variantes, não duas:
 
-- [ ] **Onda 1 concluída** — duplicação estrutural eliminada, suíte verde
+    | Onde | O que faz |
+    |---|---|
+    | `matching._normalize` | NFKD + lower + **strip**, tolera `None` |
+    | `views._normalize_term` | NFKD + lower, **sem strip**, estoura com `None` |
+    | `views._build_boolean_search.expand_term` | strip + lower, **sem remover acento** |
+
+    Então o R-13 entregou só a parte de risco zero: `core/domain/` criado (primeiro
+    módulo da camada de domínio, sem nenhum import de Django) com o `SYNONYMS` único e o
+    `normalize()`, que é o do `matching` movido sem alterar uma linha. As duas pontas
+    passam a apontar para **o mesmo objeto** — adicionar um sinônimo vale nos dois lugares
+    automaticamente, que era o ganho prometido.
+
+    Unificar as três normalizações é mudança de comportamento (o `strip` muda o resultado
+    de filtro com espaço sobrando) e virou **R-36**.
+
+    Achado de brinde, fixado por teste: enquanto todas as chaves de `SYNONYMS` forem
+    ASCII, os dois caminhos de lookup chegam ao mesmo lugar. **Uma chave acentuada faria
+    os dois consumidores discordarem em silêncio** — mesma classe do bug do R-09.
+
+- [x] **Onda 1 concluída** — 2026-08-17. Duplicação estrutural eliminada: o upsert de
+      candidato existe em 1 lugar (era 4), o cliente Gemini em 1 (era 7), o laço de lotes
+      em 1 (era 3, com o 3º bloqueado no R-33), o dicionário de sinônimos em 1 (era 2).
+      213 testes, cobertura 54,11%. R-08 a R-10 já em produção; R-11, R-12 e R-13 em
+      `develop`.
 
 ---
 
@@ -2095,16 +2219,25 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     duas linhas verificadas, o que sugere que o recurso ainda é pouco usado — parte de
     por que o custo de manter como está é baixo hoje.
 
-- [ ] 🐛 **R-30** · Barra de progresso mostra 100% mesmo quando tudo falhou
-      risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+- [ ] **R-30** · Unificar o payload final do callback de importação
+      risco: baixo · 30min · produção: transparente · PR: ~50 linhas / 2 arquivos
+      ⚠️ **diagnóstico original refutado** — ver a entrada na seção 7
+  - [x] Correção aplicada + 3 characterization tests invertidos
+  - [x] Vermelho antes / verde depois provado — os 3 testes de `final_call` falham
+        com `KeyError: 'result'` no código anterior
+  - [x] Suíte completa verde — 145 testes, cobertura 41,84% (inalterada)
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
-  - [ ] Verificado em produção — importar 1 PDF que falha, barra não completa
+  - [ ] Verificado em produção — **n/a**: o payload é sobrescrito por `views.py:557`
+        de qualquer forma. Não há efeito observável, e isso é o próprio achado.
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: investigado antes de escrever código e a premissa
+    caiu — não existe barra de progresso, o callback final é sempre sobrescrito, e
+    `processed` já era o número certo (conta tentativa, não sucesso). Sobrou unificar o
+    contrato: o fluxo de vaga passa a mandar `result` como o `..._no_ranking` já fazia,
+    fechando uma janela de corrida em que um poll via `completed` sem `result` e a tela
+    mostrava tudo zerado. Estimativa corrigida de 2h para 30min.
 
 - [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
@@ -2122,20 +2255,75 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-32** · Candidato sem alteração some da contabilidade
       risco: baixo · 3h · produção: transparente · PR: ~40 linhas / 3 arquivos
       pré-requisito: R-30
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Template atualizado para exibir `unchanged`
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + teste invertido
+  - [x] Template atualizado para exibir `unchanged` — **4 pontos**, não 1:
+        `job_detail.html` e `talent_pool.html`, cada um no bloco Django e no JS do poll
+  - [x] Vermelho antes / verde depois provado
+  - [x] Suíte completa verde — 145 testes, cobertura 41,83%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — reimportar lote idêntico e conferir o resumo
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `unchanged` entra no `result` e a conta passa a
+    fechar — o teste afirma `created + updated + unchanged + skipped + errors == total`,
+    que é a garantia de verdade, mais forte que conferir cada contador. Como os dois
+    importadores usam o `_process_in_batches`, os dois ganharam de uma vez. Nos templates
+    usei `|default:0` e `|| 0` porque o cache de status tem TTL de 1h: um payload gravado
+    antes do deploy não tem a chave, e sem o default a tela renderizaria vazio na primeira
+    hora. Esforço real bem abaixo das 3h estimadas.
 
 - [ ] **R-33** · Characterization tests de `search_and_rank_candidates_from_pool` (T-7)
       risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
       **destrava a conversão do 3º laço, que ficou fora do R-10**
   - [ ] Testes escritos e passando contra o código atual, sem alterá-lo
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] **R-36** · Unificar as três normalizações de termo
+      risco: **médio — muda resultado de busca** · 3h · produção: transparente
+      **Achado no R-13**, que só unificou o dicionário. O plano supunha que as
+      normalizações eram equivalentes; `test_normalization.py` prova que não:
+
+      | Onde | O que faz |
+      |---|---|
+      | `domain.normalization.normalize` | NFKD + lower + **strip**, tolera `None` |
+      | `views._normalize_term` | NFKD + lower, **sem strip**, estoura com `None` |
+      | `views._build_boolean_search.expand_term` | strip + lower, **sem acento** |
+
+      **A decisão de produto:** hoje, filtrar por `" python "` com espaço sobrando
+      procura literalmente `" python "` no campo. Unificar em `normalize()` faz o
+      espaço ser aparado — quase certamente o que a usuária espera, mas é mudança de
+      resultado de busca, então merece PR próprio e marcado.
+  - [ ] Decidido se o `strip` passa a valer no filtro (recomendado: sim)
+  - [ ] `views._normalize_term` e `expand_term` passam a usar `normalize()`
+  - [ ] Testes de divergência de `test_normalization.py` invertidos
+  - [ ] Suíte completa verde
+  - [ ] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — filtrar com espaço sobrando encontra o candidato
+  - [ ] Commitado — `<hash>`
+  - Status: não iniciado · Notas:
+
+- [ ] 🐛 **R-35** · `_extract_json` devolve o array interno em vez do objeto
+      risco: baixo · 2h · produção: transparente · PR: ~15 linhas / 2 arquivos
+      **Achado no R-07.** `llm_extractor.py:198-216`: quando o `json.loads` do texto
+      inteiro falha, a função procura **array antes de objeto**. Se a resposta vier
+      embrulhada em ``` e o objeto tiver um array interno — e todo candidato tem
+      `skills` —, o slice do array vence e o candidato inteiro vira a lista de skills.
+      Hoje não dispara porque o prompt pede "apenas JSON válido (sem markdown)" e o
+      `json.loads` resolve na primeira tentativa. É uma bomba armada, não um incêndio:
+      basta o modelo embrulhar a resposta uma vez. Fixado por
+      `test_array_is_tried_before_object`.
+      Correção provável: procurar objeto e array e escolher o que começa antes no
+      texto, em vez de fixar a ordem.
+  - [ ] Correção aplicada + teste invertido
+  - [ ] Conferido que o caso do array puro (lote) continua funcionando
   - [ ] Suíte completa verde
   - [ ] Lint e format verdes
   - [ ] PR aberto e revisado
@@ -2178,6 +2366,14 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-15 | **R-10** | `_process_in_batches` com 3 callbacks + 3 hooks opcionais. `import_candidates_from_folder` 280 → 134 linhas; `..._no_ranking` 173 → 33. PR #21, `a604872`. | Duas. (1) **Só 2 dos 3 laços convertidos** — o de `search_and_rank` não tem teste; virou R-33. (2) A cobertura **caiu** 42,12% → 41,84% e o piso desceu para 41: o código duplicado removido estava coberto, então numerador e denominador caíram juntos. Não é regressão, mas engana quem olhar só o número. |
 | 2026-08-17 | **R-02** | 7 diretas + 30 transitivas fixadas em `==` nas versões do servidor. `requirements-dev.txt` de `>=` para `==`; o CI passou a instalar dele. `pyproject` `requires-python` e ruff `target-version` de 3.12 para **3.10**. `ci.yml` virou matriz 3.10 + 3.12. `ruff` unificado em 0.15.17 (CI, dev e pre-commit, que estava em v0.8.0). README e DEPLOY_AWS corrigidos. PR #23, `aa814d3`. | Três. (1) **Produção roda Python 3.10.12, não 3.12** — o projeto inteiro (pyproject, ruff, CI, README) declarava 3.12+ e a suíte nunca tinha rodado na versão que atende as usuárias. O alinhamento teve que ser para baixo, e o plano dizia o contrário. (2) **Armadilha ativa:** ruff com `target-version = py312`, regra `UP` ligada e `make format` rodando `ruff check --fix .` podiam reescrever o código em sintaxe 3.12, passar no CI em 3.12 e quebrar em produção no 3.10. (3) Travar só as diretas, como o plano pedia, deixaria ~30 transitivas flutuando — um `pydantic` novo derruba o `google-genai` igual. Fixei tudo. Bônus: o Django 6.0.6 do venv local nunca poderia rodar em produção (Django 6.0 exige 3.12+). Fim do suporte do 3.10 em outubro/2026 virou **R-34**. |
 | 2026-08-17 | **R-09** (pendência) / **R-29** | Levantamento das duplicatas rodado no banco de produção via `manage.py dbshell`: **1 grupo, 2 linhas**. Confirmada a assinatura do R-09 e descartada a hipótese de sujeira no dado. Decisão: não mexer no banco. R-29 fechado sem correção — mantém o comportamento atual de sobrescrever o resumo. | Três. (1) O query que estava na descrição do PR #20 **superestimava o problema**: agrupava por `linkedin_url` entre todos os usuários, e duas recrutadoras terem o mesmo perfil é normal. Reescrito para a assinatura real (linha PREMIUM criada depois de outra). (2) A duplicata é da conta do dono do projeto, não da usuária — provável resíduo de teste, não trabalho perdido dela. (3) Achado no caminho: `_find_candidate` devolve `qs.first()` sobre `ordering = ["-updated_at", ...]`, então com duplicata pré-existente a reimportação atualiza a cópia mais recente e deixa a outra parada. O R-09 impede duplicata nova, não resolve as velhas. |
+| 2026-08-17 | **R-01 a R-10 → produção** | Merge `develop` → `main` (PR #26): 26 commits, 13 PRs, `0a8801d` → `b6f431c`. CI verde nas duas versões da matriz; CD concluído em 46s. Superfície real: **1 arquivo de aplicação alterado** (`pdf_extractor.py`), `views.py` intocado, **zero migrations**, nenhum template alterado. | Duas confirmações e nenhuma surpresa. (1) `pip install` no deploy **não baixou, instalou nem desinstalou nada** — os pins do R-02, colhidos do próprio servidor horas antes, bateram exatamente. O item se validou no primeiro deploy. (2) `No migrations to apply` e `0 static files copied, 130 unmodified`, como o pré-voo previa. O `pypdf` segue instalado no servidor (o `pip install` não desinstala) e sem uso — inofensivo, não deve voltar ao `requirements.txt`. |
+| 2026-08-17 | **Verificação em produção** | Fluxo completo exercitado no front pelo dono do projeto: criar vaga, importar candidatos, navegar. Sem erro. 9 itens fechados de ponta a ponta (R-01 a R-06, R-08, R-09, R-10). | Duas verificações ficaram parciais e foram marcadas `[~]` em vez de `[x]`: o caso de 2 lotes do R-10 (exige ZIP com 12+ PDFs) e o caso PREMIUM do R-09 (exige candidato que já exista no pool de outra conta). Ambas cobertas por teste automatizado — 21 testes do R-06 e o teste de regressão do R-09 —, mas registrar como "verificado" seria falsear o registro. Ficam como observação na próxima importação grande da usuária. |
+| 2026-08-17 | **R-30** | Callback final do fluxo de vaga passa a mandar `total`, `processed` e `result`, igual ao `..._no_ranking`. 3 characterization tests do R-06 invertidos. PR #29. | **O diagnóstico do item estava errado e foi refutado antes de escrever código.** Três motivos independentes: (1) não existe barra de progresso — `job_detail.html:711-723` renderiza o ramo `completed` a partir do `result`, sem usar `processed`/`total`; (2) o callback final é sempre sobrescrito por `views.py:557` microssegundos depois, então não sobrevive a um poll de 2s; (3) `processed` nunca esteve errado — `_process_in_batches` incrementa em todos os caminhos, inclusive nos de erro, então `processed == total` sempre. "Processado" significa tentado, não bem-sucedido; o teste do R-06 leu o nome da variável, não a semântica. Sobrou unificar o contrato e fechar uma janela de corrida em que um poll via `completed` sem `result` e a tela mostrava tudo zerado. Estimativa corrigida de 2h para 30min. |
+| 2026-08-17 | **R-32** | `unchanged` entra no `result` do `_process_in_batches` e passa a ser exibido. Teste do R-05 invertido, agora exigindo que a soma feche com o total. | Duas. (1) O plano dizia "3 arquivos" e eram **5**: a exibição vive em **4 lugares**, não 1 — `job_detail.html` e `talent_pool.html`, cada um com um bloco Django e um bloco JS de poll que renderizam a mesma frase de formas diferentes. É a duplicação do D-11 cobrando o preço na prática. (2) O cache de status tem TTL de 1h, então na primeira hora após o deploy existem payloads sem a chave nova — resolvido com `\|default:0` no template e `\|\| 0` no JS. |
+| 2026-08-17 | **R-07** | 50 characterization tests do cliente LLM em `test_llm_client.py`: `_extract_json`, `_normalize_list`, `_normalize_linkedin_url`, guarda da API key parametrizada nas 7 funções, retry, contratos das 7 públicas e validação de tamanho do lote. Nenhuma linha de aplicação alterada. Piso do CI 41 → 53. | **Maior salto de cobertura do projeto: 41,83% → 53,58%**, com o `llm_extractor` indo de 20% para 71%. A meta de 55% da seção 10 ficou a um item de distância. Três comportamentos fixados que ninguém tinha visto: (1) **`_extract_json` procura array antes de objeto** — resposta embrulhada em ``` com array interno faz o candidato virar a lista de skills dele; virou **R-35** e é o mais sério; (2) o laço **dorme depois da 4ª tentativa** antes de propagar — com rate limit são 30s parados à toa; (3) erro que não é rate limit nem 503 não usa backoff, dorme 3s fixos, mas ainda tenta 4 vezes. |
+| 2026-08-17 | **R-11** | `_generate()` criado: as 7 cópias de `api_key` + `genai.Client` + laço de retry viram 1. `llm_extractor.py` 940 → 661 linhas, 358 → 207 stmts, cobertura 71% → 89%. Diff +74/−241. PR #32. | **Os 50 characterization tests do R-07 passaram sem tocar em uma linha** — era o critério de sucesso, e é a prova de que a extração não mudou comportamento. Uma diferença registrada por honestidade: a guarda da `GEMINI_API_KEY` foi para dentro do `_generate()`, então nas duas funções instrumentadas a `RuntimeError` de chave ausente passa a nascer dentro do `try` e a disparar a métrica de falha. Só ocorre com a chave desconfigurada, e registrar é mais correto que silenciar. |
+| 2026-08-17 | **R-12** | Timeout de 180s em toda chamada ao LLM, via `settings.LLM_TIMEOUT_SECONDS` e `types.HttpOptions`. 3 testes novos. PR #33. | Duas. (1) **Armadilha de unidade:** `HttpOptions.timeout` é em MILISSEGUNDOS — conferido no pacote instalado antes de escrever a linha. Passar segundos daria 180ms e derrubaria toda chamada ao LLM em produção. O setting fica em segundos e a conversão mora só no `_generate()`, travada por teste. (2) **O ganho é "de infinito para limitado", não "para curto":** o erro de timeout cai no ramo genérico do retry e consome as 4 tentativas, ~12min até desistir. Fixado por teste em vez de escondido; encurtar seria mudar a política de retry, ou seja, outro item. |
+| 2026-08-17 | **R-13** | `core/domain/` criado — primeiro módulo da camada de domínio, sem nenhum import de Django. `SYNONYMS` unificado (era 2 cópias) e `normalize()` movido do matching sem alterar uma linha. PR #34. | **O teste de equivalência que o item exigia reprovou a premissa.** O dicionário era idêntico, mas as normalizações não — e são **três** variantes, não duas: `normalize` apara as pontas e tolera `None`; `views._normalize_term` não apara e estoura com `None`; a chave de `expand_term` nem remove acento. Entreguei só a parte de risco zero e a unificação das funções virou **R-36**, porque o `strip` muda resultado de busca. Achado de brinde, fixado por teste: os dois caminhos de lookup só concordam porque **todas as chaves de `SYNONYMS` são ASCII** — uma chave acentuada faria as duas pontas discordarem em silêncio, mesma classe do bug do R-09. |
 
 ---
 

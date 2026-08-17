@@ -160,7 +160,7 @@ def _process_in_batches(
     de quem chama: os dois fluxos divergem nele.
     """
     total = len(items)
-    created = updated = skipped = errors = processed = 0
+    created = updated = unchanged = skipped = errors = processed = 0
     error_details: list[str] = []
 
     if progress_callback:
@@ -206,6 +206,8 @@ def _process_in_batches(
                         created += 1
                     elif outcome == "updated":
                         updated += 1
+                    elif outcome == "unchanged":
+                        unchanged += 1
                     persisted += 1
                     processed += 1
                 except Exception as save_exc:
@@ -247,6 +249,8 @@ def _process_in_batches(
                             created += 1
                         elif outcome == "updated":
                             updated += 1
+                        elif outcome == "unchanged":
+                            unchanged += 1
                         processed += 1
                     except Exception as save_exc:
                         errors += 1
@@ -276,6 +280,11 @@ def _process_in_batches(
     result = {
         "created": created,
         "updated": updated,
+        # R-32: "unchanged" e o candidato que ja existia e no qual nenhum campo mudou.
+        # Antes ele nao entrava em contador nenhum, e a conta da importacao nao fechava:
+        # 10 PDFs podiam virar "3 criados, 2 atualizados" sem explicar os outros 5.
+        # Agora created + updated + unchanged + skipped + errors == total.
+        "unchanged": unchanged,
         "skipped": skipped,
         "errors": errors,
         "total": total,
@@ -403,7 +412,7 @@ def import_candidates_from_folder(
             error=error_msg[:500],
         )
 
-    result, _processed = _process_in_batches(
+    result, processed = _process_in_batches(
         pdf_files,
         batch_fn=batch_fn,
         single_fn=single_fn,
@@ -425,10 +434,16 @@ def import_candidates_from_folder(
             duration_ms=import_ms,
         )
     if progress_callback:
-        # Envia total_files, nao o contador real: importacao que falhou em tudo
-        # ainda termina mostrando 100%. Comportamento preservado de proposito.
+        # Mesmo payload final de `..._no_ranking`: contador real e `result` junto.
+        # O `result` importa: quem consome sobrescreve este payload logo em seguida
+        # (views.py:557), mas um poll que caia na janela entre as duas gravações
+        # via `status="completed"` sem `result` e exibia "0 criados, 0 atualizados".
         progress_callback(
-            total=total_files, processed=total_files, current=None, status="completed"
+            total=result["total"],
+            processed=processed,
+            current=None,
+            status="completed",
+            result=result,
         )
     return result
 
