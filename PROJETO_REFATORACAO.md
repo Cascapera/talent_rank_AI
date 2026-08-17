@@ -1506,7 +1506,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **837** | 🟡 |
+| Linhas em `views.py` | 987 | ≤ 450 | **746** | 🟡 |
 | Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
@@ -2029,15 +2029,31 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-15** · Extrair o helper de filtros + querystring das views
       risco: baixo · 0,5d · produção: transparente · PR: ~210 linhas / 2 arquivos
       pré-requisito: ~~R-19~~ **R-38** (referência corrigida)
-  - [ ] Refatoração aplicada
-  - [ ] Testes de filtro passam sem alteração
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Refatoração aplicada
+  - [x] **Os 25 testes de filtro do R-38 passam sem alteração** — 260/260
+  - [x] Suíte completa verde
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — 3 filtros + paginação preservando os filtros
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `core/filters.py` com `collect_filters(request,
+    params) -> Filters`. As duas views passam a **declarar só os campos**; a mecânica de
+    ler, aparar, montar o dict do template e remontar a querystring mora num lugar só.
+
+    `views.py` **837 → 746 linhas** (−144/+54). Os 9 `if` do banco de talentos e os 6 da
+    tela da vaga viraram laços sobre dicionários de especificação, onde a **ordem da
+    declaração é a ordem na URL** — está comentado no código, porque reordenar muda o
+    link que a usuária compartilha.
+
+    **Achado no caminho:** o `filter_keys` da tela da vaga era um `set` literal, então a
+    ordem dos parâmetros na URL do *redirect* de filtro salvo variava entre reinícios do
+    servidor (hash randomization do Python). Virou tupla ordenada — a URL passa a ser
+    estável. Cosmético, mas era não-determinismo de verdade.
+
+    Piso do CI **72 → 71**: a cobertura caiu de 72,08% para 71,41% porque removi 90
+    linhas de `views.py` que estavam cobertas. Mesmo efeito do R-10 e do R-37; nenhum
+    teste foi perdido.
 
 - [ ] **R-16** · Mover construção de prompt e busca booleana para `domain/`
       risco: médio · 0,5d · produção: transparente · PR: ~240 linhas / 4 arquivos

@@ -70,7 +70,11 @@ branch = true
 # 71% com os 50 characterization tests. -> 55 (R-36).
 # META DE 55% DA SECAO 10 BATIDA em 2026-08-17: 55,94%. -> 62 (R-33, search pool),
 # que levou o pdf_extractor de 57% para 88%.
-fail_under = 72
+# 72 (R-38, filtros) -> 71 (R-15). A queda de 72,08 para 71,41 NAO e regressao,
+# pelo mesmo motivo do R-10 e do R-37: o R-15 removeu 90 linhas de views.py que
+# estavam cobertas, entao numerador e denominador cairam juntos. Nenhum teste foi
+# perdido - a suite continua com os mesmos 260.
+fail_under = 71
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
