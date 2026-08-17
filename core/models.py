@@ -170,15 +170,23 @@ class CandidateJob(models.Model):
     def save(self, *args, **kwargs):
         from django.utils import timezone
 
-        previous_status = None
-        if self.pk:
-            previous_status = (
-                CandidateJob.objects.filter(pk=self.pk)
-                .values_list("pipeline_status", flat=True)
-                .first()
-            )
+        # D-10: a leitura do status anterior acontecia em TODO save — inclusive nos que
+        # não têm nada a ver com o funil, como gravar um parecer ou uma aderência. Ela
+        # só importa em um caso, e agora só acontece nele (R-26).
         if self.pipeline_status == self.PipelineStatus.CANDIDATE_READY:
-            if not self.ready_at or previous_status != self.PipelineStatus.CANDIDATE_READY:
+            marcar = not self.ready_at
+            if not marcar:
+                # Só aqui a consulta se paga: o candidato já tem data e precisamos saber
+                # se ele *acabou* de entrar em "pronto" ou já estava.
+                anterior = None
+                if self.pk:
+                    anterior = (
+                        CandidateJob.objects.filter(pk=self.pk)
+                        .values_list("pipeline_status", flat=True)
+                        .first()
+                    )
+                marcar = anterior != self.PipelineStatus.CANDIDATE_READY
+            if marcar:
                 now_date = timezone.now().date()
                 self.ready_at = now_date
                 if self.candidate_id:
