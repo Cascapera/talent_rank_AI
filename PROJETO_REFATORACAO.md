@@ -1502,8 +1502,8 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 
 | Métrica | Linha de base | Meta | **Hoje** | |
 |---|---:|---:|---:|:--:|
-| Cobertura real (sem `omit`) | 25% | ≥ 55% | **55,94%** | ✅ |
-| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **57%** | 🟡 |
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **62,30%** | ✅ |
+| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **779** | 🟡 |
 | Linhas em `views.py` | 987 | ≤ 450 | **~975** | ❌ |
@@ -2285,13 +2285,26 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-33** · Characterization tests de `search_and_rank_candidates_from_pool` (T-7)
       risco: baixo · 1d · produção: transparente · PR: ~220 linhas / 1 arquivo
       **destrava a conversão do 3º laço, que ficou fora do R-10**
-  - [ ] Testes escritos e passando contra o código atual, sem alterá-lo
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Testes escritos e passando contra o código atual, **sem alterá-lo**
+  - [x] Suíte completa verde — **235 testes**, cobertura **62,30%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: 19 testes em `test_search_pool.py`, cobrindo
+    seleção (vinculado é pulado, `user_id` vs `shared_pool`, `candidate_ids`), caso
+    vazio, separação com-PDF / sem-PDF, persistência do `CandidateJob`, fallback
+    individual e progresso.
+
+    **`pdf_extractor.py` saiu de 57% para 88%** de cobertura e a total de 55,94% para
+    **62,30%**. Piso do CI subiu 55 → 62.
+
+    Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o
+    arquivo tem que existir em disco.** Um `media/` limpo sem limpar o banco não quebra
+    a busca — o candidato só passa a ser avaliado pelos dados estruturados, em silêncio.
+
+    **Destrava a conversão do 3º laço** para `_process_in_batches`, que ficou de fora do
+    R-10 exatamente por não ter rede.
 
 - [ ] **R-36** · Unificar as três normalizações de termo
       risco: **médio — muda resultado de busca** · 3h · produção: transparente
@@ -2407,6 +2420,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **Ondas 0 e 1 → produção** | Segundo release (PR #35): 16 commits, 6 PRs, `b6f431c` → `8c2130a`. CI verde nas duas versões da matriz; CD em 1m21s. `No migrations to apply`, `pip install` no-op de novo, `0 static files copied`. **Ondas 0 e 1 completas em produção.** | Nenhuma surpresa no deploy. Diferente do primeiro release, este mexeu em `views.py` e em 2 templates — o R-32 muda o que a usuária lê na tela. Resultado acumulado do dia: testes 100 → **213**, cobertura real 25% → **54,11%**, `pdf_extractor` 2.046 → 779 linhas, `llm_extractor` 940 → 661, cliente Gemini de 7 cópias para 1, upsert de 4 para 1, laço de lotes de 3 para 1, dicionário de sinônimos de 2 para 1, e 1 bug real corrigido (R-09). Falta a verificação manual dos 4 itens marcados. |
 | 2026-08-17 | **R-35** | 🐛 `_extract_json`: a ordem fixa (array antes de objeto) virou "vence quem começa antes no texto", com fallback. PR #37. | O caso corrigido: `{"skills": [...]}` embrulhado em markdown devolvia `[...]` — o candidato virava a lista de skills dele. O caminho de lote segue intacto porque a resposta em lote é um array de objetos, então o `[` vem antes do primeiro `{`. Achado pelos testes do R-07, corrigido no dia seguinte à descoberta. |
 | 2026-08-17 | **R-36** | As três normalizações de termo viram uma. `views._normalize_term` deletada, `expand_term` passa a usar `normalize()`, `unicodedata` sai do `views.py`. Piso do CI 53 → 55. PR #38. | **Meta de cobertura de 55% da seção 10 batida: 55,94%.** Muda comportamento em dois pontos, ambos para melhor: o filtro das listagens passa a aparar as pontas (antes, `" python "` com espaço sobrando não achava nada) e a busca booleana passa a expandir sinônimo de termo acentuado. Um teste garante que `views._normalize_term` não existe mais, para ninguém reintroduzir por hábito. |
+| 2026-08-17 | **R-33** | 19 characterization tests de `search_and_rank_candidates_from_pool` em `test_search_pool.py` — a última função grande sem teste (309 linhas). Nenhuma linha de aplicação alterada. Piso do CI 55 → 62. | **`pdf_extractor.py` foi de 57% para 88%** e a cobertura total de 55,94% para **62,30%**, ultrapassando a meta da seção 10 com folga. Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o arquivo tem que existir em disco** — um `media/` limpo sem limpar o banco não quebra a busca, o candidato só passa a ser avaliado pelos dados estruturados, em silêncio. Destrava a conversão do 3º laço para `_process_in_batches`, que ficou de fora do R-10 por não ter rede. |
 
 ---
 
