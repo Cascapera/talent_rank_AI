@@ -54,7 +54,7 @@ jobs:
           DEBUG: "False"
         run: |
           python manage.py migrate --noinput
-          pytest --cov=core --cov-report=xml --cov-fail-under=71 -v
+          pytest --cov=core --cov-report=xml --cov-fail-under=72 -v
 
       - name: Upload coverage
         if: matrix.python-version == '3.10'

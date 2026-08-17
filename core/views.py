@@ -16,7 +16,9 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from .domain.normalization import SYNONYMS, normalize
+from .domain.boolean_search import build_boolean_search_from
+from .domain.job_description import build_job_description_from
+from .domain.normalization import normalize
 from .filters import collect_filters
 from .forms import CandidateForm, JobForm, SignupForm
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
@@ -375,73 +377,6 @@ def job_create(request):
     return render(request, "core/job_create.html", {"form": form})
 
 
-def _build_boolean_search(job: Job) -> str:
-    def normalize_list(value: str) -> list[str]:
-        return [item.strip() for item in value.split(",") if item.strip()]
-
-    def expand_term(term: str) -> list[str]:
-        # R-36: a chave passa a sair do mesmo `normalize()` que o pré-match usa. Antes
-        # era `strip().lower()`, sem remover acento — os dois consumidores do dicionário
-        # procuravam por caminhos diferentes e só concordavam porque todas as chaves de
-        # SYNONYMS são ASCII.
-        extra = SYNONYMS.get(normalize(term), [])
-        return [term] + extra
-
-    def group_terms(terms: list[str]) -> str:
-        expanded = []
-        for term in terms:
-            expanded.extend(expand_term(term))
-        expanded = [t for t in expanded if t]
-        if not expanded:
-            return ""
-        if len(expanded) == 1:
-            return f'"{expanded[0]}"'
-        return "(" + " OR ".join(f'"{t}"' for t in expanded) + ")"
-
-    parts = []
-    for base_term in [job.title, job.stack, job.seniority, job.location, job.department]:
-        if base_term:
-            parts.append(group_terms([base_term]))
-
-    must = normalize_list(job.must_have)
-    if must:
-        parts.append(" AND ".join(group_terms([item]) for item in must if item))
-
-    nice = normalize_list(job.nice_to_have)
-    if nice:
-        nice_groups = [group_terms([item]) for item in nice if item]
-        nice_groups = [g for g in nice_groups if g]
-        if nice_groups:
-            parts.append("(" + " OR ".join(nice_groups) + ")")
-
-    undesirable = normalize_list(job.undesirable)
-    if undesirable:
-        not_groups = [group_terms([item]) for item in undesirable if item]
-        not_groups = [g for g in not_groups if g]
-        if not_groups:
-            parts.append("NOT (" + " OR ".join(not_groups) + ")")
-
-    parts = [p for p in parts if p]
-    return " AND ".join(parts).strip()
-
-
-def _build_job_description(job: Job) -> str:
-    parts = [
-        f"Título: {job.title}",
-        f"Resumo: {job.summary or '-'}",
-        f"Senioridade: {job.seniority or '-'}",
-        f"Localização: {job.location or '-'}",
-        f"Stack: {job.stack or '-'}",
-        f"Tipo de contratação: {job.contract_type or '-'}",
-        f"Idioma: {job.language or '-'}",
-        f"Skills obrigatórias: {job.must_have or '-'}",
-        f"Skills desejáveis: {job.nice_to_have or '-'}",
-        f"Não desejáveis: {job.undesirable or '-'}",
-        f"Observações: {job.notes or '-'}",
-    ]
-    return "\n".join(parts)
-
-
 @login_required
 @required_plan("BASIC")
 def job_detail(request, job_id: int):
@@ -474,7 +409,7 @@ def job_detail(request, job_id: int):
             _prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
-                job_description = _build_job_description(job)
+                job_description = build_job_description_from(job)
                 role_title = job.title
                 _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
                 shared_pool = _uses_shared_pool(request.user)
@@ -664,7 +599,7 @@ def search_candidates_in_pool(request, job_id: int):
         )
 
     candidate_ids = [match["candidate"].id for match in matches]
-    job_description = _build_job_description(job)
+    job_description = build_job_description_from(job)
 
     _set_search_status(job.id, {"status": "running", "processed": 0, "total": len(candidate_ids)})
     thread = threading.Thread(
@@ -838,7 +773,7 @@ def generate_boolean_search(request, job_id: int):
 
     try:
         job = get_object_or_404(Job, id=job_id, user=request.user)
-        job.boolean_search = _build_boolean_search(job)
+        job.boolean_search = build_boolean_search_from(job)
         job.save(update_fields=["boolean_search"])
         return JsonResponse(
             {
@@ -859,7 +794,7 @@ def job_edit(request, job_id: int):
         if form.is_valid():
             if request.POST.get("action") == "generate":
                 job = form.save(commit=False)
-                job.boolean_search = _build_boolean_search(job)
+                job.boolean_search = build_boolean_search_from(job)
                 job.save()
             else:
                 form.save()
