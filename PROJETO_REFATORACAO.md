@@ -1553,8 +1553,13 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 Status: em andamento
 Progresso: 0/35 concluídos de ponta a ponta · 9 itens com código em `develop`
            (R-01, R-02, R-03, R-04, R-05, R-06, R-08, R-09, R-10), aguardando o
-           merge `develop` → `main` para fechar · atualizado em 2026-08-17
+           merge `develop` → `main` para fechar · 1 item fechado sem correção
+           (R-29, decisão de produto) · atualizado em 2026-08-17
            (o contador dizia "7 itens" e listava 8: erro de contagem, corrigido)
+
+           ✅ As duas pendências que dependiam do dono do projeto foram resolvidas em
+           2026-08-17: `pip freeze` do servidor (R-02) e levantamento das duplicatas
+           (R-09). **Nada mais bloqueia o merge `develop` → `main`.**
 ```
 
 ### Resultado até aqui
@@ -1718,23 +1723,50 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-09** · 🐛 [BUGFIX] shared_pool ignorado no fallback individual
       risco: médio · 2h · produção: **requer cuidado (P-2)** · PR: ~10 linhas / 2 arquivos
       pré-requisito: R-08
-  - [ ] ⚠️ **Duplicatas já existentes levantadas por query antes do deploy** — PENDENTE,
-        depende de acesso ao banco de produção. Query na descrição do PR #20.
+  - [x] ⚠️ **Duplicatas já existentes levantadas por query antes do deploy** — feito em
+        2026-08-17, direto no banco de produção via `manage.py dbshell`. **Resultado: 1
+        grupo duplicado, 2 linhas.** Decisão: **não mexer no banco** (justificativa abaixo).
   - [x] Teste de regressão escrito — **falha antes** (`assert 1 == 0`), **passa depois**
   - [x] Correção aplicada
   - [x] Suíte completa verde
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#20**, CI verde, mergeado em `develop`
-  - [ ] Usuária avisada da mudança de comportamento
+  - [ ] Usuária avisada da mudança de comportamento — **stakes baixas depois do
+        levantamento**: a única duplicata existente é da conta do dono do projeto, não da
+        dela. O aviso vira cortesia ("importar deixa de duplicar"), não contenção de dano.
   - [ ] Implantado (entra em produção no merge `develop` → `main`)
   - [ ] Verificado em produção — PREMIUM importa candidato do pool: atualiza, não duplica
   - [x] Commitado — `0b9b94b`
-  - Status: **em `develop`, com pendência de limpeza** · Notas: correção de 1 linha,
+  - Status: **em `develop`, sem pendência de dado** · Notas: correção de 1 linha,
     exatamente como previsto — R-08 preparou o terreno. Novo arquivo
     `test_import_no_ranking.py` (6 testes) cobre a função que não tinha teste nenhum,
     incluindo um teste de equivalência provando que lote e fallback dão o mesmo
-    resultado para a mesma entrada. **Duas caixas seguem abertas e dependem de você:
-    levantar as duplicatas já criadas pelo bug e avisar a usuária.**
+    resultado para a mesma entrada.
+
+    **Levantamento das duplicatas (2026-08-17).** O banco de produção tem **1 grupo
+    duplicado, 2 linhas** — o mesmo candidato sob duas contas, ambas PREMIUM: a linha
+    original (29/01, conta da usuária, sem PDF, 1 vínculo com vaga) e a cópia (27/02,
+    conta do dono do projeto, com PDF, 1 vínculo). Bate com a assinatura do R-09: com
+    `shared_pool` ligado nos dois lados, a importação de 27/02 deveria ter atualizado a
+    linha existente e criou outra. Descartada a hipótese alternativa de sujeira no dado —
+    `md5(lower(linkedin_url))` idêntico e `length = length(trim)` nas duas linhas, então
+    o `linkedin_url__iexact` teria encontrado. Não dá para provar que a conta era PREMIUM
+    *naquela data* (o plano é editado à mão no admin, sem histórico), mas o resto bate.
+
+    **Decisão: não mexer no banco.** Uma duplicata, na conta do dono do projeto e não na
+    da usuária, sem resumo escrito à mão em risco (`summary` vazio nas duas). Apagar
+    qualquer uma perde dado: a original tem o vínculo com vaga, a cópia tem o PDF, e
+    `on_delete=CASCADE` levaria aderência e parecer junto. Script de mesclagem para uma
+    linha é mais risco que benefício.
+
+    **Efeito residual conhecido:** `_find_candidate` (`pdf_extractor.py:71-82`) devolve
+    `qs.first()` e o `Meta.ordering` do `Candidate` é `["-updated_at", "-created_at"]`.
+    Numa reimportação futura desse candidato, a atualização cai na cópia mais recente e a
+    outra fica parada. Como PREMIUM enxerga o banco inteiro (`views.py:219`), as duas
+    aparecem na listagem. Um candidato entre centenas — aceito conscientemente.
+
+    O `.sql` completo do diagnóstico, com os falsos positivos documentados, está fora do
+    git em `Desktop\apps\Talent_Rank\duplicatas-r09.sql`.
 
 - [ ] **R-10** · Extrair o loop de lotes com fallback individual
       risco: médio · 1d · produção: transparente · PR: ~520 linhas / 1 arquivo
@@ -2045,18 +2077,23 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 7 — achados da execução
 
-- [ ] 🐛 **R-29** · Reimportar candidato apaga o resumo escrito à mão
-      risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
-      **prioridade ALTA** — perda de trabalho manual da recrutadora
-  - [ ] **Decisão de produto tomada com a usuária** (preservar / preencher se vazio / manter)
-  - [ ] Correção aplicada + teste invertido
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — escrever resumo, reimportar, resumo continua lá
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+- [x] ⚪ **R-29** · Reimportar candidato apaga o resumo escrito à mão — **FECHADO SEM
+      CORREÇÃO, por decisão de produto (2026-08-17)**
+      risco: baixo · 2h se for reaberto · produção: transparente
+  - [x] **Decisão de produto tomada** — escolhido **manter o comportamento atual**:
+        reimportar continua sobrescrevendo o resumo escrito à mão.
+        ⚠️ Decidido pelo **dono do projeto**, não pela usuária que opera o sistema.
+  - Status: **fechado (won't fix)** · Notas: não é bug de código, é escolha de produto —
+    o comportamento passa a ser intencional e documentado, em vez de acidental e
+    desconhecido. Os characterization tests do R-05 já fixam esse comportamento, então
+    ele não muda sozinho numa refatoração futura.
+
+    **Gatilho para reabrir:** se a usuária relatar ter perdido um resumo escrito à mão.
+    Aí volta como os mesmos ~2h de trabalho, e a opção mais provável é "preencher só se
+    vazio" — preserva o texto manual sem impedir que a importação enriqueça candidato
+    novo. No levantamento de duplicatas de 2026-08-17 o campo `summary` estava vazio nas
+    duas linhas verificadas, o que sugere que o recurso ainda é pouco usado — parte de
+    por que o custo de manter como está é baixo hoje.
 
 - [ ] 🐛 **R-30** · Barra de progresso mostra 100% mesmo quando tudo falhou
       risco: baixo · 2h · produção: transparente · PR: ~20 linhas / 2 arquivos
@@ -2140,6 +2177,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-15 | **R-09** | `shared_pool` repassado no fallback (1 linha). Novo `test_import_no_ranking.py` (6 testes). Cobertura 38,92% → 42,12%. PR #20, `0b9b94b`. | O teste falhou antes (`assert 1 == 0`) e passou depois, como planejado. **Pendências abertas:** levantar duplicatas já criadas pelo bug e avisar a usuária. |
 | 2026-08-15 | **R-10** | `_process_in_batches` com 3 callbacks + 3 hooks opcionais. `import_candidates_from_folder` 280 → 134 linhas; `..._no_ranking` 173 → 33. PR #21, `a604872`. | Duas. (1) **Só 2 dos 3 laços convertidos** — o de `search_and_rank` não tem teste; virou R-33. (2) A cobertura **caiu** 42,12% → 41,84% e o piso desceu para 41: o código duplicado removido estava coberto, então numerador e denominador caíram juntos. Não é regressão, mas engana quem olhar só o número. |
 | 2026-08-17 | **R-02** | 7 diretas + 30 transitivas fixadas em `==` nas versões do servidor. `requirements-dev.txt` de `>=` para `==`; o CI passou a instalar dele. `pyproject` `requires-python` e ruff `target-version` de 3.12 para **3.10**. `ci.yml` virou matriz 3.10 + 3.12. `ruff` unificado em 0.15.17 (CI, dev e pre-commit, que estava em v0.8.0). README e DEPLOY_AWS corrigidos. PR #23, `aa814d3`. | Três. (1) **Produção roda Python 3.10.12, não 3.12** — o projeto inteiro (pyproject, ruff, CI, README) declarava 3.12+ e a suíte nunca tinha rodado na versão que atende as usuárias. O alinhamento teve que ser para baixo, e o plano dizia o contrário. (2) **Armadilha ativa:** ruff com `target-version = py312`, regra `UP` ligada e `make format` rodando `ruff check --fix .` podiam reescrever o código em sintaxe 3.12, passar no CI em 3.12 e quebrar em produção no 3.10. (3) Travar só as diretas, como o plano pedia, deixaria ~30 transitivas flutuando — um `pydantic` novo derruba o `google-genai` igual. Fixei tudo. Bônus: o Django 6.0.6 do venv local nunca poderia rodar em produção (Django 6.0 exige 3.12+). Fim do suporte do 3.10 em outubro/2026 virou **R-34**. |
+| 2026-08-17 | **R-09** (pendência) / **R-29** | Levantamento das duplicatas rodado no banco de produção via `manage.py dbshell`: **1 grupo, 2 linhas**. Confirmada a assinatura do R-09 e descartada a hipótese de sujeira no dado. Decisão: não mexer no banco. R-29 fechado sem correção — mantém o comportamento atual de sobrescrever o resumo. | Três. (1) O query que estava na descrição do PR #20 **superestimava o problema**: agrupava por `linkedin_url` entre todos os usuários, e duas recrutadoras terem o mesmo perfil é normal. Reescrito para a assinatura real (linha PREMIUM criada depois de outra). (2) A duplicata é da conta do dono do projeto, não da usuária — provável resíduo de teste, não trabalho perdido dela. (3) Achado no caminho: `_find_candidate` devolve `qs.first()` sobre `ordering = ["-updated_at", ...]`, então com duplicata pré-existente a reimportação atualiza a cópia mais recente e deixa a outra parada. O R-09 impede duplicata nova, não resolve as velhas. |
 
 ---
 
