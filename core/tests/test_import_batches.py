@@ -13,7 +13,7 @@ from unittest.mock import call, patch
 import pytest
 
 from core.models import Candidate
-from core.pdf_extractor import import_candidates_from_folder
+from core.services.candidate_import import import_candidates_from_folder
 
 pytestmark = pytest.mark.django_db
 
@@ -83,9 +83,9 @@ def run(folder, batch_results=None, single_results=None, **kwargs):
     single_results: lista de retornos do caminho individual (ou Exception).
     """
     with (
-        patch("core.pdf_extractor.time.sleep") as mock_sleep,
-        patch("core.pdf_extractor.extract_candidates_batch_with_llm") as mock_batch,
-        patch("core.pdf_extractor.extract_candidate_with_llm") as mock_single,
+        patch("core.services.candidate_import.time.sleep") as mock_sleep,
+        patch("core.services.candidate_import.extract_candidates_batch_with_llm") as mock_batch,
+        patch("core.services.candidate_import.extract_candidate_with_llm") as mock_single,
     ):
         if batch_results is not None:
             mock_batch.side_effect = batch_results

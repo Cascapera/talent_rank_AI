@@ -22,7 +22,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 
 from core.models import Candidate, CandidateJob, Job
-from core.pdf_extractor import search_and_rank_candidates_from_pool
+from core.services.candidate_import import search_and_rank_candidates_from_pool
 
 pytestmark = pytest.mark.django_db
 
@@ -82,11 +82,15 @@ def run(job, **kwargs):
     }
 
     with (
-        patch("core.pdf_extractor.time.sleep"),
-        patch("core.pdf_extractor.extract_candidates_batch_with_llm") as m_batch_pdf,
-        patch("core.pdf_extractor.calculate_adherence_batch_for_candidates") as m_batch_no_pdf,
-        patch("core.pdf_extractor.extract_candidate_with_llm") as m_single_pdf,
-        patch("core.pdf_extractor.calculate_adherence_for_candidate") as m_single_no_pdf,
+        patch("core.services.candidate_import.time.sleep"),
+        patch("core.services.candidate_import.extract_candidates_batch_with_llm") as m_batch_pdf,
+        patch(
+            "core.services.candidate_import.calculate_adherence_batch_for_candidates"
+        ) as m_batch_no_pdf,
+        patch("core.services.candidate_import.extract_candidate_with_llm") as m_single_pdf,
+        patch(
+            "core.services.candidate_import.calculate_adherence_for_candidate"
+        ) as m_single_no_pdf,
     ):
         m_batch_pdf.side_effect = lambda itens, **kw: [adherence() for _ in itens]
         m_batch_no_pdf.side_effect = lambda itens, **kw: [adherence() for _ in itens]
