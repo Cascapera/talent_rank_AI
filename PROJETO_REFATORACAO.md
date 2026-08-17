@@ -2191,15 +2191,32 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-20a** · Estado do job no banco — modelo + escrita dupla
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~120 linhas / 3 arquivos
       pré-requisito: R-18, R-19
-  - [ ] Migration criada (tabela nova, vazia — ninguém lê ainda)
-  - [ ] Escrita dupla (cache + banco) aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Migration criada (tabela nova, vazia — ninguém lê ainda) — `0021_importjob`
+  - [x] Escrita dupla (cache + banco) aplicada nos **3 fluxos** de importação/ranking
+  - [x] Suíte completa verde — 301 testes, cobertura 73,69%
+  - [x] Lint e format verdes · `makemigrations --check` sem pendências
   - [ ] PR aberto e revisado
   - [ ] Implantado — migration antes do código
   - [ ] Verificado em produção — tabela sendo populada em uma importação real
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: **a primeira migration do projeto de refatoração.**
+    Os três deploys anteriores foram `No migrations to apply`; o próximo não será.
+    Tabela nova e vazia, ninguém lê dela — o `deploy.yml` roda `migrate` antes de o
+    código novo servir tráfego, então o risco é o menor possível.
+
+    **Desvio da especificação, deliberado:** o plano listava os campos
+    `(user, job, status, processed, total, started_at, heartbeat_at, error)`. Faltava
+    distinguir os fluxos: importação em vaga e busca no pool **têm as duas** `job`
+    preenchido, então `job is None` não separa. Adicionei `kind` com três valores.
+
+    **Escopo:** os 3 jobs com progresso. O `_run_parecer_generation` ficou de fora — não
+    é importação e não tem `processed`/`total`; forçá-lo no modelo seria distorcer a
+    tabela para caber um caso que não é o dela.
+
+    **A garantia que mais testei não é a escrita, é o contrário:** rastreamento não pode
+    derrubar o job. Os três helpers engolem exceção, e há teste provando que a importação
+    **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
+    expand, perder uma linha não custa nada; perder uma importação custa.
 
 - [ ] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos

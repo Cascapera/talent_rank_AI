@@ -20,11 +20,12 @@ from pathlib import Path
 
 from django.core.cache import cache
 from django.db import close_old_connections
+from django.utils import timezone
 
 from ..domain.job_description import build_job_description_from
 from ..llm_extractor import generate_parecer
 from ..metrics import vacancy_candidate_import_failures_total
-from ..models import CandidateJob
+from ..models import CandidateJob, ImportJob
 from ..observability import Timer, ensure_correlation_id, log_event
 from .candidate_import import (
     import_candidates_from_folder,
@@ -57,6 +58,47 @@ def background_job(fn):
             close_old_connections()
 
     return wrapper
+
+
+def _start_import_job(*, user_id: int, kind: str, job_id: int | None = None) -> int | None:
+    """Abre a linha de rastreamento no banco (R-20a). Devolve o id, ou `None` se falhar.
+
+    ⚠️ **Rastreamento nunca pode derrubar o job.** Se o banco recusar aqui, a importação
+    segue e só fica sem a linha — é por isso que os três helpers engolem exceção. Nesta
+    etapa (expand) ninguém lê daqui ainda, então perder uma linha não afeta a usuária.
+    """
+    try:
+        return ImportJob.objects.create(user_id=user_id, kind=kind, job_id=job_id).id
+    except Exception:
+        return None
+
+
+def _track_progress(import_job_id: int | None, payload: dict) -> None:
+    """Espelha no banco o progresso que acabou de ir para o cache."""
+    if import_job_id is None:
+        return
+    campos = {}
+    if payload.get("processed") is not None:
+        campos["processed"] = payload["processed"]
+    if payload.get("total") is not None:
+        campos["total"] = payload["total"]
+    try:
+        # `.update()` não dispara `auto_now`, então o heartbeat vai explícito — e é ele
+        # que o R-20b vai usar para distinguir "trabalhando" de "morreu no meio".
+        ImportJob.objects.filter(id=import_job_id).update(heartbeat_at=timezone.now(), **campos)
+    except Exception:
+        pass
+
+
+def _finish_import_job(import_job_id: int | None, *, status: str, error: str = "") -> None:
+    if import_job_id is None:
+        return
+    try:
+        ImportJob.objects.filter(id=import_job_id).update(
+            status=status, error=error[:2000], heartbeat_at=timezone.now()
+        )
+    except Exception:
+        pass
 
 
 def _import_status_key(job_id: int) -> str:
@@ -110,10 +152,14 @@ def _run_import_job(
 ):
     ensure_correlation_id(correlation_id)
     outer_timer = Timer()
+    import_job_id = _start_import_job(
+        user_id=user_id, kind=ImportJob.Kind.VACANCY_IMPORT, job_id=job_id
+    )
     try:
 
         def progress_callback(**kwargs):
             _set_import_status(job_id, kwargs)
+            _track_progress(import_job_id, kwargs)
 
         result = import_candidates_from_folder(
             str(folder_path),
@@ -126,8 +172,10 @@ def _run_import_job(
             progress_callback=progress_callback,
         )
         _set_import_status(job_id, {"status": "completed", "result": result})
+        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
     except Exception as exc:
         _set_import_status(job_id, {"status": "error", "message": str(exc)})
+        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
         vacancy_candidate_import_failures_total.inc()
         log_event(
             "vacancy_candidate_import_failed",
@@ -145,10 +193,12 @@ def _run_talent_pool_import(
     folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
 ):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
+    import_job_id = _start_import_job(user_id=user_id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
     try:
 
         def progress_callback(**kwargs):
             _set_talent_pool_import_status(user_id, kwargs)
+            _track_progress(import_job_id, kwargs)
 
         result = import_candidates_from_folder_no_ranking(
             str(folder_path),
@@ -157,8 +207,10 @@ def _run_talent_pool_import(
             progress_callback=progress_callback,
         )
         _set_talent_pool_import_status(user_id, {"status": "completed", "result": result})
+        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
     except Exception as exc:
         _set_talent_pool_import_status(user_id, {"status": "error", "message": str(exc)})
+        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
     finally:
         shutil.rmtree(folder_path, ignore_errors=True)
 
@@ -173,10 +225,14 @@ def _run_search_in_pool(
     shared_pool: bool = False,
 ):
     """Executa rankeamento via LLM dos candidatos pré-aprovados no match, em background."""
+    import_job_id = _start_import_job(
+        user_id=user_id, kind=ImportJob.Kind.POOL_SEARCH, job_id=job_id
+    )
     try:
 
         def progress_callback(**kwargs):
             _set_search_status(job_id, kwargs)
+            _track_progress(import_job_id, kwargs)
 
         weights = {"skills": 40, "technologies": 35, "experience": 25}
         result = search_and_rank_candidates_from_pool(
@@ -190,8 +246,10 @@ def _run_search_in_pool(
             shared_pool=shared_pool,
         )
         _set_search_status(job_id, {"status": "completed", "result": result})
+        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
     except Exception as exc:
         _set_search_status(job_id, {"status": "error", "message": str(exc)})
+        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
 
 
 @background_job
