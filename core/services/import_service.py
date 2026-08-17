@@ -19,6 +19,7 @@ from pathlib import Path
 
 from django.core.cache import cache
 
+from ..domain.job_description import build_job_description_from
 from ..llm_extractor import generate_parecer
 from ..metrics import vacancy_candidate_import_failures_total
 from ..models import CandidateJob
@@ -164,11 +165,7 @@ def _run_parecer_generation(candidate_job_id: int, parecer_type: str) -> None:
         job = candidate_job.job
         candidate = candidate_job.candidate
 
-        # Import adiado para nao criar ciclo com views.py: o R-16 move
-        # `_build_job_description` para `domain/` e isto vira import normal.
-        from ..views import _build_job_description
-
-        job_description = _build_job_description(job)
+        job_description = build_job_description_from(job)
         candidate_data = {
             "name": candidate.name,
             "current_title": candidate.current_title or "",

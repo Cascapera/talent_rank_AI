@@ -1506,7 +1506,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
 | Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **746** | 🟡 |
+| Linhas em `views.py` | 987 | ≤ 450 | **692** | 🟡 |
 | Arquivos > 500 linhas | 6 | ≤ 2 | **4** | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
@@ -2058,15 +2058,33 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-16** · Mover construção de prompt e busca booleana para `domain/`
       risco: médio · 0,5d · produção: transparente · PR: ~240 linhas / 4 arquivos
       pré-requisito: R-13, R-14
-  - [ ] **Teste de igualdade EXATA da string do prompt (antes vs depois)**
-  - [ ] Movimentação aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] **Teste de igualdade EXATA da string do prompt (antes vs depois)** — as strings
+        foram capturadas rodando a implementação antiga e coladas literalmente em
+        `test_job_prompts.py`. 12 testes golden.
+  - [x] Movimentação aplicada
+  - [x] Suíte completa verde — 272 testes, cobertura 72,58%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — busca booleana gera a mesma string de antes
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: `domain/job_description.py` e
+    `domain/boolean_search.py` criados. `views.py` **746 → 692 linhas**.
+
+    As funções puras recebem **campos**, não o objeto `Job` — é o que mantém o `domain/`
+    sem Django. Cada uma ganhou um atalho `*_from(job)` que só **lê atributos**: não
+    importa o ORM, funciona com um `SimpleNamespace`, e evita repetir a lista de campos
+    em cada chamador. Os 12 testes golden rodam **sem banco e sem HTTP, em 0,06s** —
+    antes, testar isso exigia subir uma request.
+
+    **O remendo do R-14 foi desfeito:** `import_service` importava
+    `views._build_job_description` de forma adiada para não criar ciclo. Agora importa
+    `domain.job_description` normalmente.
+
+    Um teste do R-13 precisou mudar de alvo: ele afirmava que `views.SYNONYMS` e o
+    domínio eram o mesmo objeto, mas o `views.py` não consome mais o dicionário — quem
+    consome é `domain.boolean_search`. A afirmação (`is`, não `==`) continua idêntica;
+    só o consumidor mudou de lugar. Piso do CI 71 → 72.
 
 - [ ] **R-17** · Renomear `pdf_extractor.py` conforme a responsabilidade real
       risco: baixo · 3h · produção: transparente · PR: ~80 linhas + git mv / 5 arquivos

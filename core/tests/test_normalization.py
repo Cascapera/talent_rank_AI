@@ -14,7 +14,8 @@ veja que a unificação foi uma decisão testada e não um descuido.
 """
 
 from core import matching, views
-from core.domain import normalization
+from core.domain import boolean_search, normalization
+from core.domain.boolean_search import build_boolean_search_from
 from core.domain.normalization import SYNONYMS, normalize
 from core.models import Job
 
@@ -44,12 +45,17 @@ class TestNormalize:
 class TestSynonymsUnification:
     """O dicionário era idêntico nas duas cópias — esta é a parte segura do R-13."""
 
-    def test_matching_and_views_share_the_very_same_dict(self):
+    def test_both_consumers_share_the_very_same_dict(self):
         """Não é "iguais": é o MESMO objeto. É isso que garante que adicionar um
         sinônimo passe a valer nos dois lugares automaticamente, que era o ganho
-        prometido pelo item."""
+        prometido pelo R-13.
+
+        O segundo consumidor era `views` até o R-16 mover a busca booleana para
+        `domain/boolean_search`. Trocar o alvo aqui é acompanhar a mudança de camada,
+        não afrouxar o teste — a afirmação (`is`, não `==`) continua a mesma.
+        """
         assert matching.SYNONYMS is normalization.SYNONYMS
-        assert views.SYNONYMS is normalization.SYNONYMS
+        assert boolean_search.SYNONYMS is normalization.SYNONYMS
 
     def test_keys_are_all_ascii(self):
         """Por que isto importa: as duas pontas procuram a chave por caminhos
@@ -105,7 +111,7 @@ class TestTheThreeNormalizersAreNowOne:
             undesirable="",
         )
 
-        resultado = views._build_boolean_search(job)
+        resultado = build_boolean_search_from(job)
 
         assert normalize("Reáct") == "react"
         assert "reactjs" in resultado, resultado
