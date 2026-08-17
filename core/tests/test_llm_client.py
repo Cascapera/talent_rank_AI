@@ -84,7 +84,7 @@ def llm(monkeypatch):
     """
     monkeypatch.setenv("GEMINI_API_KEY", "chave-de-teste")
 
-    ctl = SimpleNamespace(responses=[], calls=[], sleeps=[], api_key=None)
+    ctl = SimpleNamespace(responses=[], calls=[], sleeps=[], api_key=None, http_options=None)
 
     monkeypatch.setattr(llm_extractor.time, "sleep", ctl.sleeps.append)
 
@@ -97,8 +97,9 @@ def llm(monkeypatch):
             return item
 
     class FakeClient:
-        def __init__(self, api_key=None):
+        def __init__(self, api_key=None, http_options=None):
             ctl.api_key = api_key
+            ctl.http_options = http_options
             self.models = FakeModels()
 
     monkeypatch.setattr(llm_extractor.genai, "Client", FakeClient)
@@ -327,6 +328,54 @@ class TestRetry:
 
         with pytest.raises(Exception, match="ultimo"):
             extract_candidate_no_ranking(pdf)
+
+
+class TestTimeout:
+    """R-12: toda chamada ao LLM passa a ter timeout, aplicado no `_generate()`.
+
+    Antes, uma requisição travada segurava a thread de importação para sempre — as
+    threads são `daemon` e não têm cancelamento, então a barra de progresso ficava
+    parada até o próximo restart do serviço.
+    """
+
+    def test_timeout_is_sent_to_the_sdk(self, llm, pdf, settings):
+        settings.LLM_TIMEOUT_SECONDS = 180
+        llm.responses = [resp('{"name": "Ana"}')]
+
+        extract_candidate_no_ranking(pdf)
+
+        assert llm.http_options is not None
+        assert llm.http_options.timeout == 180_000
+
+    def test_timeout_is_converted_from_seconds_to_milliseconds(self, llm, pdf, settings):
+        """O setting é em SEGUNDOS porque é o que faz sentido para quem configura; o
+        SDK recebe MILISSEGUNDOS (`HttpOptions.timeout` é documentado assim).
+
+        Este teste existe para travar a conversão: passar o valor direto daria 180ms e
+        derrubaria toda chamada ao LLM em produção.
+        """
+        settings.LLM_TIMEOUT_SECONDS = 42
+        llm.responses = [resp("{}")]
+
+        extract_candidate_no_ranking(pdf)
+
+        assert llm.http_options.timeout == 42_000
+
+    def test_timeout_error_is_retried_like_any_other_and_then_propagates(self, llm, pdf):
+        """O erro de timeout do SDK não casa com RESOURCE_EXHAUSTED nem com 503, então
+        cai no ramo genérico: dorme 3s fixos e consome as 4 tentativas.
+
+        Consequência a olhar de frente: com o default de 180s, uma indisponibilidade
+        prolongada leva ~12min (4 × 180s + sleeps) para desistir. É **limitado**, que é
+        o ganho real do R-12 — antes era para sempre —, mas não é curto.
+        """
+        llm.responses = [TimeoutError("deadline exceeded")] * 4
+
+        with pytest.raises(TimeoutError, match="deadline exceeded"):
+            extract_candidate_no_ranking(pdf)
+
+        assert len(llm.calls) == 4
+        assert llm.sleeps == [3, 3, 3, 3]
 
 
 class TestContracts:

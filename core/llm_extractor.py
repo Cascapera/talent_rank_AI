@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from google import genai
 from google.genai import types
 
@@ -227,6 +228,13 @@ def _generate(payload: list, *, model: str = DEFAULT_GEMINI_MODEL) -> tuple[str,
     Devolve `(texto_da_resposta, modelo_usado)`. O `.text` do SDK pode vir `None`; quem
     precisa de string garantida trata na saída (`generate_parecer` faz `or ""`).
 
+    R-12: aplica `settings.LLM_TIMEOUT_SECONDS` a toda chamada. Antes, uma requisição
+    travada segurava a thread de importação para sempre — as threads são `daemon` e não
+    têm cancelamento. Com timeout, o pior caso passa a ser **limitado**: 4 tentativas ×
+    timeout + os sleeps do backoff. Limitado, não curto: com o default de 180s, uma
+    indisponibilidade prolongada leva ~12min para desistir. Ainda assim é melhor que
+    "para sempre", e o número está em setting justamente para poder ser reduzido.
+
     Comportamento preservado das 7 cópias, incluindo os dois quirks que os
     characterization tests do R-07 fixaram — se forem corrigidos, é em PR próprio:
       - dorme **depois da 4ª tentativa** também, antes de propagar o erro: com rate
@@ -238,7 +246,12 @@ def _generate(payload: list, *, model: str = DEFAULT_GEMINI_MODEL) -> tuple[str,
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY não definido no ambiente.")
 
-    client = genai.Client(api_key=api_key)
+    # R-12: `HttpOptions.timeout` é em MILISSEGUNDOS. O setting é em segundos porque é
+    # o que faz sentido para quem configura; a conversão mora aqui, num lugar só.
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=settings.LLM_TIMEOUT_SECONDS * 1000),
+    )
 
     last_error = None
     model_candidates = [model]
