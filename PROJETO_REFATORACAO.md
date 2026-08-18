@@ -2688,39 +2688,35 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Decidir se vale — depende de alguém realmente consumir `/metrics`
   - Status: não iniciado · Notas: registrado como achado, **não como compromisso**.
 
-- [ ] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
-      risco: baixo · estimativa: 1h · produção: requer cuidado (mexe em `collectstatic`)
-      **Achado no R-27, em 2026-08-18.** O `settings.py` tem:
-
-      ```python
-      STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
-      ```
-
-      Esse setting foi **removido no Django 5.1** (substituído por `STORAGES`), e produção
-      roda **5.2.10** — ou seja, **está sendo ignorado em silêncio**. O que vale hoje é o
-      `StaticFilesStorage` padrão: o `collectstatic` não gera os arquivos `.gz`/`.br` que o
-      Whitenoise serviria, então cada CSS e JS vai pela rede sem compressão.
-
-      Confirmado localmente com `settings.STORAGES`, que mostra o backend padrão. **Confirme
-      no servidor antes de mexer**, porque o Django local é 6.0.6 e não o 5.2.10 de produção:
-
-      ```
-      python manage.py shell -c "from django.conf import settings; print(settings.STORAGES)"
-      ```
-
-      **Duas correções possíveis, e a diferença importa:**
-
-      | Backend | O que ganha | O que arrisca |
-      |---|---|---|
-      | `CompressedStaticFilesStorage` | compressão, que era a intenção original | ~nada |
-      | `CompressedManifestStaticFilesStorage` | compressão **+ hash no nome**, que mata cache velho de vez | erra o build se algum `{% static %}` apontar para arquivo inexistente |
-
-      O segundo é o que o plano **supunha** que já estava valendo (ver seção 9 e o item
-      R-27). É também o que resolveria de vez o risco de cache velho no R-28, que vai
-      editar CSS já existente — situação diferente do R-27, que só criou arquivo novo.
-  - [ ] Confirmado no servidor que o setting está sendo ignorado
-  - [ ] Decidido entre `Compressed` e `CompressedManifest`
-  - Status: não iniciado · Notas: **fazer antes do R-28**, que edita arquivos já servidos.
+- [~] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
+      risco: baixo · 1h · produção: **requer cuidado** (mexe em `collectstatic`)
+      **Achado no R-27, resolvido no mesmo dia.** O `settings.py` tinha
+      `STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"`; o Django
+      **removeu esse setting na 5.1** e produção roda **5.2.10**, então a linha estava
+      sendo ignorada em silêncio desde aquele upgrade. Valia o `StaticFilesStorage`
+      padrão: sem `.gz`/`.br` e sem versionamento.
+  - [x] Confirmado que o setting estava sendo ignorado — `settings.STORAGES` mostrava o
+        backend padrão
+  - [x] **Escolhido `CompressedManifestStaticFilesStorage`**, e não só `Compressed`: o
+        nome do arquivo passa a levar hash do conteúdo, então editar arquivo já publicado
+        não corre risco de browser servir a versão velha. É o que a seção 9 já **supunha**
+        estar valendo, e é o que o R-28 precisa.
+  - [x] **Auditadas as 13 referências `{% static %}` dos templates** — 4 arquivos
+        distintos, todos literais, todos existentes. Nenhuma interpolação. É o que torna
+        o manifesto seguro: com manifesto, `{% static %}` para arquivo inexistente vira
+        erro 500 na renderização.
+  - [x] Manifesto só fora de `DEBUG`, e `settings_test` forçando o backend simples — sem
+        isso, `runserver` e suíte exigiriam `collectstatic` antes de abrir qualquer página
+  - [x] `collectstatic` rodado de verdade: **134 arquivos, 396 pós-processados**,
+        `staticfiles.json` gerado, `job_detail.1a1dd8a7bcfa.js` e `.gz` no lugar
+  - [x] Suíte completa verde — 348 testes, cobertura 75,58%
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — página abre, `/static/...<hash>.js` retornando 200
+  - [ ] Commitado — `<hash>`
+  - Status: **código pronto** · Notas: 6 testes novos. ⚠️ **No deploy, rodar
+    `collectstatic` à mão antes** — ver a nota de deploy abaixo.
 
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
@@ -2764,6 +2760,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
 | 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
 | 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
+| 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
 
 ---
 
