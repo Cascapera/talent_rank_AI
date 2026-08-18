@@ -122,6 +122,15 @@ POSTGRES_USER=usuario_do_lightsail_db
 POSTGRES_PASSWORD=senha_do_lightsail_db
 POSTGRES_HOST=endpoint_do_lightsail_db
 POSTGRES_PORT=5432
+
+# Fecha o endpoint /metrics (ver secao 11.1). Vazio ou ausente = endpoint publico.
+METRICS_TOKEN=gerar_um_token_longo
+```
+
+Gere o token do `/metrics`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Gere uma nova SECRET_KEY:
@@ -221,6 +230,31 @@ sudo ln -s /etc/nginx/sites-available/talent_rank_ai /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
+
+---
+
+### 11.1 Fechar o endpoint `/metrics` (R-22)
+
+O Nginx faz `proxy_pass` em `location /`, entao `GET /metrics` responde para qualquer um
+na internet. Com `METRICS_TOKEN` preenchido no `.env`, o endpoint passa a exigir o token
+em um dos dois headers:
+
+```bash
+curl -H "X-Metrics-Token: $TOKEN" https://seudominio.com.br/metrics      # 200
+curl -H "Authorization: Bearer $TOKEN" https://seudominio.com.br/metrics # 200
+curl https://seudominio.com.br/metrics                                   # 401
+```
+
+**A ordem importa (expand-contract).** O deploy do codigo sozinho nao fecha nada: sem a
+variavel no `.env`, o endpoint continua aberto de proposito, para nao derrubar um scraper
+que ja esteja consumindo. Feche assim:
+
+1. deploy do codigo (endpoint continua aberto);
+2. se houver Prometheus scrapeando, configure o token nele — `authorization: {credentials: <token>}`
+   no `scrape_config` manda o header `Bearer`;
+3. so entao ponha `METRICS_TOKEN` no `.env` do servidor e `sudo systemctl restart talent_rank_ai`.
+
+Inverter 2 e 3 deixa o scraper cego ate ser reconfigurado.
 
 ---
 
@@ -324,6 +358,7 @@ Em **Settings → Secrets and variables → Actions**, crie:
 - [ ] Instância Lightsail criada
 - [ ] Banco PostgreSQL criado e acessível
 - [ ] `.env` configurado com `POSTGRES_*` e `DJANGO_*`
+- [ ] `METRICS_TOKEN` no `.env` e `curl` sem token devolvendo 401
 - [ ] `migrate` e `collectstatic` executados
 - [ ] Gunicorn ativo via systemd
 - [ ] Nginx proxy ativo
