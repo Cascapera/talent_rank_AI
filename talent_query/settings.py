@@ -154,7 +154,28 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
+# R-40. Era `STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"`,
+# que o **Django removeu na 5.1** em favor de STORAGES. Producao roda 5.2.10, entao a
+# linha estava sendo ignorada em silencio desde aquele upgrade: valia o StaticFilesStorage
+# padrao, o collectstatic nao gerava .gz/.br e todo CSS e JS ia pela rede sem compressao.
+#
+# Com manifesto (e nao so `Compressed`) porque o nome do arquivo passa a levar hash do
+# conteudo: o Whitenoise entao serve com cache imutavel, e editar um arquivo ja publicado
+# nao corre risco de o browser continuar servindo a versao velha. E o que o plano ja
+# supunha estar valendo, e o que o R-28 vai precisar quando editar CSS existente.
+#
+# So fora de DEBUG: o manifesto so existe depois do collectstatic, e exigir isso no
+# runserver quebraria o desenvolvimento. O settings_test tambem forca o backend simples,
+# para a suite nao depender de manifesto.
+_MANIFESTO_DE_ESTATICOS = (
+    "django.contrib.staticfiles.storage.StaticFilesStorage"
+    if DEBUG
+    else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": _MANIFESTO_DE_ESTATICOS},
+}
 
 # Media files (currículos PDF)
 MEDIA_URL = "media/"

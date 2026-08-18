@@ -1188,9 +1188,10 @@ Não muda:    nenhum comportamento da tela — mesma lógica, outro arquivo
 Pré-requisito: nenhum
 PR:          2 arquivos · ~+850 / −830 linhas (majoritariamente movimentação)
 Produção:    REQUER CUIDADO — depende de collectstatic no deploy
-Deploy:      o deploy já roda `collectstatic --noinput`; o Whitenoise faz hash no nome
-             do arquivo, então não há problema de cache velho. Confirme mesmo assim
-             que o /static/ do Nginx está servindo o arquivo novo.
+Deploy:      o deploy já roda `collectstatic --noinput`. ⚠️ A frase original deste item
+             dizia que o Whitenoise faz hash no nome do arquivo — **não faz**, ver R-40.
+             Para o R-27 não muda nada (arquivo novo não tem versão velha em cache),
+             mas confirme que o /static/ está servindo o arquivo.
 Como validar: abrir /vagas/<id>/ e exercitar TUDO: importar, filtrar, paginar, mudar
              status, gerar parecer, gerar busca booleana, preview de match
 Verificação pós-deploy: DevTools sem erro no console; job_detail.js retornando 200
@@ -1443,7 +1444,7 @@ commit. Onde havia risco de indisponibilidade, o plano usa a alternativa increme
 | Migrar status de cache para banco (R-20) | Expand-contract: escrita dupla → migrar leitura → remover o antigo |
 | Fechar `/media/` público (R-23) | Expand-contract: nova rota → migrar links → remover a antiga |
 | Fechar `/metrics` (R-22) | Aceitar token e sem-token → configurar scraper → exigir token |
-| Mover 33 KB de JS (R-27) | Whitenoise já versiona por hash; sem invalidação manual de cache |
+| Mover 33 KB de JS (R-27) | ⚠️ **Errado, corrigido em 2026-08-18:** o projeto usa `CompressedStaticFilesStorage`, que **não** versiona por hash — e o setting que o escolhe (`STATICFILES_STORAGE`) foi **removido no Django 5.1**, então nem isso está valendo. Ver R-40. Para este item não há risco: arquivo novo não tem cache velho. |
 
 ### Itens "requer cuidado" — procedimento
 
@@ -1502,25 +1503,34 @@ verifique com `SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT i
 
 ## 10. Métricas de sucesso
 
-Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
+Atualizado em 2026-08-18, depois do 5º release (R-22 e R-25).
 
 | Métrica | Linha de base | Meta | **Hoje** | |
 |---|---:|---:|---:|:--:|
-| Cobertura real (sem `omit`) | 25% | ≥ 55% | **72,08%** | ✅ |
-| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **75,53%** | ✅ |
+| Cobertura do fluxo de importação | 6% | ≥ 70% | **92%** (`services/candidate_import.py`) | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
-| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **665** | ❌ |
-| Arquivos > 500 linhas | 6 | ≤ 2 | **5** | 🟡 |
+| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **arquivo não existe mais** (R-17) | ✅ |
+| Linhas em `views.py` | 987 | ≤ 450 | **820** | ❌ |
+| Arquivos > 500 linhas | 6 | ≤ 2 | **5** (2 são templates — Onda 6) | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
 | Cópias do laço de lotes | 3 | 1 | **1** | ✅ |
 | Código morto | 872 linhas | 0 | **0** | ✅ |
 | Violações de ruff | 0 | 0 | **0** | ✅ |
-| Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
-| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
-| Queries em `/relatorios/` | ~500 | 2 | **não escala** | ✅ |
+| Tempo da suíte | 19s | ≤ 60s | **68s** | ❌ |
+| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ R-21 |
+| Queries em `/relatorios/` | ~500 | 2 | **2** (R-24) | ✅ |
 | Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
+
+Duas metas viradas para ❌ nesta atualização, e nenhuma das duas por acaso:
+
+- **`views.py` em 820 linhas.** Fechou a Onda 2 em 665 e voltou a crescer com R-18, R-19
+  e R-20a, que são código novo, não movimentação. Não é regressão de refatoração — mas a
+  meta continua não atingida, e agora está mais longe do que quando foi declarada falha.
+- **Suíte em 68s, contra ≤60s.** Passaram de 100 para 336 testes; o custo por teste caiu,
+  o total subiu. É o preço da rede de segurança, e foi bem gasto — mas o número é o
+  número, e se passar de ~90s começa a atrapalhar o ciclo.
 
 **Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
 `views.py` **não encolheu** — e não era para encolher ainda: quem faz isso é a Onda 2
@@ -1583,13 +1593,17 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ## 13. Checklist de acompanhamento
 
 ```
-Status: em andamento — **Ondas 0, 1 e 2 EM PRODUÇÃO**, mais R-18, R-19, R-20a
-           (Onda 3) e R-24, R-26 (Onda 5). 4 releases: PRs #26, #35, #46, #53.
-           `main` em `3320174`.
-Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
-           · 2 prontos em `develop` esperando release (**R-22**, cujo fechamento ainda
-           depende do `.env` de produção, e **R-25**) · o resto no backlog
+Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
+           R-20a (Onda 3) e R-22 (Onda 4). 5 releases: PRs #26, #35, #46, #53, #57.
+           `main` em `76f8e32`.
+Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 fechado
+           sem correção (R-29, decisão de produto) · `develop` limpa · 3 itens
+           bloqueados por informação do servidor · 1 achado novo (**R-39**) · o resto
+           no backlog
            atualizado em 2026-08-18
+
+           ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
+           em texto claro durante a verificação e **precisam ser rotacionados**.
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
            foram implantados (PR #53) e estão marcados no checklist, mas nenhum deles
@@ -1625,7 +1639,7 @@ Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de p
 
 ### Resultado até aqui
 
-| Métrica | Linha de base | Hoje em `develop` (2026-08-18) |
+| Métrica | Linha de base | Hoje em produção (2026-08-18) |
 |---|---:|---:|
 | Testes | 100 | **336** |
 | Cobertura real | 25% (reportada como 87,62%) | **75,53%** (real) |
@@ -2285,11 +2299,14 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         no `.env` do servidor e reiniciar o serviço. Não precisa de outro deploy.
   - [x] Suíte completa verde — 328 testes, cobertura 75,51%
   - [x] Lint e format verdes
-  - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — `curl` sem token = 401, com token = 200
-  - [ ] Commitado — `<hash>`
-  - Status: código pronto, fechamento depende de `.env` em produção · Notas: 10 testes
+  - [x] PR aberto e revisado — PR #55
+  - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`
+  - [x] **Token preenchido no `.env` do servidor e serviço reiniciado** — 2026-08-18
+  - [x] Verificado em produção — `curl` sem token = **401**, com `X-Metrics-Token` =
+        **200**, com `Authorization: Bearer` = **200**. Testado de fora da rede do
+        servidor. `/` continua 200.
+  - [x] Commitado — `752af51`
+  - Status: **✅ concluído** · Notas: 10 testes
     novos em `core/tests/test_metrics_view.py`, sendo 2 characterization (endpoint
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
@@ -2353,12 +2370,15 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         é `UPPER()`; em `Lower` o índice nunca seria usado
   - [x] Suíte completa verde — 336 testes, cobertura 75,53%
   - [x] Lint e format verdes
-  - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
-  - [ ] Verificado em produção — `EXPLAIN` da query de upsert usando Index Scan
-  - [ ] Commitado — `<hash>`
-  - Status: código pronto, esperando release · Notas: **primeira migration do projeto que
+  - [x] PR aberto e revisado — PR #56
+  - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`. `Applying
+        core.0022_candidate_linkedin_upper_index... OK` em 0,2s
+  - [x] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
+  - [x] Verificado em produção — `EXPLAIN` da query de upsert usando **Bitmap Index Scan
+        on core_candidate_linkedin_upper**, com `Index Cond: (upper((linkedin_url)::text)
+        = ...)`. Tabela com **746 candidatos**.
+  - [x] Commitado — `5931887`
+  - Status: **✅ concluído** · Notas: **primeira migration do projeto que
     não é atômica.** O deploy roda `migrate` e o `CREATE INDEX CONCURRENTLY` não trava
     escrita, mas se falhar no meio deixa índice INVALID — o comando de limpeza está no
     cabeçalho da migration e no P-7.
@@ -2394,18 +2414,26 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 6 — Frontend
 
-- [ ] **R-27** · Extrair o JavaScript de `job_detail.html`
+- [~] **R-27** · Extrair o JavaScript de `job_detail.html`
       risco: médio · 0,5d · produção: requer cuidado · PR: ~1.680 linhas / 2 arquivos
-  - [ ] Movimentação aplicada; dados dinâmicos via `data-*`
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Movimentação aplicada — **não foi preciso criar nenhum `data-*`**: o bloco não
+        tinha uma única tag Django dentro, o JS já lia tudo de atributos que o HTML
+        preenche. O item previa essa conversão; ela não existia.
+  - [x] **Conteúdo conferido idêntico** — `diff` do bloco original contra o arquivo novo
+        acusa só o recuo de 4 espaços
+  - [x] `node --check static/js/job_detail.js` — o arquivo compila sozinho
+  - [x] Template compila e `{% static %}` resolve para `/static/js/job_detail.js`
+  - [x] Suíte completa verde — 342 testes, cobertura 75,53%
+  - [x] Lint e format verdes
   - [ ] **Validação manual completa:** importar · filtrar · paginar · mudar status ·
         gerar parecer · gerar busca booleana · preview de match
-  - [ ] PR aberto e revisado
+  - [x] PR aberto e revisado
   - [ ] Implantado (com `collectstatic`)
   - [ ] Verificado em produção — console sem erro, `job_detail.js` retornando 200
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto, esperando a validação manual** · Notas: `job_detail.html`
+    1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
+    o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
 - [ ] **R-28** · Consolidar o CSS repetido em `static/css/app.css` (3 sub-PRs)
       risco: médio · 1d · produção: requer cuidado · PR: ~250 linhas cada
@@ -2639,6 +2667,57 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] `pyproject`, ruff e CI subidos de volta para 3.12; matriz simplificada
   - Status: não iniciado · Notas:
 
+- [ ] **R-39** · Métricas zeram a cada restart e são por worker
+      risco: baixo · estimativa: a definir · produção: transparente
+      **Achado ao verificar o R-22 em 2026-08-18.** Logo após o `systemctl restart`, o
+      `/metrics` devolvia `vacancy_candidate_imports_total 0.0`. Não é bug do R-22: o
+      `prometheus_client` guarda os contadores **em memória do processo**, então:
+
+      - **todo deploy zera a telemetria** — e o CD reinicia o serviço a cada release;
+      - com mais de um worker do gunicorn, **cada um teria a sua contagem**, e o scraper
+        veria valores oscilando conforme o worker que atendeu.
+
+      Hoje roda 1 worker, então o segundo problema está latente, não ativo. As métricas
+      do D-8 servem para observar **uma execução**, não para série histórica — e é bom
+      que isso esteja escrito antes de alguém montar um gráfico em cima delas.
+
+      **Solução conhecida:** `prometheus_client` em modo multiprocess
+      (`PROMETHEUS_MULTIPROC_DIR`), que agrega os workers em arquivos no disco. Resolve
+      o segundo problema; o primeiro é inerente a contador em memória e só some com
+      armazenamento externo.
+  - [ ] Decidir se vale — depende de alguém realmente consumir `/metrics`
+  - Status: não iniciado · Notas: registrado como achado, **não como compromisso**.
+
+- [~] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
+      risco: baixo · 1h · produção: **requer cuidado** (mexe em `collectstatic`)
+      **Achado no R-27, resolvido no mesmo dia.** O `settings.py` tinha
+      `STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"`; o Django
+      **removeu esse setting na 5.1** e produção roda **5.2.10**, então a linha estava
+      sendo ignorada em silêncio desde aquele upgrade. Valia o `StaticFilesStorage`
+      padrão: sem `.gz`/`.br` e sem versionamento.
+  - [x] Confirmado que o setting estava sendo ignorado — `settings.STORAGES` mostrava o
+        backend padrão
+  - [x] **Escolhido `CompressedManifestStaticFilesStorage`**, e não só `Compressed`: o
+        nome do arquivo passa a levar hash do conteúdo, então editar arquivo já publicado
+        não corre risco de browser servir a versão velha. É o que a seção 9 já **supunha**
+        estar valendo, e é o que o R-28 precisa.
+  - [x] **Auditadas as 13 referências `{% static %}` dos templates** — 4 arquivos
+        distintos, todos literais, todos existentes. Nenhuma interpolação. É o que torna
+        o manifesto seguro: com manifesto, `{% static %}` para arquivo inexistente vira
+        erro 500 na renderização.
+  - [x] Manifesto só fora de `DEBUG`, e `settings_test` forçando o backend simples — sem
+        isso, `runserver` e suíte exigiriam `collectstatic` antes de abrir qualquer página
+  - [x] `collectstatic` rodado de verdade: **134 arquivos, 396 pós-processados**,
+        `staticfiles.json` gerado, `job_detail.1a1dd8a7bcfa.js` e `.gz` no lugar
+  - [x] Suíte completa verde — 348 testes, cobertura 75,58%
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — página abre, `/static/...<hash>.js` retornando 200
+  - [ ] Commitado — `<hash>`
+  - Status: **código pronto** · Notas: 6 testes novos. ⚠️ **No deploy, rodar
+    `collectstatic` à mão antes** — ver a nota de deploy abaixo.
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -2678,50 +2757,51 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
 | 2026-08-18 | **R-22** | `settings.METRICS_TOKEN` novo; `metrics_view` passa a exigir o token em `X-Metrics-Token` ou `Authorization: Bearer` quando a variável está preenchida. 10 testes novos. README e `DEPLOY_LIGHTSAIL.md` (seção 11.1 nova + checklist). Nenhuma migration. | Duas. (1) **O fechamento não é o deploy, é o `.env`.** Com `METRICS_TOKEN` vazio o endpoint continua aberto de propósito — expand-contract sem segundo deploy: sobe o código, configura o scraper, depois preenche a variável e reinicia. Como não achei nenhum scraper no repositório, o passo do meio pode ser vazio, mas o desenho não depende de eu saber isso. (2) Aceitar `Authorization: Bearer` além do header customizado saiu de graça e evita configuração exótica no Prometheus, que manda esse header nativamente (`authorization` no `scrape_config`). A comparação usa `hmac.compare_digest`, não `==`. |
 | 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
+| 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
+| 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
+| 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
+| 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, fim do dia)
+### ▶ Onde retomar (atualizado em 2026-08-18, depois do 5º release)
 
-**Em produção:** Ondas 0, 1 e 2 completas, mais R-18, R-19, R-20a (Onda 3) e R-24, R-26
-(Onda 5). 318 testes na hora do release, cobertura **75,19%**. `main` em `3320174`.
+**Em produção** (`main` em `76f8e32`, 5 releases: PRs #26, #35, #46, #53, #57): Ondas 0,
+1, 2 e **5** completas, mais R-18, R-19, R-20a (Onda 3) e R-22, R-25. 336 testes,
+cobertura **75,53%**.
 
-**Em `develop`, esperando release:** **R-22** (proteger `/metrics`) e **R-25** (índice
-funcional do upsert). 336 testes, cobertura **75,53%**.
+**`develop` está limpa** — nada esperando release.
 
-⚠️ **O próximo release leva uma migration não atômica** (`0022`, `CREATE INDEX
-CONCURRENTLY`). Não trava escrita, mas se falhar no meio deixa índice INVALID:
+## ✅ As três verificações de produção fecharam (2026-08-18)
 
-```sql
-SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT indisvalid;
-DROP INDEX CONCURRENTLY core_candidate_linkedin_upper;
+`/metrics` devolve 401 sem token e 200 com token, testado de fora. O índice do R-25 é
+válido e o `EXPLAIN` mostra `Bitmap Index Scan on core_candidate_linkedin_upper` numa
+tabela de **746 candidatos** — o ganho é imediato, não só preventivo. Detalhes no registro
+de execução.
+
+**Sobrou uma pendência operacional, não de código:** a `GEMINI_API_KEY` e o `METRICS_TOKEN`
+apareceram em texto claro durante a verificação (um `tail -3 .env` mal escolhido) e
+**precisam ser rotacionados**. Enquanto não forem, valem como comprometidos:
+
+```
+sed -i "/^GEMINI_API_KEY=/d" .env && echo "GEMINI_API_KEY=A_CHAVE_NOVA" >> .env
+sed -i "/^METRICS_TOKEN=/d" .env && python -c "import secrets; print('METRICS_TOKEN=' + secrets.token_urlsafe(32))" >> .env
+sudo systemctl restart talent_rank_ai
 ```
 
-E a validação do ganho é `EXPLAIN` na query de upsert, procurando Index Scan no lugar de
-Seq Scan.
+## E a verificação que destrava o R-20b
 
-**O R-22 não termina no deploy.** O código sobe com o endpoint ainda aberto, de propósito.
-Fechar é preencher `METRICS_TOKEN` no `.env` do servidor e reiniciar o serviço — não
-precisa de outro deploy. O passo a passo está na seção 11.1 do `DEPLOY_LIGHTSAIL.md`.
-Depois de fechar, a verificação é:
+Continua pendente, e agora vale a pena juntar com a primeira importação real depois deste
+deploy:
 
-```bash
-curl -s -o /dev/null -w '%{http_code}' https://SEUDOMINIO/metrics                       # 401
-curl -s -o /dev/null -w '%{http_code}' -H "X-Metrics-Token: $TOKEN" https://SEUDOMINIO/metrics  # 200
+```
+python manage.py dbshell -- -c "SELECT id, kind, status, processed, total, heartbeat_at FROM core_importjob ORDER BY id DESC LIMIT 5;"
 ```
 
-**A verificação que destrava o R-20b continua pendente.** Rode uma importação real em
-produção e confira se a tabela do R-20a está sendo populada:
-
-```sql
-SELECT id, kind, status, processed, total, heartbeat_at
-FROM core_importjob ORDER BY id DESC LIMIT 5;
-```
-
-Com linhas aparecendo, o R-20b está liberado — e é ele que resolve a barra de progresso
+Com linhas aparecendo, o **R-20b** está liberado — é ele que resolve a barra de progresso
 travada depois de um restart, o sintoma mais visível do D-6.
 
-**Bloqueados por informação que só o dono do projeto tem:**
+## Bloqueados por informação que só o dono do projeto tem
 
 | Item | O que falta |
 |---|---|
@@ -2729,8 +2809,12 @@ travada depois de um restart, o sintoma mais visível do D-6.
 | **R-23** | mexe na configuração do Nginx, em 3 etapas |
 | **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
 
-**Disponíveis sem depender de ninguém:** R-27 e R-28 (Onda 6, frontend — grandes e com
-validação visual manual). A Onda 5 fica completa quando o R-25 for para produção.
+## Disponíveis sem depender de ninguém
+
+Só sobrou a **Onda 6**: R-27 e R-28, o JavaScript inline de `job_detail.html` e
+`home.html`. São os dois maiores itens que restam, são MOVER (mecânicos) e a validação é
+visual e manual — e eu nunca vi a aplicação rodando, então a lista de validação do plano
+foi montada lendo o template. Trate como mínimo, não como completa.
 
 **Dívida do próprio plano:** o registro de execução não tem linha para R-18, R-19, R-20a,
 R-24 e R-26, nem para o 4º release. Dá para reconstruir dos PRs #47 a #53, mas as
