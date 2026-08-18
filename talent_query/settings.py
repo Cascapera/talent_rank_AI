@@ -176,6 +176,15 @@ POOL_MATCH_MIN_SCORE = int(os.getenv("POOL_MATCH_MIN_SCORE", "40"))
 # core/llm_extractor.py::_generate. Nao passe este numero direto para o SDK.
 LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
 
+# Token do endpoint /metrics (R-22). Vazio = endpoint aberto, que era o comportamento
+# ate aqui; preenchido = exige o token no header `X-Metrics-Token` ou em
+# `Authorization: Bearer <token>`.
+# O default vazio e proposital e e a metade "expand" do expand-contract: o codigo sobe
+# sem derrubar nenhum scraper que ja consuma /metrics hoje. Fechar o endpoint em
+# producao e preencher METRICS_TOKEN no .env e reiniciar o servico - nao precisa de
+# outro deploy.
+METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
+
 # Auth
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
