@@ -1595,10 +1595,14 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a (Onda 3) e R-22 (Onda 4). 5 releases: PRs #26, #35, #46, #53, #57.
            `main` em `76f8e32`.
-Progresso: 28 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
-           · `develop` limpa · 3 verificações abertas em produção e 3 itens bloqueados
-           por informação do servidor · o resto no backlog
+Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 fechado
+           sem correção (R-29, decisão de produto) · `develop` limpa · 3 itens
+           bloqueados por informação do servidor · 1 achado novo (**R-39**) · o resto
+           no backlog
            atualizado em 2026-08-18
+
+           ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
+           em texto claro durante a verificação e **precisam ser rotacionados**.
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
            foram implantados (PR #53) e estão marcados no checklist, mas nenhum deles
@@ -2296,9 +2300,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — PR #55
   - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`
-  - [ ] Verificado em produção — `curl` sem token = 401, com token = 200
+  - [x] **Token preenchido no `.env` do servidor e serviço reiniciado** — 2026-08-18
+  - [x] Verificado em produção — `curl` sem token = **401**, com `X-Metrics-Token` =
+        **200**, com `Authorization: Bearer` = **200**. Testado de fora da rede do
+        servidor. `/` continua 200.
   - [x] Commitado — `752af51`
-  - Status: **em produção, mas ainda aberto de propósito** · Notas: 10 testes
+  - Status: **✅ concluído** · Notas: 10 testes
     novos em `core/tests/test_metrics_view.py`, sendo 2 characterization (endpoint
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
@@ -2365,10 +2372,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] PR aberto e revisado — PR #56
   - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`. `Applying
         core.0022_candidate_linkedin_upper_index... OK` em 0,2s
-  - [ ] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
-  - [ ] Verificado em produção — `EXPLAIN` da query de upsert usando Index Scan
+  - [x] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
+  - [x] Verificado em produção — `EXPLAIN` da query de upsert usando **Bitmap Index Scan
+        on core_candidate_linkedin_upper**, com `Index Cond: (upper((linkedin_url)::text)
+        = ...)`. Tabela com **746 candidatos**.
   - [x] Commitado — `5931887`
-  - Status: **em produção**, faltam as duas verificações · Notas: **primeira migration do projeto que
+  - Status: **✅ concluído** · Notas: **primeira migration do projeto que
     não é atômica.** O deploy roda `migrate` e o `CREATE INDEX CONCURRENTLY` não trava
     escrita, mas se falhar no meio deixa índice INVALID — o comando de limpeza está no
     cabeçalho da migration e no P-7.
@@ -2649,6 +2658,27 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] `pyproject`, ruff e CI subidos de volta para 3.12; matriz simplificada
   - Status: não iniciado · Notas:
 
+- [ ] **R-39** · Métricas zeram a cada restart e são por worker
+      risco: baixo · estimativa: a definir · produção: transparente
+      **Achado ao verificar o R-22 em 2026-08-18.** Logo após o `systemctl restart`, o
+      `/metrics` devolvia `vacancy_candidate_imports_total 0.0`. Não é bug do R-22: o
+      `prometheus_client` guarda os contadores **em memória do processo**, então:
+
+      - **todo deploy zera a telemetria** — e o CD reinicia o serviço a cada release;
+      - com mais de um worker do gunicorn, **cada um teria a sua contagem**, e o scraper
+        veria valores oscilando conforme o worker que atendeu.
+
+      Hoje roda 1 worker, então o segundo problema está latente, não ativo. As métricas
+      do D-8 servem para observar **uma execução**, não para série histórica — e é bom
+      que isso esteja escrito antes de alguém montar um gráfico em cima delas.
+
+      **Solução conhecida:** `prometheus_client` em modo multiprocess
+      (`PROMETHEUS_MULTIPROC_DIR`), que agrega os workers em arquivos no disco. Resolve
+      o segundo problema; o primeiro é inerente a contador em memória e só some com
+      armazenamento externo.
+  - [ ] Decidir se vale — depende de alguém realmente consumir `/metrics`
+  - Status: não iniciado · Notas: registrado como achado, **não como compromisso**.
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -2689,6 +2719,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-22** | `settings.METRICS_TOKEN` novo; `metrics_view` passa a exigir o token em `X-Metrics-Token` ou `Authorization: Bearer` quando a variável está preenchida. 10 testes novos. README e `DEPLOY_LIGHTSAIL.md` (seção 11.1 nova + checklist). Nenhuma migration. | Duas. (1) **O fechamento não é o deploy, é o `.env`.** Com `METRICS_TOKEN` vazio o endpoint continua aberto de propósito — expand-contract sem segundo deploy: sobe o código, configura o scraper, depois preenche a variável e reinicia. Como não achei nenhum scraper no repositório, o passo do meio pode ser vazio, mas o desenho não depende de eu saber isso. (2) Aceitar `Authorization: Bearer` além do header customizado saiu de graça e evita configuração exótica no Prometheus, que manda esse header nativamente (`authorization` no `scrape_config`). A comparação usa `hmac.compare_digest`, não `==`. |
 | 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
 | 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
+| 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
 
 ---
 
@@ -2700,34 +2731,22 @@ cobertura **75,53%**.
 
 **`develop` está limpa** — nada esperando release.
 
-## As três verificações em produção que ficaram abertas
+## ✅ As três verificações de produção fecharam (2026-08-18)
 
-Nenhuma delas dá para eu fazer daqui. Em uma linha só cada, porque colar comando de
-várias linhas no `dbshell` falha:
+`/metrics` devolve 401 sem token e 200 com token, testado de fora. O índice do R-25 é
+válido e o `EXPLAIN` mostra `Bitmap Index Scan on core_candidate_linkedin_upper` numa
+tabela de **746 candidatos** — o ganho é imediato, não só preventivo. Detalhes no registro
+de execução.
 
-**1. O índice do R-25 é válido?**
-
-```
-python manage.py dbshell -- -c "SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT indisvalid;"
-```
-
-Resultado esperado: **nenhuma linha**. Se aparecer `core_candidate_linkedin_upper`, o
-índice ficou INVALID e precisa de `DROP INDEX CONCURRENTLY` e novo deploy.
-
-**2. O índice está sendo usado?**
+**Sobrou uma pendência operacional, não de código:** a `GEMINI_API_KEY` e o `METRICS_TOKEN`
+apareceram em texto claro durante a verificação (um `tail -3 .env` mal escolhido) e
+**precisam ser rotacionados**. Enquanto não forem, valem como comprometidos:
 
 ```
-python manage.py dbshell -- -c "EXPLAIN SELECT id FROM core_candidate WHERE UPPER(linkedin_url::text) = UPPER('https://www.linkedin.com/in/alguem');"
+sed -i "/^GEMINI_API_KEY=/d" .env && echo "GEMINI_API_KEY=A_CHAVE_NOVA" >> .env
+sed -i "/^METRICS_TOKEN=/d" .env && python -c "import secrets; print('METRICS_TOKEN=' + secrets.token_urlsafe(32))" >> .env
+sudo systemctl restart talent_rank_ai
 ```
-
-Esperado: **Index Scan** usando `core_candidate_linkedin_upper`. Se vier `Seq Scan`, pode
-ser só tabela pequena demais para o planner se importar — nesse caso o índice está certo
-e o ganho é preventivo.
-
-**3. Fechar o `/metrics` (R-22).** O endpoint **continua público** depois do deploy, de
-propósito. Fechar é configuração, sem novo deploy — seção 11.1 do `DEPLOY_LIGHTSAIL.md`:
-gerar o token, pôr `METRICS_TOKEN=` no `.env`, reiniciar o serviço e conferir que `curl`
-sem token dá 401 e com token dá 200.
 
 ## E a verificação que destrava o R-20b
 
