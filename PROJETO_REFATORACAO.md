@@ -14,7 +14,7 @@
 | **Foco** | Global |
 | **Itens no backlog** | 39 (29 originais + 10 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | **Ondas 0 e 1 completas e em produção** · 15 itens · PRs #13 a #35 |
+| **Executado** | **Ondas 0, 1 e 2 em produção** · 24 itens · PRs #13 a #46 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -1515,7 +1515,7 @@ Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
 | Violações de ruff | 0 | 0 | **0** | ✅ |
 | Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
 | Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
-| Queries em `/relatorios/` | ~500 | 2 | **~500** | ⏳ Onda 5 |
+| Queries em `/relatorios/` | ~500 | 2 | **não escala** | ✅ |
 | Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
 
 **Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
@@ -1974,8 +1974,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         `views.py`, e o `import_service.py` é o recorte literal, feito por script
   - [x] Suíte completa verde — 235 testes, sem alteração em nenhum
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#41**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: `core/services/` criado com os **12 blocos** de
@@ -2004,8 +2004,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] 25 testes escritos e passando contra o código atual, sem alterá-lo
   - [x] Suíte completa verde — 260 testes, cobertura **72,08%**
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#42**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: cobrem os 9 filtros do banco de talentos (cada um
     parametrizado), combinação, valor em branco, o dict `filters` do template, paginação
@@ -2033,8 +2033,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] **Os 25 testes de filtro do R-38 passam sem alteração** — 260/260
   - [x] Suíte completa verde
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#43**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — 3 filtros + paginação preservando os filtros
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: `core/filters.py` com `collect_filters(request,
@@ -2064,8 +2064,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Movimentação aplicada
   - [x] Suíte completa verde — 272 testes, cobertura 72,58%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#44**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — busca booleana gera a mesma string de antes
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: `domain/job_description.py` e
@@ -2093,8 +2093,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — 272 testes, cobertura 72,64%
   - [x] Lint e format verdes — nenhum import quebrado
   - [x] README atualizado (as duas menções a `pdf_extractor`)
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#45**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — importação de ponta a ponta
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: `pdf_extractor.py` deixou de existir. Virou
@@ -2144,41 +2144,79 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [ ] **R-18** · Fechar conexões de banco nas threads
       risco: baixo · 3h · produção: transparente · PR: ~20 linhas / 1 arquivo
       pré-requisito: R-14
-  - [ ] Correção aplicada + teste
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Correção aplicada + 14 testes
+  - [x] Suíte completa verde — 286 testes, cobertura 73,27%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `pg_stat_activity` volta ao patamar após importação
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: em vez de repetir `try/finally` nas 4 funções,
+    criei o decorator `background_job` — fecha na entrada e no `finally`, num lugar só.
+
+    Fecha **na entrada** também porque a thread herda o estado do processo e pode pegar
+    uma conexão já expirada pelo `CONN_MAX_AGE`. E o `finally` é o que importa de
+    verdade: é justamente quando o job estoura que a conexão ficaria pendurada.
+
+    **O teste que mais vale não é o do decorator, é o que verifica que as 4 funções
+    estão decoradas.** O modo de falha real aqui não é o decorator estar errado — é
+    alguém adicionar um job novo daqui a três meses e esquecer de decorá-lo. O teste é
+    parametrizado sobre as 4 e falha com mensagem explícita.
 
 - [ ] **R-19** · 🐛 [BUGFIX] Chave de cache de importação do pool por usuário
       risco: baixo · 3h · produção: **requer cuidado (P-3)** · PR: ~30 linhas / 3 arquivos
       pré-requisito: R-14
-  - [ ] Confirmado que não há importação rodando no momento do deploy
-  - [ ] Teste de regressão com 2 usuários — falha antes, passa depois
-  - [ ] Correção aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [ ] ⚠️ Confirmado que não há importação rodando no momento do deploy — **depende de
+        você, na hora de subir** (P-3)
+  - [x] Teste de regressão com 2 usuários — **falha antes, passa depois**
+  - [x] Correção aplicada
+  - [x] Suíte completa verde — 290 testes, cobertura 73,38%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — 2 contas importando, cada uma vê seu progresso
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a chave era a string fixa
+    `"talent_pool_import_status"`, sem `user_id`. Virou
+    `talent_pool_import_status_{user_id}`, e o setter passou a receber o usuário.
+
+    4 testes de regressão, todos falhando antes: dois usuários não se sobrescrevem, a
+    chave carrega o id, e o endpoint de status **não vaza a importação de outra conta**
+    nem deixa de ver a própria.
+
+    ⚠️ **P-3 continua valendo:** no momento do deploy, qualquer progresso gravado sob a
+    chave antiga fica órfão e a tela volta a "idle". Sem perda de dado — a importação em
+    si continua —, mas a barra some. Subir quando não houver importação rodando.
 
 - [ ] **R-20a** · Estado do job no banco — modelo + escrita dupla
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~120 linhas / 3 arquivos
       pré-requisito: R-18, R-19
-  - [ ] Migration criada (tabela nova, vazia — ninguém lê ainda)
-  - [ ] Escrita dupla (cache + banco) aplicada
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Migration criada (tabela nova, vazia — ninguém lê ainda) — `0021_importjob`
+  - [x] Escrita dupla (cache + banco) aplicada nos **3 fluxos** de importação/ranking
+  - [x] Suíte completa verde — 301 testes, cobertura 73,69%
+  - [x] Lint e format verdes · `makemigrations --check` sem pendências
   - [ ] PR aberto e revisado
   - [ ] Implantado — migration antes do código
   - [ ] Verificado em produção — tabela sendo populada em uma importação real
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: **a primeira migration do projeto de refatoração.**
+    Os três deploys anteriores foram `No migrations to apply`; o próximo não será.
+    Tabela nova e vazia, ninguém lê dela — o `deploy.yml` roda `migrate` antes de o
+    código novo servir tráfego, então o risco é o menor possível.
+
+    **Desvio da especificação, deliberado:** o plano listava os campos
+    `(user, job, status, processed, total, started_at, heartbeat_at, error)`. Faltava
+    distinguir os fluxos: importação em vaga e busca no pool **têm as duas** `job`
+    preenchido, então `job is None` não separa. Adicionei `kind` com três valores.
+
+    **Escopo:** os 3 jobs com progresso. O `_run_parecer_generation` ficou de fora — não
+    é importação e não tem `processed`/`total`; forçá-lo no modelo seria distorcer a
+    tabela para caber um caso que não é o dela.
+
+    **A garantia que mais testei não é a escrita, é o contrário:** rastreamento não pode
+    derrubar o job. Os três helpers engolem exceção, e há teste provando que a importação
+    **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
+    expand, perder uma linha não custa nada; perder uma importação custa.
 
 - [ ] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos
@@ -2252,16 +2290,34 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-24** · `reports`: trocar ~500 queries por 2 agregações
       risco: baixo · 0,5d · produção: transparente · PR: ~100 linhas / 2 arquivos
-  - [ ] Teste que fixa a saída atual do contexto escrito primeiro
-  - [ ] Refatoração aplicada
-  - [ ] `assertNumQueries` provando a redução
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Teste que fixa a saída atual do contexto **escrito primeiro** — 8 testes,
+        passando contra o código antigo antes de eu tocar na view
+  - [x] Refatoração aplicada
+  - [x] Contagem de queries provando a redução — **130 queries com 12 vagas → 20**,
+        o mesmo número de 1 vaga
+  - [x] Suíte completa verde — 310 testes, cobertura 75,13%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `/relatorios/` com os mesmos números de antes
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: o laço aninhado virou uma agregação única
+    (`.values("job_id", "pipeline_status").annotate(Count("id"))`) montada em dicionário.
+
+    **A medição confirmou o diagnóstico na mosca:** 130 queries com 12 vagas contra 20
+    com 1 — exatos 10 por vaga, como o D-9 dizia. Com 50 vagas seriam ~500.
+
+    **O teste afirma escala, não um número fixo:** "o número de queries com 12 vagas tem
+    que ser igual ao de 1". Não quebra quando alguém adicionar uma query legítima à tela,
+    mas quebra na hora se o laço aninhado voltar. Há um limite absoluto de 25 junto, só
+    para o número não subir despercebido.
+
+    Um quirk que os characterization tests fixaram e a otimização precisou preservar:
+    `total_candidates` conta **todos** os vínculos, inclusive os sem etapa de funil
+    preenchida — a soma do funil pode ser menor que o total, e isso é correto. Um
+    `sum(por_etapa.values())` ingênuo sobre só as etapas conhecidas teria mudado o número.
+
+    Piso do CI 72 → 75.
 
 - [ ] **R-25** · Índice funcional para `linkedin_url__iexact`
       risco: baixo · 2h · produção: **requer cuidado (P-7)** · PR: ~25 linhas / 1 arquivo
@@ -2277,16 +2333,28 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-26** · `CandidateJob.save()`: evitar a query extra
       risco: baixo · 3h · produção: transparente · PR: ~35 linhas / 2 arquivos
-  - [ ] Refatoração aplicada
-  - [ ] Os 13 testes de `test_models.py` passam sem alteração
-  - [ ] `assertNumQueries` provando 1 query a menos
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Refatoração aplicada
+  - [x] **Os 13 testes de `test_models.py` passam sem alteração**
+  - [x] Contagem de queries provando 1 a menos — **2 → 1** no save comum
+  - [x] Suíte completa verde — 318 testes, cobertura 75,19%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — status "Candidato pronto" preenche a data
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **em andamento** · Notas: a leitura do status anterior saiu do topo do
+    `save()` e foi para dentro do único ramo que a usa. **Duas condições, não uma:** só
+    consulta quando o status novo é "Candidato pronto" **e** o `ready_at` já está
+    preenchido — se ainda não está, a marcação acontece de qualquer jeito e a consulta
+    seria desperdício.
+
+    Onde isso pesa: a importação grava aderência para **cada candidato de cada lote**, e
+    cada gravação levava a leitura extra junto.
+
+    3 testes de custo, todos vermelhos antes (salvar aderência, salvar parecer, mover
+    para etapa intermediária), mais 1 provando que a consulta **continua acontecendo**
+    no caso em que ela se paga — otimização que some com o caso legítimo não é
+    otimização, é bug.
 
 - [ ] **Onda 5 concluída** — relatórios em 2 queries, upsert indexado
 
@@ -2405,8 +2473,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Testes escritos e passando contra o código atual, **sem alterá-lo**
   - [x] Suíte completa verde — **235 testes**, cobertura **62,30%**
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#39**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: 19 testes em `test_search_pool.py`, cobrindo
     seleção (vinculado é pulado, `user_id` vs `shared_pool`, `candidate_ids`), caso
@@ -2432,8 +2500,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] `search_and_rank_candidates_from_pool` convertida
   - [x] **Os 19 testes do R-33 passam SEM nenhuma alteração** — 235/235
   - [x] Suíte completa verde · Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#40**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — buscar candidatos do banco numa vaga, com e sem PDF
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: `for batch_start in range` cai de **3 para 1** —
@@ -2476,8 +2544,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         `TestTheThreeNormalizersDiverge` virou `TestTheThreeNormalizersAreNowOne`
   - [x] Suíte completa verde — 216 testes, cobertura **55,94%**
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#38**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Verificado em produção — filtrar com espaço sobrando encontra o candidato
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: três normalizações viram uma. `unicodedata` sai do
@@ -2510,8 +2578,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Vermelho antes / verde depois provado
   - [x] Suíte completa verde — 215 testes, cobertura 54,28%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#37**, CI verde
+  - [x] Implantado — **2026-08-17**, PR #46, deploy `d3e9394`
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: a ordem fixa (array sempre antes de objeto) virou
     **"vence quem começa antes no texto"**, com fallback para a outra estrutura se o
@@ -2571,6 +2639,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-33** | 19 characterization tests de `search_and_rank_candidates_from_pool` em `test_search_pool.py` — a última função grande sem teste (309 linhas). Nenhuma linha de aplicação alterada. Piso do CI 55 → 62. | **`pdf_extractor.py` foi de 57% para 88%** e a cobertura total de 55,94% para **62,30%**, ultrapassando a meta da seção 10 com folga. Comportamento fixado que vale conhecer: **o registro do PDF no banco não basta, o arquivo tem que existir em disco** — um `media/` limpo sem limpar o banco não quebra a busca, o candidato só passa a ser avaliado pelos dados estruturados, em silêncio. Destrava a conversão do 3º laço para `_process_in_batches`, que ficou de fora do R-10 por não ter rede. |
 | 2026-08-17 | **R-37** | 3º laço convertido para `_process_in_batches`. `for batch_start in range` cai de **3 para 1** — D-3 fechado por completo. `pdf_extractor.py` 779 → **590 linhas**, cobertura do arquivo 88% → **91%**. Extraído `_resume_path()`. | **Os 19 testes do R-33 passaram sem tocar em uma linha** — o item foi escrito ontem justamente para isto. O `_process_in_batches` precisou de **2 parâmetros novos, não 3**: `is_incomplete` (era fixo em `name`/`linkedin_url`, e dicionário de aderência não tem nenhum dos dois — tudo viraria "pulado") e `persist_error_label` ("Erro ao salvar" vs "Erro ao vincular"). O terceiro delta, o sufixo `(erro)` na mensagem de progresso, foi **eliminado em vez de parametrizado**: os dois fluxos passam a marcar a falha ao vivo, o que o fluxo de vaga não fazia. Cobertura total 62,30% → 62,18%, mesmo efeito do R-10 — o duplicado removido estava coberto. |
 | 2026-08-17 | **R-14** | `core/services/` criado. Os **12 blocos** de orquestração saem do `views.py`: as 4 funções `_run_*`, as 4 chaves de cache e os 4 setters de status. `views.py` **975 → 837 linhas** (−187/+15). | Movimentação feita por **script**, recortando blocos inteiros em vez de transcrever — é o que garante o diff revisável como recorte e cola, que era o critério do item. Nenhum corpo de função reescrito; 235 testes passando sem alteração. **Uma exceção documentada:** `_run_parecer_generation` chama `_build_job_description`, que ainda mora no `views.py`; import de módulo criaria ciclo, então ficou como **import adiado dentro da função**, com comentário apontando o R-16 — que move essa função para `domain/` e desfaz o remendo. |
+| 2026-08-17 | **R-38** | 25 characterization tests de filtros e paginação (T-6). Piso do CI 62 → 72. | **Pré-requisito real do R-15, que faltava.** O R-15 declarava depender de "R-19 (testes de filtro)", mas o R-19 é o bugfix de chave de cache — referência quebrada no plano. O T-6 da seção 6 nunca virou item, e não existia um único teste tocando em filtro ou querystring: refatorar as views sem rede seria mexer no escuro no que a usuária usa o dia inteiro. Cobertura 62,18% → **72,08%**, `views.py` 22% → 47%. Fixados dois comportamentos que o R-15 não podia quebrar: a querystring de paginação já vem com `&` na frente, e entrar na vaga sem parâmetro nenhum **redireciona** para a última busca salva. Um teste meu saiu flaky (`auto_now` empata na resolução do SQLite) — reescrito com `.update()` e confirmado em duas rodadas completas. |
+| 2026-08-17 | **R-15** | `core/filters.py` com `collect_filters`. Os 9 `if` do banco de talentos e os 6 da tela da vaga viram laços sobre dicionários de especificação. `views.py` 837 → **746 linhas**. | Os 25 testes do R-38 passaram sem alteração. **Achado:** o `filter_keys` da tela da vaga era um `set` literal, então a ordem dos parâmetros na URL do redirect de filtro salvo variava entre reinícios do servidor (hash randomization). Virou tupla ordenada. Piso do CI 72 → 71: a cobertura caiu para 71,41% porque 90 linhas cobertas saíram do `views.py` — mesmo efeito do R-10 e do R-37, nenhum teste perdido. |
+| 2026-08-17 | **R-16** | `domain/job_description.py` e `domain/boolean_search.py`. As funções recebem **campos**, não o objeto `Job`. `views.py` 746 → **692 linhas**. Piso 71 → 72. | A garantia crítica do item era a string sair byte a byte igual — ela vai direto no prompt, e mudá-la mudaria o ranking de todos os candidatos. Capturei as strings **rodando a implementação antiga** e colei literalmente em `test_job_prompts.py`: 12 testes golden que rodam **sem banco e sem HTTP, em 0,06s**. Antes, testar a montagem do prompt exigia subir uma request — que é por que nunca tinha sido testada. Desfez o remendo do R-14 (import adiado para evitar ciclo). Um teste do R-13 mudou de alvo: `views` não consome mais o dicionário de sinônimos, quem consome é `domain.boolean_search`. |
+| 2026-08-17 | **R-17** | `pdf_extractor.py` deixa de existir: vira `services/candidate_import.py` (579 linhas) e `core/pdf.py` (59). O `_prepare_uploaded_files` veio junto do `views.py`. `views.py` 692 → **665 linhas**. README atualizado. | O nome mentia desde o começo: depois do R-03 e do R-37, o que sobrava não extraía PDF, coordenava importação. **Armadilha na movimentação:** havia um `from .models import ...` **dentro de uma função** — import adiado que o script de recorte não pegou por não estar no topo. Com o módulo um nível mais fundo virou `core.services.models` e 19 testes quebraram de uma vez. É o tipo de coisa que a suíte pega e a revisão de diff não. |
+| 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
 
 ---
 

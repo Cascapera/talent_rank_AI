@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 import threading
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -174,7 +175,9 @@ def talent_pool(request):
             prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
-                _set_talent_pool_import_status({"status": "running", "processed": 0, "total": 0})
+                _set_talent_pool_import_status(
+                    request.user.id, {"status": "running", "processed": 0, "total": 0}
+                )
                 thread = threading.Thread(
                     target=_run_talent_pool_import,
                     args=(temp_dir, False, request.user.id, shared_pool),
@@ -241,7 +244,7 @@ def talent_pool(request):
         "shared_pool": shared_pool,
         "filters": filters.values,
         "query_string": filters.query_string,
-        "import_status": cache.get(_talent_pool_import_status_key()),
+        "import_status": cache.get(_talent_pool_import_status_key(request.user.id)),
     }
     return render(request, "core/talent_pool.html", context)
 
@@ -250,7 +253,7 @@ def talent_pool(request):
 @required_plan("BASIC")
 def talent_pool_import_status(request):
     """Endpoint AJAX para status da importação do banco de talentos."""
-    payload = cache.get(_talent_pool_import_status_key()) or {"status": "idle"}
+    payload = cache.get(_talent_pool_import_status_key(request.user.id)) or {"status": "idle"}
     return JsonResponse(payload)
 
 
@@ -295,20 +298,34 @@ def reports(request):
     ]
     pipeline_labels = dict(CandidateJob.PipelineStatus.choices)
 
+    # D-9: isto era um laço aninhado — para cada vaga, um `count()` do total, oito dos
+    # estágios do funil e mais um dos contratados. 10 queries por vaga, sobre até 50
+    # vagas. Uma agregação única resolve, e o custo passa a não depender do número de
+    # vagas — que é o que `test_the_funnel_does_not_scale_with_the_number_of_jobs` trava.
+    jobs_page = list(jobs_qs.order_by("-created_at")[:50])
+    contagens: dict[int, dict[str, int]] = defaultdict(dict)
+    for linha in (
+        CandidateJob.objects.filter(job_id__in=[job.id for job in jobs_page])
+        .values("job_id", "pipeline_status")
+        .annotate(cnt=Count("id"))
+    ):
+        contagens[linha["job_id"]][linha["pipeline_status"]] = linha["cnt"]
+
     jobs_with_funnel = []
-    for job in jobs_qs.order_by("-created_at")[:50]:
-        links = job.candidate_links
-        total_in_job = links.count()
-        funnel = []
-        for ps in pipeline_status_order:
-            cnt = links.filter(pipeline_status=ps).count()
-            funnel.append({"label": pipeline_labels.get(ps, ps), "count": cnt})
+    for job in jobs_page:
+        por_etapa = contagens.get(job.id, {})
         jobs_with_funnel.append(
             {
                 "job": job,
-                "total_candidates": total_in_job,
-                "funnel": funnel,
-                "hired": links.filter(pipeline_status=CandidateJob.PipelineStatus.HIRED).count(),
+                # Soma TODOS os vínculos, inclusive os sem etapa preenchida — é o que o
+                # `links.count()` fazia. A soma do funil pode ser menor que este total,
+                # e isso é correto.
+                "total_candidates": sum(por_etapa.values()),
+                "funnel": [
+                    {"label": pipeline_labels.get(ps, ps), "count": por_etapa.get(ps, 0)}
+                    for ps in pipeline_status_order
+                ],
+                "hired": por_etapa.get(CandidateJob.PipelineStatus.HIRED, 0),
             }
         )
 

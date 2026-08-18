@@ -170,17 +170,80 @@ class CandidateJob(models.Model):
     def save(self, *args, **kwargs):
         from django.utils import timezone
 
-        previous_status = None
-        if self.pk:
-            previous_status = (
-                CandidateJob.objects.filter(pk=self.pk)
-                .values_list("pipeline_status", flat=True)
-                .first()
-            )
+        # D-10: a leitura do status anterior acontecia em TODO save — inclusive nos que
+        # não têm nada a ver com o funil, como gravar um parecer ou uma aderência. Ela
+        # só importa em um caso, e agora só acontece nele (R-26).
         if self.pipeline_status == self.PipelineStatus.CANDIDATE_READY:
-            if not self.ready_at or previous_status != self.PipelineStatus.CANDIDATE_READY:
+            marcar = not self.ready_at
+            if not marcar:
+                # Só aqui a consulta se paga: o candidato já tem data e precisamos saber
+                # se ele *acabou* de entrar em "pronto" ou já estava.
+                anterior = None
+                if self.pk:
+                    anterior = (
+                        CandidateJob.objects.filter(pk=self.pk)
+                        .values_list("pipeline_status", flat=True)
+                        .first()
+                    )
+                marcar = anterior != self.PipelineStatus.CANDIDATE_READY
+            if marcar:
                 now_date = timezone.now().date()
                 self.ready_at = now_date
                 if self.candidate_id:
                     Candidate.objects.filter(id=self.candidate_id).update(ready_at=now_date)
         super().save(*args, **kwargs)
+
+
+class ImportJob(models.Model):
+    """Estado de um job de background, no banco (R-20a).
+
+    Hoje o progresso vive **só no cache**, com TTL de 1h e sem dono claro. O problema
+    real (D-6): o deploy roda `systemctl restart`, as threads são `daemon` e morrem sem
+    executar o `finally` — o status fica `"running"` no cache por uma hora e a
+    recrutadora olha uma barra de progresso parada, sem erro em lugar nenhum.
+
+    Esta tabela é a etapa **expand** do expand-contract: por enquanto ninguém lê daqui.
+    O código escreve no cache **e** aqui; a leitura continua no cache. O R-20b move a
+    leitura e passa a exibir "interrompido" quando o `heartbeat_at` para de andar.
+
+    `job` é nulo para importação no banco de talentos, que não pertence a vaga nenhuma.
+    """
+
+    class Kind(models.TextChoices):
+        VACANCY_IMPORT = "VACANCY_IMPORT", "Importação em vaga"
+        TALENT_POOL_IMPORT = "TALENT_POOL_IMPORT", "Importação no banco de talentos"
+        POOL_SEARCH = "POOL_SEARCH", "Busca no banco de talentos"
+
+    class Status(models.TextChoices):
+        RUNNING = "RUNNING", "Em andamento"
+        COMPLETED = "COMPLETED", "Concluída"
+        ERROR = "ERROR", "Falhou"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="import_jobs",
+    )
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="import_jobs",
+        null=True,
+        blank=True,
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.RUNNING)
+    processed = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    # Atualizado a cada passo do job. É o que permite ao R-20b distinguir "ainda
+    # trabalhando" de "morreu no meio" — um `status=RUNNING` com heartbeat velho.
+    heartbeat_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["user", "kind", "-started_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} #{self.pk} ({self.status})"
