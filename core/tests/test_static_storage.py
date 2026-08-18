@@ -6,19 +6,32 @@ um upgrade inteiro. Nada quebra quando isso acontece — so para de comprimir e 
 """
 
 import importlib
+import sys
 
 import pytest
 
+MODULO = "talent_query.settings"
+
 
 def _recarrega_settings(monkeypatch, debug: str):
-    """Reimporta o settings com um DJANGO_DEBUG escolhido.
+    """Importa o settings do zero com um DJANGO_DEBUG escolhido.
 
-    `load_dotenv` e neutralizado porque ele roda com override=True: um `.env` local
-    decidiria o valor de DEBUG no lugar do teste.
+    Import limpo e não `reload`: o reload reexecuta o módulo no namespace existente, então
+    um atributo definido só no ramo `not DEBUG` sobreviveria à carga seguinte com
+    DEBUG=True. Hoje nenhuma asserção daqui cairia nessa armadilha; ela ficaria armada
+    para a próxima pessoa (foi o que aconteceu no R-21).
+
+    `load_dotenv` é neutralizado porque roda com override=True: um `.env` local decidiria
+    o valor de DEBUG no lugar do teste.
     """
     monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
     monkeypatch.setenv("DJANGO_DEBUG", debug)
-    return importlib.reload(importlib.import_module("talent_query.settings"))
+    anterior = sys.modules.pop(MODULO, None)
+    try:
+        return importlib.import_module(MODULO)
+    finally:
+        if anterior is not None:
+            sys.modules[MODULO] = anterior
 
 
 class TestBackendDeEstaticos:

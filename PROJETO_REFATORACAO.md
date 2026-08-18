@@ -2299,21 +2299,44 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 4 — Segurança e configuração de produção
 
-- [ ] **R-21** · Endurecer settings de produção
+- [~] **R-21** · Endurecer settings de produção
       risco: **alto se o `.env` do servidor estiver incompleto** · 3h
       produção: **requer cuidado (P-5)** · PR: ~40 linhas / 2 arquivos
-  - [ ] **`grep DJANGO_SECRET_KEY` no `.env` do servidor retorna chave real**
-  - [ ] **HTTPS confirmado funcionando no domínio** (cookies Secure dependem disso)
-  - [ ] Janela de baixo uso escolhida
-  - [ ] Mudança aplicada
-  - [ ] `manage.py check --deploy` sai de 6 avisos para ≤1
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [ ] ⛔ **`grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` retorna 1** —
+        **bloqueia o release**, não o código. Se der 0, a aplicação não sobe depois do
+        deploy. Comando de correção na seção 8.1 do `DEPLOY_LIGHTSAIL.md`.
+  - [x] **HTTPS confirmado funcionando no domínio** — `https://talentrankai.com/` responde
+        200, verificado em 2026-08-18
+  - [x] Janela de baixo uso — **15 dias sem usuária**, até ~2026-09-02
+  - [x] Mudança aplicada
+  - [x] `manage.py check --deploy` sai de **5 avisos para 2** — e os 2 que sobraram são
+        recusas conscientes, não esquecimento: `SECURE_HSTS_INCLUDE_SUBDOMAINS` derrubaria
+        qualquer subdomínio fora de HTTPS, e `SECURE_HSTS_PRELOAD` é praticamente
+        irreversível. **Não silenciei** — os dois devem voltar à mesa quando o HSTS subir
+        de 1 hora para 1 ano.
+  - [x] Suíte completa verde — 377 testes, cobertura 79,82%
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `systemctl status` OK + login completo + cookies Secure
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto, release bloqueado pela conferência do `.env`** · Notas:
+
+    **O HSTS começa em 1 hora, não em 1 ano.** O navegador **memoriza** o prazo: publicar
+    um ano e descobrir um problema no HTTPS deixaria a usuária sem acesso, sem nada que o
+    servidor pudesse fazer. Uma hora dá o mesmo benefício prático e expira sozinha. Sobe
+    por `SECURE_HSTS_SECONDS` depois de o deploy provar estabilidade.
+
+    **Desvio do item, deliberado:** ele mandava o `SECURE_PROXY_SSL_HEADER` "deixar de vir
+    ligado por default". Ligado fora de `DEBUG`, e não só quando a variável existir — o
+    `SECURE_SSL_REDIRECT` depende dele para saber que a requisição já chegou por HTTPS.
+    Seguir a letra do item deixaria o site em **laço infinito de redirect** se o `.env` do
+    servidor não tivesse `DJANGO_SECURE_PROXY_SSL`. O default agora acompanha o `DEBUG`.
+
+    **Achado de graça:** o `ci.yml` exportava `SECRET_KEY` e `DEBUG`, nomes que o
+    `settings.py` **não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas
+    variáveis nunca tiveram efeito nenhum. Corrigido aqui, que é quando passaram a
+    importar de verdade.
 
 - [~] **R-22** · Proteger o endpoint `/metrics`
       risco: baixo · 2h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
@@ -2844,6 +2867,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-27 e R-40 → produção** | 6º release (PR #62): `76f8e32` → `99018df`. CD limpo. `No migrations to apply` e `1 static file copied, 130 unmodified, **387 post-processed**`. Confirmado de fora: a home serve `/static/img/logo.334f5c205457.png` e `job_detail.b75f1bbb634b.js` responde 200 com 29.654 bytes. | **Três, e uma delas me desmente.** (1) **A compressão já existia — eu estava errado.** Escrevi no R-40 que sem o Whitenoise ativo 'todo CSS e JS ia pela rede sem compressão'; o `curl` mostra `Content-Encoding: gzip` no `/static/`, porque quem serve ali é o **Nginx**, não o Whitenoise, e ele já comprimia. O ganho real do R-40 é o **hash no nome**, não a compressão. (2) **Não dá para prever o hash a partir de um checkout Windows:** meu arquivo local é CRLF e o do servidor é LF, então os hashes diferem (`1a1dd8a7bcfa` contra `b75f1bbb634b`) e a primeira URL que testei deu 404. O conteúdo é o mesmo; o fim de linha não. (3) **O Nginx serve `/static/` sem `expires`**, então o cache imutável que o hash permite ainda não está sendo usado — virou follow-up colado no R-23. |
 | 2026-08-18 | **R-41** 🐛 | POST/Redirect/GET nas 3 branches de POST de `talent_pool` e `job_detail`. `import_message` sai do contexto e dos 2 templates, substituído pelo `messages` do Django, que o `base_logged.html` já renderizava. 8 testes de regressão, 7 vermelhos antes. Piso do CI 75 → 78. | **Duas. (1) O bug foi achado pelo item anterior, não por alguém procurando.** A primeira importação real depois do R-20a gravou **duas linhas para 1 PDF**, porque o dono deu F5 e o browser remandou o multipart. Antes da tabela isso era invisível: as duas threads escreviam na mesma chave de cache e uma tapava a outra. É o argumento do expand-contract se pagando — a etapa *expand* já rendeu um bug real antes de a leitura sequer migrar. **(2) A guarda óbvia é a errada agora.** "Não iniciar se já houver uma importação RUNNING" parece a correção completa, mas depende de distinguir vivo de morto — sem isso, uma linha órfã de um restart travaria a importação para sempre, que é o próprio D-6. Fica para depois do R-20b, e está escrito no item. |
 | 2026-08-18 | **R-20b** | A leitura do status sai do cache e vai para o `ImportJob`. Campo `payload` novo (migration `0023`), `start_import_job` passa a ser chamada **pela view**, os 3 endpoints de poll e os 3 contextos de template leem do banco. Job `RUNNING` com heartbeat velho vira "interrompido". 10 testes novos; 366 no total, cobertura **79,82%**. | **Duas surpresas na especificação, achadas antes de escrever código. (1) O item mandava remover o cache, mas a tabela não tinha onde guardar o que a tela mostra** — o contador de erros ao vivo e o resumo final do R-32 só existiam no payload do cache. Sem um campo novo, o "contract" apagaria da tela o que um item anterior colocou lá. Resolvido com um JSONField que guarda **o mesmo dicionário, na mesma forma**: zero linha de JS alterada. **(2) Havia uma corrida escondida na ordem das operações:** a view escrevia `running` no cache **antes** de disparar a thread, e isso não era decoração — o primeiro poll chega ~2s depois, e sem a linha o endpoint responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. A criação subiu para a view. Terceiro achado, este de medida: o heartbeat é escrito **por lote**, então o limiar de morte tem que ser maior que o lote mais lento — 15 min contra os ~12 que um lote de 10 PDFs pode levar legitimamente. |
+| 2026-08-18 | **R-21** | `DEBUG` passa a ter default **False**; sem `DJANGO_SECRET_KEY` fora de `DEBUG` a aplicação **levanta `ImproperlyConfigured` e não sobe**; cookies `Secure`, `SECURE_SSL_REDIRECT` e HSTS de 1h ligados fora de `DEBUG`. `check --deploy`: **5 → 2 avisos**. 11 testes novos; 377 no total. | **Três. (1) Seguir a letra do item derrubaria o site.** Ele mandava o `SECURE_PROXY_SSL_HEADER` deixar de vir ligado por default — mas o `SECURE_SSL_REDIRECT` depende dele para saber que a requisição chegou por HTTPS. Sem o header, o Nginx encaminha em HTTP, o Django redireciona para HTTPS e o site entra em **laço infinito**. O default passou a acompanhar o `DEBUG` em vez de sumir. **(2) O `ci.yml` exportava `SECRET_KEY` e `DEBUG`, que o `settings.py` não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas variáveis nunca tiveram efeito; ninguém notou porque nada dependia delas até agora. **(3) `importlib.reload` mente sobre settings condicionais:** ele reexecuta o módulo no namespace existente, então `SESSION_COOKIE_SECURE` definido numa carga com `DEBUG=False` sobrevivia à carga seguinte com `DEBUG=True`, e o teste afirmava o contrário do que verificava. Trocado por import limpo — e corrigido também no teste do R-40, onde a armadilha estava armada sem ainda ter disparado. |
 
 ---
 

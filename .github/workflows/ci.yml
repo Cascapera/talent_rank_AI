@@ -50,8 +50,11 @@ jobs:
       - name: Run tests
         env:
           DJANGO_SETTINGS_MODULE: talent_query.settings_test
-          SECRET_KEY: test-secret-key-for-ci
-          DEBUG: "False"
+          # Os nomes eram SECRET_KEY e DEBUG, que o settings.py nao le — ele le
+          # DJANGO_SECRET_KEY e DJANGO_DEBUG. Ficaram dois anos sem efeito nenhum.
+          # Corrigido no R-21, que e quando passaram a importar de verdade.
+          DJANGO_SECRET_KEY: chave-somente-para-o-ci
+          DJANGO_DEBUG: "True"
         run: |
           python manage.py migrate --noinput
           pytest --cov=core --cov-report=xml --cov-fail-under=78 -v

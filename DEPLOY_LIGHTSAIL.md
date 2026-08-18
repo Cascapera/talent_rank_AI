@@ -110,6 +110,7 @@ nano /var/www/talent_rank_ai/.env
 Conteúdo sugerido:
 
 ```
+# OBRIGATORIA desde o R-21: sem ela, com DJANGO_DEBUG=False, a aplicacao NAO SOBE.
 DJANGO_SECRET_KEY=gerar_uma_chave_segura
 DJANGO_DEBUG=False
 ALLOWED_HOSTS=seudominio.com.br,SEU_IP_PUBLICO
@@ -138,6 +139,32 @@ Gere uma nova SECRET_KEY:
 ```bash
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
+
+---
+
+### 8.1 Antes de subir o R-21 — conferir o `.env` do servidor
+
+O R-21 faz a aplicacao **recusar subir** sem `DJANGO_SECRET_KEY` quando `DJANGO_DEBUG=False`,
+e liga `SECURE_SSL_REDIRECT`. Duas conferencias antes do deploy que traz esse item:
+
+```bash
+grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env    # tem que ser 1
+curl -sI https://SEUDOMINIO/ | head -1                    # tem que ser 200, com HTTPS valido
+```
+
+**Se a primeira der 0, gere a chave antes de mergear:**
+
+```bash
+cd /var/www/talent_rank_ai && source .venv/bin/activate
+python -c "from django.core.management.utils import get_random_secret_key as g; print('DJANGO_SECRET_KEY=' + g())" >> .env
+```
+
+Trocar a `SECRET_KEY` de um servidor que ja rodava **invalida as sessoes**: todo mundo cai
+para a tela de login. Nao ha perda de dado.
+
+O `SECURE_SSL_REDIRECT` depende do `SECURE_PROXY_SSL_HEADER`, que fora de `DEBUG` vem
+ligado por default — o Nginx ja manda `X-Forwarded-Proto` (secao 11). Se algum dia esse
+header sair da configuracao do Nginx, o site entra em **laco de redirect**.
 
 ---
 
@@ -359,6 +386,7 @@ Em **Settings → Secrets and variables → Actions**, crie:
 - [ ] Banco PostgreSQL criado e acessível
 - [ ] `.env` configurado com `POSTGRES_*` e `DJANGO_*`
 - [ ] `METRICS_TOKEN` no `.env` e `curl` sem token devolvendo 401
+- [ ] `DJANGO_SECRET_KEY` no `.env` (obrigatoria desde o R-21) e `manage.py check --deploy` limpo
 - [ ] `migrate` e `collectstatic` executados
 - [ ] Gunicorn ativo via systemd
 - [ ] Nginx proxy ativo

@@ -1,6 +1,15 @@
 """Settings para testes — usa SQLite (não precisa de PostgreSQL)."""
 
-from .settings import *  # noqa: F401, F403
+import os
+
+# R-21: fora de DEBUG a aplicação se recusa a subir sem DJANGO_SECRET_KEY. Estes dois
+# `setdefault` rodam **antes** do import abaixo, que é onde a checagem acontece — sem
+# eles, a suíte não coleta nem um teste. `setdefault` e não `=` para o ambiente poder
+# sobrescrever, se alguém quiser rodar a suíte simulando produção.
+os.environ.setdefault("DJANGO_SECRET_KEY", "somente-para-a-suite-de-testes")
+os.environ.setdefault("DJANGO_DEBUG", "True")
+
+from .settings import *  # noqa: E402, F401, F403
 
 DATABASES = {
     "default": {
