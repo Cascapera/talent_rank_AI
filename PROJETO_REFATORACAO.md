@@ -1124,9 +1124,13 @@ Ganho:       página de relatórios deixa de degradar com o crescimento
 
 [R-25] Índice funcional para linkedin_url__iexact
 Motivação:   D-10 — usado em todo upsert, sem índice que o atenda
-Arquivos:    core/migrations/00XX_*.py (novo)
-O que muda:  índice em `Lower(linkedin_url)` criado com AddIndexConcurrently
+Arquivos:    core/models.py, core/migrations/00XX_*.py (novo)
+O que muda:  índice em `Upper(linkedin_url)` criado com AddIndexConcurrently
              (`django.contrib.postgres.operations`), com `atomic = False` na migration
+             ⚠️ CORRIGIDO EM 2026-08-18: este item dizia `Lower(linkedin_url)` e estava
+             errado. No PostgreSQL o Django compila `iexact` para
+             `UPPER(coluna::text) = UPPER(%s)` — índice em Lower() nunca seria usado.
+             Ver o registro de execução.
 Não muda:    nenhum resultado de query — só o plano de execução
 Pré-requisito: nenhum
 PR:          1 arquivo · ~25 linhas
@@ -1583,8 +1587,8 @@ Status: em andamento — **Ondas 0, 1 e 2 EM PRODUÇÃO**, mais R-18, R-19, R-20
            (Onda 3) e R-24, R-26 (Onda 5). 4 releases: PRs #26, #35, #46, #53.
            `main` em `3320174`.
 Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
-           · 1 com o código pronto e o fechamento dependendo do `.env` de produção
-           (R-22) · o resto no backlog
+           · 2 prontos em `develop` esperando release (**R-22**, cujo fechamento ainda
+           depende do `.env` de produção, e **R-25**) · o resto no backlog
            atualizado em 2026-08-18
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
@@ -1623,8 +1627,8 @@ Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de p
 
 | Métrica | Linha de base | Hoje em `develop` (2026-08-18) |
 |---|---:|---:|
-| Testes | 100 | **328** |
-| Cobertura real | 25% (reportada como 87,62%) | **75,51%** (real) |
+| Testes | 100 | **336** |
+| Cobertura real | 25% (reportada como 87,62%) | **75,53%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -2341,17 +2345,23 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
     Piso do CI 72 → 75.
 
-- [ ] **R-25** · Índice funcional para `linkedin_url__iexact`
+- [~] **R-25** · Índice funcional para `linkedin_url__iexact`
       risco: baixo · 2h · produção: **requer cuidado (P-7)** · PR: ~25 linhas / 1 arquivo
-  - [ ] Migration com `atomic = False` e `AddIndexConcurrently`
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] Migration com `atomic = False` e `AddIndexConcurrently` — `0022`, com guarda de
+        vendor porque a suíte roda em SQLite
+  - [x] **Índice corrigido de `Lower` para `Upper`** — o `iexact` do Django no PostgreSQL
+        é `UPPER()`; em `Lower` o índice nunca seria usado
+  - [x] Suíte completa verde — 336 testes, cobertura 75,53%
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
   - [ ] Verificado em produção — `EXPLAIN` da query de upsert usando Index Scan
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: código pronto, esperando release · Notas: **primeira migration do projeto que
+    não é atômica.** O deploy roda `migrate` e o `CREATE INDEX CONCURRENTLY` não trava
+    escrita, mas se falhar no meio deixa índice INVALID — o comando de limpeza está no
+    cabeçalho da migration e no P-7.
 
 - [ ] **R-26** · `CandidateJob.save()`: evitar a query extra
       risco: baixo · 3h · produção: transparente · PR: ~35 linhas / 2 arquivos
@@ -2667,6 +2677,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-17** | `pdf_extractor.py` deixa de existir: vira `services/candidate_import.py` (579 linhas) e `core/pdf.py` (59). O `_prepare_uploaded_files` veio junto do `views.py`. `views.py` 692 → **665 linhas**. README atualizado. | O nome mentia desde o começo: depois do R-03 e do R-37, o que sobrava não extraía PDF, coordenava importação. **Armadilha na movimentação:** havia um `from .models import ...` **dentro de uma função** — import adiado que o script de recorte não pegou por não estar no topo. Com o módulo um nível mais fundo virou `core.services.models` e 19 testes quebraram de uma vez. É o tipo de coisa que a suíte pega e a revisão de diff não. |
 | 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
 | 2026-08-18 | **R-22** | `settings.METRICS_TOKEN` novo; `metrics_view` passa a exigir o token em `X-Metrics-Token` ou `Authorization: Bearer` quando a variável está preenchida. 10 testes novos. README e `DEPLOY_LIGHTSAIL.md` (seção 11.1 nova + checklist). Nenhuma migration. | Duas. (1) **O fechamento não é o deploy, é o `.env`.** Com `METRICS_TOKEN` vazio o endpoint continua aberto de propósito — expand-contract sem segundo deploy: sobe o código, configura o scraper, depois preenche a variável e reinicia. Como não achei nenhum scraper no repositório, o passo do meio pode ser vazio, mas o desenho não depende de eu saber isso. (2) Aceitar `Authorization: Bearer` além do header customizado saiu de graça e evita configuração exótica no Prometheus, que manda esse header nativamente (`authorization` no `scrape_config`). A comparação usa `hmac.compare_digest`, não `==`. |
+| 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
 
 ---
 
@@ -2675,8 +2686,19 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 **Em produção:** Ondas 0, 1 e 2 completas, mais R-18, R-19, R-20a (Onda 3) e R-24, R-26
 (Onda 5). 318 testes na hora do release, cobertura **75,19%**. `main` em `3320174`.
 
-**Em `develop`, esperando release:** **R-22** (proteger `/metrics`). 328 testes,
-cobertura **75,51%**.
+**Em `develop`, esperando release:** **R-22** (proteger `/metrics`) e **R-25** (índice
+funcional do upsert). 336 testes, cobertura **75,53%**.
+
+⚠️ **O próximo release leva uma migration não atômica** (`0022`, `CREATE INDEX
+CONCURRENTLY`). Não trava escrita, mas se falhar no meio deixa índice INVALID:
+
+```sql
+SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT indisvalid;
+DROP INDEX CONCURRENTLY core_candidate_linkedin_upper;
+```
+
+E a validação do ganho é `EXPLAIN` na query de upsert, procurando Index Scan no lugar de
+Seq Scan.
 
 **O R-22 não termina no deploy.** O código sobe com o endpoint ainda aberto, de propósito.
 Fechar é preencher `METRICS_TOKEN` no `.env` do servidor e reiniciar o serviço — não
@@ -2707,9 +2729,8 @@ travada depois de um restart, o sintoma mais visível do D-6.
 | **R-23** | mexe na configuração do Nginx, em 3 etapas |
 | **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
 
-**Disponíveis sem depender de ninguém:** R-25 (índice funcional, tem migration com
-`AddIndexConcurrently` e P-7), R-27 e R-28 (Onda 6, frontend — grandes e com validação
-visual manual).
+**Disponíveis sem depender de ninguém:** R-27 e R-28 (Onda 6, frontend — grandes e com
+validação visual manual). A Onda 5 fica completa quando o R-25 for para produção.
 
 **Dívida do próprio plano:** o registro de execução não tem linha para R-18, R-19, R-20a,
 R-24 e R-26, nem para o 4º release. Dá para reconstruir dos PRs #47 a #53, mas as
