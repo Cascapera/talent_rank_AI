@@ -1596,10 +1596,13 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40. 6 releases: PRs #26,
            #35, #46, #53, #57, #62. `main` em `99018df`.
-Progresso: 30 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
-           · `develop` limpa · 2 achados registrados (**R-39**, **R-40** — este já em
-           produção) · o resto no backlog
-           atualizado em 2026-08-18
+Progresso: 30 itens em produção · **3 prontos em `develop` esperando release**
+           (R-41, R-20b, R-21) · 1 fechado sem correção (R-29, decisão de produto)
+           · 2 achados registrados (**R-39** aberto, **R-40** já em produção)
+           atualizado em 2026-08-18, fim do dia
+
+           🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
+           Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -1652,7 +1655,7 @@ Progresso: 30 itens implantados · 1 fechado sem correção (R-29, decisão de p
 | Cópias do laço de lotes | 3 | **1** |
 | Cópias do cliente Gemini | 7 | **1** |
 | Arquivos > 500 linhas | 6 | **5** (2 são templates — Onda 6) |
-| Bugs reais corrigidos | — | **3** (R-09, R-35, R-19) |
+| Bugs reais corrigidos | — | **4** (R-09, R-35, R-19, R-41) |
 
 > O número de `views.py` merece leitura: fechou a Onda 2 em **665** linhas e voltou a
 > **792** com R-18/R-19/R-20a, que adicionaram código novo em vez de mover código velho.
@@ -2302,9 +2305,13 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 - [~] **R-21** · Endurecer settings de produção
       risco: **alto se o `.env` do servidor estiver incompleto** · 3h
       produção: **requer cuidado (P-5)** · PR: ~40 linhas / 2 arquivos
-  - [ ] ⛔ **`grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` retorna 1** —
-        **bloqueia o release**, não o código. Se der 0, a aplicação não sobe depois do
-        deploy. Comando de correção na seção 8.1 do `DEPLOY_LIGHTSAIL.md`.
+  - [x] ⛔ **`grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` retorna 1** —
+        conferido em **2026-08-18**. A aplicação sobe depois do deploy.
+  - [ ] **Falta conferir a qualidade da chave**, não só a existência. O R-21 verifica que
+        a variável existe; se ela contiver uma cópia da chave do repositório, a aplicação
+        sobe e o ganho é zero. Comando que não imprime o segredo:
+        `awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env`
+        — espera-se tamanho ≥ 50 e contador 0.
   - [x] **HTTPS confirmado funcionando no domínio** — `https://talentrankai.com/` responde
         200, verificado em 2026-08-18
   - [x] Janela de baixo uso — **15 dias sem usuária**, até ~2026-09-02
@@ -2871,65 +2878,75 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, depois do 6º release)
+### ▶ Onde retomar (atualizado em 2026-08-18, fim do dia)
 
-**Em produção** (`main` em `99018df`, 6 releases: PRs #26, #35, #46, #53, #57, #62):
-Ondas 0, 1, 2 e 5 completas, mais R-18, R-19, R-20a (Onda 3), R-22 (Onda 4), **R-27**
-(Onda 6) e **R-40**. 348 testes, cobertura **75,58%**. **`develop` está limpa.**
+**Em produção** (`main` em `99018df`, 6 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40.
+
+**Em `develop`, prontos e esperando release — 3 itens:**
+
+| Item | O que é | Verificação que ele exige depois do deploy |
+|---|---|---|
+| **R-41** 🐛 | refresh não importa mais de novo | importar, dar F5, conferir **uma** linha em `core_importjob` |
+| **R-20b** | status vem do banco; job morto vira "interrompido" | iniciar importação, **reiniciar o serviço no meio**, ver a tela avisar |
+| **R-21** | settings de produção endurecidos | `systemctl status` OK, login completo, cookies com flag `Secure` |
+
+377 testes, cobertura **79,82%**. Piso do CI em 78.
+
+## O que fazer no começo da próxima sessão
+
+**1. Um comando de conferência que sobrou** — o R-21 garante que `DJANGO_SECRET_KEY`
+existe (conferido: existe), mas não que ela é boa. Se for uma cópia da chave do
+repositório, a aplicação sobe e o ganho é zero. Este comando não imprime o segredo:
+
+```
+awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env
+```
+
+Espera-se **tamanho ≥ 50** e **0**. Com isso, o release dos 3 itens está liberado.
+
+**2. O release.** Leva a migration `0023` (adiciona coluna com default — sem lock
+relevante) e muda comportamento de sessão: o R-21 pode **derrubar as sessões ativas** se a
+chave for trocada. Na janela de 15 dias, indiferente.
+
+**3. Depois do release, a verificação mais interessante do projeto:** iniciar uma
+importação e reiniciar o serviço no meio, de propósito, para ver o R-20b em ação.
 
 ## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
 
-O dono do projeto avisou em 2026-08-18 que **ninguém vai usar a aplicação nos próximos 15
-dias**. Isso muda o que é prudente fazer:
+Deploy a qualquer hora, sem caçar janela. Vale para tudo abaixo.
 
-- **deploy a qualquer hora**, sem procurar janela de baixo uso;
-- **os três itens bloqueados por risco de interromper a usuária ficam viáveis** — R-21
-  (settings de produção), R-23 (Nginx) e R-31 (PDFs órfãos);
-- dá para exercitar importação de verdade em produção sem medo, o que é justamente o que
-  destrava o **R-20b**.
+## Backlog restante
 
-É a melhor janela que o projeto teve. O que não estiver feito até lá volta a esbarrar no
-expediente dela.
-
-## A única verificação pendente do R-27
-
-O código está em produção. Falta **abrir `/vagas/<id>/` com o DevTools** e exercitar:
-importar · filtrar · paginar · mudar status · gerar parecer · gerar busca booleana ·
-preview de match, com o console limpo.
-
-O arquivo já foi confirmado servido — `job_detail.b75f1bbb634b.js`, 200, 29.654 bytes.
-O que falta é o comportamento na tela, que nenhum teste deste projeto cobre.
+| Item | Estado | O que falta |
+|---|---|---|
+| **R-23** | não iniciado — **maior valor restante** | currículos em `/media/` são públicos (LGPD). 3 etapas de Nginx; leva junto o `expires max` do `/static/` que o R-40 destravou |
+| **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
+| **R-28** | não iniciado | CSS repetido em 12 templates, 3 sub-PRs com comparação visual tela a tela |
+| **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
+| **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 
 ## ⛔ Item obrigatório de fechamento do refactor
 
-`GEMINI_API_KEY` e `METRICS_TOKEN` apareceram em texto claro em 2026-08-18, e o token
-antigo continuava respondendo 200 — as duas credenciais valem como **comprometidas**.
-
-**Decisão do dono do projeto (2026-08-18):** a troca acontece **no fim do refactor**, junto
-com a entrada da chave de produção final. Até lá, a chave atual é descartável — se
-aparecer consumo estranho na cota do Gemini, é ela.
+`GEMINI_API_KEY` e `METRICS_TOKEN` foram expostos em texto claro em 2026-08-18 e valem como
+**comprometidos**. Decisão do dono do projeto (2026-08-18): a troca acontece **no fim do
+refactor**, junto com a entrada da chave de produção final. Até lá, a chave atual é
+descartável — consumo estranho na cota do Gemini é ela.
 
 **Não encerrar o projeto sem isto:**
 
 ```
+cd /var/www/talent_rank_ai && source .venv/bin/activate
 sed -i "/^GEMINI_API_KEY=/d" .env && echo "GEMINI_API_KEY=A_CHAVE_NOVA" >> .env
 sed -i "/^METRICS_TOKEN=/d" .env && python -c "import secrets; print('METRICS_TOKEN=' + secrets.token_urlsafe(32))" >> .env
+grep -c GEMINI_API_KEY .env && grep -c METRICS_TOKEN .env    # 1 e 1, sem duplicata
 sudo systemctl restart talent_rank_ai
 ```
 
-E, ao trocar o `METRICS_TOKEN`, refazer o par de `curl` do R-22 (401 sem token, 200 com).
+E, ao trocar o `METRICS_TOKEN`, refazer o par de `curl` do R-22 — 401 sem token, 200 com.
 
-## O que fazer com a janela, em ordem de valor
-
-| Item | Por que agora | O que falta saber |
-|---|---|---|
-| **R-20b** | resolve a barra de progresso travada — o sintoma mais visível do D-6 | rodar uma importação real e ver `core_importjob` populando |
-| **R-21** | fecha os 6 avisos do `check --deploy` | `grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` — **se não existir, a aplicação não sobe** |
-| **R-23** | currículos deixam de ser públicos (LGPD) | 3 etapas de Nginx; leva junto o `expires max` do `/static/` |
-| **R-31** | PDFs órfãos acumulam a cada reimportação | `du -sh /var/www/talent_rank_ai/media/resumes/` |
-| **R-28** | CSS repetido em 12 templates, 3 sub-PRs | comparação visual tela a tela — precisa de olho humano |
-
-**Prazo em aberto:** o **R-34** (Python 3.10 → 3.12) vence em **outubro/2026**.
+**Lição do episódio, para não repetir:** nunca pedir `cat`/`tail` de arquivo de ambiente.
+Pedir `grep CHAVE_ESPECIFICA`, ou só o comprimento com `awk`.
 
 ---
 
