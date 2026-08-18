@@ -1502,25 +1502,34 @@ verifique com `SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT i
 
 ## 10. Métricas de sucesso
 
-Atualizado em 2026-08-17, no fim das Ondas 0 e 1.
+Atualizado em 2026-08-18, depois do 5º release (R-22 e R-25).
 
 | Métrica | Linha de base | Meta | **Hoje** | |
 |---|---:|---:|---:|:--:|
-| Cobertura real (sem `omit`) | 25% | ≥ 55% | **72,08%** | ✅ |
-| Cobertura de `pdf_extractor` | 6% | ≥ 70% | **88%** | ✅ |
+| Cobertura real (sem `omit`) | 25% | ≥ 55% | **75,53%** | ✅ |
+| Cobertura do fluxo de importação | 6% | ≥ 70% | **92%** (`services/candidate_import.py`) | ✅ |
 | Cobertura de `llm_extractor` | 20% | ≥ 65% | **89%** | ✅ |
-| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **590** | ✅ |
-| Linhas em `views.py` | 987 | ≤ 450 | **665** | ❌ |
-| Arquivos > 500 linhas | 6 | ≤ 2 | **5** | 🟡 |
+| Linhas em `pdf_extractor.py` | 1.888 | ≤ 600 | **arquivo não existe mais** (R-17) | ✅ |
+| Linhas em `views.py` | 987 | ≤ 450 | **820** | ❌ |
+| Arquivos > 500 linhas | 6 | ≤ 2 | **5** (2 são templates — Onda 6) | 🟡 |
 | Cópias do bloco de upsert | 4 | 1 | **1** | ✅ |
 | Cópias do cliente Gemini | 7 | 1 | **1** | ✅ |
 | Cópias do laço de lotes | 3 | 1 | **1** | ✅ |
 | Código morto | 872 linhas | 0 | **0** | ✅ |
 | Violações de ruff | 0 | 0 | **0** | ✅ |
-| Tempo da suíte | 19s | ≤ 60s | **34s** | ✅ |
-| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ Onda 4 |
-| Queries em `/relatorios/` | ~500 | 2 | **não escala** | ✅ |
+| Tempo da suíte | 19s | ≤ 60s | **68s** | ❌ |
+| Avisos do `check --deploy` | 6 | ≤ 1 | **6** | ⏳ R-21 |
+| Queries em `/relatorios/` | ~500 | 2 | **2** (R-24) | ✅ |
 | Funções > 50 linhas | 25 | ≤ 10 | — | ⏳ |
+
+Duas metas viradas para ❌ nesta atualização, e nenhuma das duas por acaso:
+
+- **`views.py` em 820 linhas.** Fechou a Onda 2 em 665 e voltou a crescer com R-18, R-19
+  e R-20a, que são código novo, não movimentação. Não é regressão de refatoração — mas a
+  meta continua não atingida, e agora está mais longe do que quando foi declarada falha.
+- **Suíte em 68s, contra ≤60s.** Passaram de 100 para 336 testes; o custo por teste caiu,
+  o total subiu. É o preço da rede de segurança, e foi bem gasto — mas o número é o
+  número, e se passar de ~90s começa a atrapalhar o ciclo.
 
 **Leitura honesta:** as metas que dependiam das Ondas 0 e 1 estão batidas ou perto.
 `views.py` **não encolheu** — e não era para encolher ainda: quem faz isso é a Onda 2
@@ -1583,12 +1592,12 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ## 13. Checklist de acompanhamento
 
 ```
-Status: em andamento — **Ondas 0, 1 e 2 EM PRODUÇÃO**, mais R-18, R-19, R-20a
-           (Onda 3) e R-24, R-26 (Onda 5). 4 releases: PRs #26, #35, #46, #53.
-           `main` em `3320174`.
-Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
-           · 2 prontos em `develop` esperando release (**R-22**, cujo fechamento ainda
-           depende do `.env` de produção, e **R-25**) · o resto no backlog
+Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
+           R-20a (Onda 3) e R-22 (Onda 4). 5 releases: PRs #26, #35, #46, #53, #57.
+           `main` em `76f8e32`.
+Progresso: 28 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
+           · `develop` limpa · 3 verificações abertas em produção e 3 itens bloqueados
+           por informação do servidor · o resto no backlog
            atualizado em 2026-08-18
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
@@ -1625,7 +1634,7 @@ Progresso: 26 itens implantados · 1 fechado sem correção (R-29, decisão de p
 
 ### Resultado até aqui
 
-| Métrica | Linha de base | Hoje em `develop` (2026-08-18) |
+| Métrica | Linha de base | Hoje em produção (2026-08-18) |
 |---|---:|---:|
 | Testes | 100 | **336** |
 | Cobertura real | 25% (reportada como 87,62%) | **75,53%** (real) |
@@ -2285,11 +2294,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         no `.env` do servidor e reiniciar o serviço. Não precisa de outro deploy.
   - [x] Suíte completa verde — 328 testes, cobertura 75,51%
   - [x] Lint e format verdes
-  - [x] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — PR #55
+  - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`
   - [ ] Verificado em produção — `curl` sem token = 401, com token = 200
-  - [ ] Commitado — `<hash>`
-  - Status: código pronto, fechamento depende de `.env` em produção · Notas: 10 testes
+  - [x] Commitado — `752af51`
+  - Status: **em produção, mas ainda aberto de propósito** · Notas: 10 testes
     novos em `core/tests/test_metrics_view.py`, sendo 2 characterization (endpoint
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
@@ -2353,12 +2362,13 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         é `UPPER()`; em `Lower` o índice nunca seria usado
   - [x] Suíte completa verde — 336 testes, cobertura 75,53%
   - [x] Lint e format verdes
-  - [x] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — PR #56
+  - [x] Implantado — **2026-08-18**, PR #57, deploy `76f8e32`. `Applying
+        core.0022_candidate_linkedin_upper_index... OK` em 0,2s
   - [ ] Verificado em produção — `SELECT ... FROM pg_index WHERE NOT indisvalid;` vazio
   - [ ] Verificado em produção — `EXPLAIN` da query de upsert usando Index Scan
-  - [ ] Commitado — `<hash>`
-  - Status: código pronto, esperando release · Notas: **primeira migration do projeto que
+  - [x] Commitado — `5931887`
+  - Status: **em produção**, faltam as duas verificações · Notas: **primeira migration do projeto que
     não é atômica.** O deploy roda `migrate` e o `CREATE INDEX CONCURRENTLY` não trava
     escrita, mas se falhar no meio deixa índice INVALID — o comando de limpeza está no
     cabeçalho da migration e no P-7.
@@ -2678,50 +2688,60 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
 | 2026-08-18 | **R-22** | `settings.METRICS_TOKEN` novo; `metrics_view` passa a exigir o token em `X-Metrics-Token` ou `Authorization: Bearer` quando a variável está preenchida. 10 testes novos. README e `DEPLOY_LIGHTSAIL.md` (seção 11.1 nova + checklist). Nenhuma migration. | Duas. (1) **O fechamento não é o deploy, é o `.env`.** Com `METRICS_TOKEN` vazio o endpoint continua aberto de propósito — expand-contract sem segundo deploy: sobe o código, configura o scraper, depois preenche a variável e reinicia. Como não achei nenhum scraper no repositório, o passo do meio pode ser vazio, mas o desenho não depende de eu saber isso. (2) Aceitar `Authorization: Bearer` além do header customizado saiu de graça e evita configuração exótica no Prometheus, que manda esse header nativamente (`authorization` no `scrape_config`). A comparação usa `hmac.compare_digest`, não `==`. |
 | 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
+| 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, fim do dia)
+### ▶ Onde retomar (atualizado em 2026-08-18, depois do 5º release)
 
-**Em produção:** Ondas 0, 1 e 2 completas, mais R-18, R-19, R-20a (Onda 3) e R-24, R-26
-(Onda 5). 318 testes na hora do release, cobertura **75,19%**. `main` em `3320174`.
+**Em produção** (`main` em `76f8e32`, 5 releases: PRs #26, #35, #46, #53, #57): Ondas 0,
+1, 2 e **5** completas, mais R-18, R-19, R-20a (Onda 3) e R-22, R-25. 336 testes,
+cobertura **75,53%**.
 
-**Em `develop`, esperando release:** **R-22** (proteger `/metrics`) e **R-25** (índice
-funcional do upsert). 336 testes, cobertura **75,53%**.
+**`develop` está limpa** — nada esperando release.
 
-⚠️ **O próximo release leva uma migration não atômica** (`0022`, `CREATE INDEX
-CONCURRENTLY`). Não trava escrita, mas se falhar no meio deixa índice INVALID:
+## As três verificações em produção que ficaram abertas
 
-```sql
-SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT indisvalid;
-DROP INDEX CONCURRENTLY core_candidate_linkedin_upper;
+Nenhuma delas dá para eu fazer daqui. Em uma linha só cada, porque colar comando de
+várias linhas no `dbshell` falha:
+
+**1. O índice do R-25 é válido?**
+
+```
+python manage.py dbshell -- -c "SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE NOT indisvalid;"
 ```
 
-E a validação do ganho é `EXPLAIN` na query de upsert, procurando Index Scan no lugar de
-Seq Scan.
+Resultado esperado: **nenhuma linha**. Se aparecer `core_candidate_linkedin_upper`, o
+índice ficou INVALID e precisa de `DROP INDEX CONCURRENTLY` e novo deploy.
 
-**O R-22 não termina no deploy.** O código sobe com o endpoint ainda aberto, de propósito.
-Fechar é preencher `METRICS_TOKEN` no `.env` do servidor e reiniciar o serviço — não
-precisa de outro deploy. O passo a passo está na seção 11.1 do `DEPLOY_LIGHTSAIL.md`.
-Depois de fechar, a verificação é:
+**2. O índice está sendo usado?**
 
-```bash
-curl -s -o /dev/null -w '%{http_code}' https://SEUDOMINIO/metrics                       # 401
-curl -s -o /dev/null -w '%{http_code}' -H "X-Metrics-Token: $TOKEN" https://SEUDOMINIO/metrics  # 200
+```
+python manage.py dbshell -- -c "EXPLAIN SELECT id FROM core_candidate WHERE UPPER(linkedin_url::text) = UPPER('https://www.linkedin.com/in/alguem');"
 ```
 
-**A verificação que destrava o R-20b continua pendente.** Rode uma importação real em
-produção e confira se a tabela do R-20a está sendo populada:
+Esperado: **Index Scan** usando `core_candidate_linkedin_upper`. Se vier `Seq Scan`, pode
+ser só tabela pequena demais para o planner se importar — nesse caso o índice está certo
+e o ganho é preventivo.
 
-```sql
-SELECT id, kind, status, processed, total, heartbeat_at
-FROM core_importjob ORDER BY id DESC LIMIT 5;
+**3. Fechar o `/metrics` (R-22).** O endpoint **continua público** depois do deploy, de
+propósito. Fechar é configuração, sem novo deploy — seção 11.1 do `DEPLOY_LIGHTSAIL.md`:
+gerar o token, pôr `METRICS_TOKEN=` no `.env`, reiniciar o serviço e conferir que `curl`
+sem token dá 401 e com token dá 200.
+
+## E a verificação que destrava o R-20b
+
+Continua pendente, e agora vale a pena juntar com a primeira importação real depois deste
+deploy:
+
+```
+python manage.py dbshell -- -c "SELECT id, kind, status, processed, total, heartbeat_at FROM core_importjob ORDER BY id DESC LIMIT 5;"
 ```
 
-Com linhas aparecendo, o R-20b está liberado — e é ele que resolve a barra de progresso
+Com linhas aparecendo, o **R-20b** está liberado — é ele que resolve a barra de progresso
 travada depois de um restart, o sintoma mais visível do D-6.
 
-**Bloqueados por informação que só o dono do projeto tem:**
+## Bloqueados por informação que só o dono do projeto tem
 
 | Item | O que falta |
 |---|---|
@@ -2729,8 +2749,12 @@ travada depois de um restart, o sintoma mais visível do D-6.
 | **R-23** | mexe na configuração do Nginx, em 3 etapas |
 | **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
 
-**Disponíveis sem depender de ninguém:** R-27 e R-28 (Onda 6, frontend — grandes e com
-validação visual manual). A Onda 5 fica completa quando o R-25 for para produção.
+## Disponíveis sem depender de ninguém
+
+Só sobrou a **Onda 6**: R-27 e R-28, o JavaScript inline de `job_detail.html` e
+`home.html`. São os dois maiores itens que restam, são MOVER (mecânicos) e a validação é
+visual e manual — e eu nunca vi a aplicação rodando, então a lista de validação do plano
+foi montada lendo o template. Trate como mínimo, não como completa.
 
 **Dívida do próprio plano:** o registro de execução não tem linha para R-18, R-19, R-20a,
 R-24 e R-26, nem para o 4º release. Dá para reconstruir dos PRs #47 a #53, mas as
