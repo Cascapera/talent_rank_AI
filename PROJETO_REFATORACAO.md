@@ -1594,13 +1594,15 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a (Onda 3) e R-22 (Onda 4). 5 releases: PRs #26, #35, #46, #53, #57.
-           `main` em `76f8e32`.
-Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 fechado
-           sem correção (R-29, decisão de produto) · `develop` limpa · 3 itens
-           bloqueados por informação do servidor · 1 achado novo (**R-39**) · o resto
-           no backlog
+           R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40. 6 releases: PRs #26,
+           #35, #46, #53, #57, #62. `main` em `99018df`.
+Progresso: 30 itens implantados · 1 fechado sem correção (R-29, decisão de produto)
+           · `develop` limpa · 2 achados registrados (**R-39**, **R-40** — este já em
+           produção) · o resto no backlog
            atualizado em 2026-08-18
+
+           🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
+           Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
 
            ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
            em texto claro durante a verificação e **precisam ser rotacionados**.
@@ -1641,8 +1643,8 @@ Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 
 
 | Métrica | Linha de base | Hoje em produção (2026-08-18) |
 |---|---:|---:|
-| Testes | 100 | **336** |
-| Cobertura real | 25% (reportada como 87,62%) | **75,53%** (real) |
+| Testes | 100 | **348** |
+| Cobertura real | 25% (reportada como 87,62%) | **75,58%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -2427,9 +2429,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [ ] **Validação manual completa:** importar · filtrar · paginar · mudar status ·
         gerar parecer · gerar busca booleana · preview de match
-  - [x] PR aberto e revisado
-  - [ ] Implantado (com `collectstatic`)
-  - [ ] Verificado em produção — console sem erro, `job_detail.js` retornando 200
+  - [x] PR aberto e revisado — PR #60
+  - [x] Implantado (com `collectstatic`) — **2026-08-18**, PR #62, deploy `99018df`
+  - [x] `job_detail.<hash>.js` retornando **200** em produção (29.654 bytes, conteúdo
+        conferido) — falta só o console durante o uso
   - [ ] Commitado — `<hash>`
   - Status: **código pronto, esperando a validação manual** · Notas: `job_detail.html`
     1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
@@ -2711,12 +2714,17 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         `staticfiles.json` gerado, `job_detail.1a1dd8a7bcfa.js` e `.gz` no lugar
   - [x] Suíte completa verde — 348 testes, cobertura 75,58%
   - [x] Lint e format verdes
-  - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — página abre, `/static/...<hash>.js` retornando 200
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: 6 testes novos. ⚠️ **No deploy, rodar
-    `collectstatic` à mão antes** — ver a nota de deploy abaixo.
+  - [x] PR aberto e revisado — PR #61
+  - [x] Implantado — **2026-08-18**, PR #62, deploy `99018df`. `1 static file copied,
+        130 unmodified, **387 post-processed**`
+  - [x] Verificado em produção — a home pública já serve
+        `/static/img/logo.334f5c205457.png`, e o JS com hash responde 200
+  - [x] Commitado — `d7fc76d`
+  - Status: **✅ concluído** · Notas: 6 testes novos.
+  - **Follow-up que este item destrava:** o Nginx serve `/static/` **sem `expires`**, então
+    o browser revalida todo asset a cada visita. Agora que o nome leva hash, dá para pôr
+    `expires max;` no `location /static/` e transformar isso em cache imutável. É mudança
+    de Nginx, então anda junto com o R-23.
 
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
@@ -2761,27 +2769,43 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
 | 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
 | 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
+| 2026-08-18 | **R-27 e R-40 → produção** | 6º release (PR #62): `76f8e32` → `99018df`. CD limpo. `No migrations to apply` e `1 static file copied, 130 unmodified, **387 post-processed**`. Confirmado de fora: a home serve `/static/img/logo.334f5c205457.png` e `job_detail.b75f1bbb634b.js` responde 200 com 29.654 bytes. | **Três, e uma delas me desmente.** (1) **A compressão já existia — eu estava errado.** Escrevi no R-40 que sem o Whitenoise ativo 'todo CSS e JS ia pela rede sem compressão'; o `curl` mostra `Content-Encoding: gzip` no `/static/`, porque quem serve ali é o **Nginx**, não o Whitenoise, e ele já comprimia. O ganho real do R-40 é o **hash no nome**, não a compressão. (2) **Não dá para prever o hash a partir de um checkout Windows:** meu arquivo local é CRLF e o do servidor é LF, então os hashes diferem (`1a1dd8a7bcfa` contra `b75f1bbb634b`) e a primeira URL que testei deu 404. O conteúdo é o mesmo; o fim de linha não. (3) **O Nginx serve `/static/` sem `expires`**, então o cache imutável que o hash permite ainda não está sendo usado — virou follow-up colado no R-23. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, depois do 5º release)
+### ▶ Onde retomar (atualizado em 2026-08-18, depois do 6º release)
 
-**Em produção** (`main` em `76f8e32`, 5 releases: PRs #26, #35, #46, #53, #57): Ondas 0,
-1, 2 e **5** completas, mais R-18, R-19, R-20a (Onda 3) e R-22, R-25. 336 testes,
-cobertura **75,53%**.
+**Em produção** (`main` em `99018df`, 6 releases: PRs #26, #35, #46, #53, #57, #62):
+Ondas 0, 1, 2 e 5 completas, mais R-18, R-19, R-20a (Onda 3), R-22 (Onda 4), **R-27**
+(Onda 6) e **R-40**. 348 testes, cobertura **75,58%**. **`develop` está limpa.**
 
-**`develop` está limpa** — nada esperando release.
+## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
 
-## ✅ As três verificações de produção fecharam (2026-08-18)
+O dono do projeto avisou em 2026-08-18 que **ninguém vai usar a aplicação nos próximos 15
+dias**. Isso muda o que é prudente fazer:
 
-`/metrics` devolve 401 sem token e 200 com token, testado de fora. O índice do R-25 é
-válido e o `EXPLAIN` mostra `Bitmap Index Scan on core_candidate_linkedin_upper` numa
-tabela de **746 candidatos** — o ganho é imediato, não só preventivo. Detalhes no registro
-de execução.
+- **deploy a qualquer hora**, sem procurar janela de baixo uso;
+- **os três itens bloqueados por risco de interromper a usuária ficam viáveis** — R-21
+  (settings de produção), R-23 (Nginx) e R-31 (PDFs órfãos);
+- dá para exercitar importação de verdade em produção sem medo, o que é justamente o que
+  destrava o **R-20b**.
 
-**Sobrou uma pendência operacional, não de código:** a `GEMINI_API_KEY` e o `METRICS_TOKEN`
-apareceram em texto claro durante a verificação (um `tail -3 .env` mal escolhido) e
-**precisam ser rotacionados**. Enquanto não forem, valem como comprometidos:
+É a melhor janela que o projeto teve. O que não estiver feito até lá volta a esbarrar no
+expediente dela.
+
+## A única verificação pendente do R-27
+
+O código está em produção. Falta **abrir `/vagas/<id>/` com o DevTools** e exercitar:
+importar · filtrar · paginar · mudar status · gerar parecer · gerar busca booleana ·
+preview de match, com o console limpo.
+
+O arquivo já foi confirmado servido — `job_detail.b75f1bbb634b.js`, 200, 29.654 bytes.
+O que falta é o comportamento na tela, que nenhum teste deste projeto cobre.
+
+## Pendência operacional herdada
+
+`GEMINI_API_KEY` e `METRICS_TOKEN` apareceram em texto claro em 2026-08-18 e **seguem sem
+rotação** — confirmado, porque o token antigo ainda respondia 200.
 
 ```
 sed -i "/^GEMINI_API_KEY=/d" .env && echo "GEMINI_API_KEY=A_CHAVE_NOVA" >> .env
@@ -2789,36 +2813,18 @@ sed -i "/^METRICS_TOKEN=/d" .env && python -c "import secrets; print('METRICS_TO
 sudo systemctl restart talent_rank_ai
 ```
 
-## E a verificação que destrava o R-20b
+## O que fazer com a janela, em ordem de valor
 
-Continua pendente, e agora vale a pena juntar com a primeira importação real depois deste
-deploy:
-
-```
-python manage.py dbshell -- -c "SELECT id, kind, status, processed, total, heartbeat_at FROM core_importjob ORDER BY id DESC LIMIT 5;"
-```
-
-Com linhas aparecendo, o **R-20b** está liberado — é ele que resolve a barra de progresso
-travada depois de um restart, o sintoma mais visível do D-6.
-
-## Bloqueados por informação que só o dono do projeto tem
-
-| Item | O que falta |
-|---|---|
-| **R-21** | `grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` — se não existir, a aplicação **não sobe** depois daquele deploy |
-| **R-23** | mexe na configuração do Nginx, em 3 etapas |
-| **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
-
-## Disponíveis sem depender de ninguém
-
-Só sobrou a **Onda 6**: R-27 e R-28, o JavaScript inline de `job_detail.html` e
-`home.html`. São os dois maiores itens que restam, são MOVER (mecânicos) e a validação é
-visual e manual — e eu nunca vi a aplicação rodando, então a lista de validação do plano
-foi montada lendo o template. Trate como mínimo, não como completa.
+| Item | Por que agora | O que falta saber |
+|---|---|---|
+| **R-20b** | resolve a barra de progresso travada — o sintoma mais visível do D-6 | rodar uma importação real e ver `core_importjob` populando |
+| **R-21** | fecha os 6 avisos do `check --deploy` | `grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` — **se não existir, a aplicação não sobe** |
+| **R-23** | currículos deixam de ser públicos (LGPD) | 3 etapas de Nginx; leva junto o `expires max` do `/static/` |
+| **R-31** | PDFs órfãos acumulam a cada reimportação | `du -sh /var/www/talent_rank_ai/media/resumes/` |
+| **R-28** | CSS repetido em 12 templates, 3 sub-PRs | comparação visual tela a tela — precisa de olho humano |
 
 **Dívida do próprio plano:** o registro de execução não tem linha para R-18, R-19, R-20a,
-R-24 e R-26, nem para o 4º release. Dá para reconstruir dos PRs #47 a #53, mas as
-surpresas encontradas na hora se perderam.
+R-24 e R-26, nem para o 4º release. Reconstruível dos PRs #47 a #53.
 
 **Prazo em aberto:** o **R-34** (Python 3.10 → 3.12) vence em **outubro/2026**.
 
