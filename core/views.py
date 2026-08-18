@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -192,7 +193,6 @@ def search(request):
 @required_plan("BASIC")
 def talent_pool(request):
     message = ""
-    import_message = ""
     form = CandidateForm()
     shared_pool = _uses_shared_pool(request.user)
 
@@ -213,10 +213,14 @@ def talent_pool(request):
                     daemon=True,
                 )
                 thread.start()
-                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+                # R-41: redirect em vez de render. Sem ele, o F5 remanda o multipart
+                # inteiro e a importação roda de novo — dinheiro de LLM gasto duas vezes.
+                messages.info(request, "Importação iniciada. Acompanhe o progresso abaixo.")
+                return redirect(request.get_full_path())
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                import_message = "Nenhum PDF encontrado nos arquivos enviados."
+                messages.warning(request, "Nenhum PDF encontrado nos arquivos enviados.")
+                return redirect(request.get_full_path())
         else:
             # Processa formulário manual (sem arquivos no POST)
             form = CandidateForm(request.POST)
@@ -235,15 +239,19 @@ def talent_pool(request):
                             changed = True
                     if changed:
                         candidate.save()
-                        message = "Candidato atualizado com novos dados."
+                        messages.success(request, "Candidato atualizado com novos dados.")
                     else:
-                        message = "Nenhuma alteração detectada para esse candidato."
+                        messages.info(request, "Nenhuma alteração detectada para esse candidato.")
                 else:
                     c = form.save(commit=False)
                     c.user = request.user
                     c.save()
-                    message = "Candidato cadastrado com sucesso."
+                    messages.success(request, "Candidato cadastrado com sucesso.")
+                return redirect(request.get_full_path())
             else:
+                # Sem redirect aqui de propósito: o formulário precisa voltar com os erros
+                # de validação, que um redirect jogaria fora. Reenviar um POST inválido não
+                # cria nada, então o refresh é inofensivo.
                 message = "Confira os campos obrigatórios."
 
     filters = collect_filters(request, _TALENT_POOL_FILTERS)
@@ -269,7 +277,6 @@ def talent_pool(request):
         "candidates": page_obj,
         "page_obj": page_obj,
         "message": message,
-        "import_message": import_message,
         "shared_pool": shared_pool,
         "filters": filters.values,
         "query_string": filters.query_string,
@@ -418,7 +425,6 @@ def job_detail(request, job_id: int):
 
     filters = collect_filters(request, _JOB_FILTERS)
 
-    import_message = ""
     if request.method == "POST":
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
@@ -446,10 +452,14 @@ def job_detail(request, job_id: int):
                     daemon=True,
                 )
                 thread.start()
-                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+                # R-41: ver o comentário em `talent_pool`. Aqui o custo do refresh é o
+                # maior: o fluxo da vaga ainda ranqueia cada candidato com o LLM.
+                messages.info(request, "Importação iniciada. Acompanhe o progresso abaixo.")
+                return redirect(request.get_full_path())
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                import_message = "Nenhum PDF encontrado nos arquivos enviados."
+                messages.warning(request, "Nenhum PDF encontrado nos arquivos enviados.")
+                return redirect(request.get_full_path())
 
     candidate_links = job.candidate_links.select_related("candidate")
     if filters["pipeline_status"]:
@@ -472,7 +482,6 @@ def job_detail(request, job_id: int):
         "must_have_list": split_list(job.must_have),
         "nice_to_have_list": split_list(job.nice_to_have),
         "undesirable_list": split_list(job.undesirable),
-        "import_message": import_message,
         "candidate_links": page_obj,
         "page_obj": page_obj,
         "candidate_filters": filters.values,

@@ -2726,6 +2726,38 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     `expires max;` no `location /static/` e transformar isso em cache imutável. É mudança
     de Nginx, então anda junto com o R-23.
 
+- [x] **R-41** 🐛 · Dar refresh na página importa tudo de novo
+      risco: baixo · 1h · produção: transparente
+      **Achado em produção em 2026-08-18**, na primeira importação real depois do deploy do
+      R-20a — e achado **porque** o R-20a existe: `core_importjob` mostrou **duas linhas
+      para um upload de 1 PDF**. O dono do projeto tinha dado F5.
+
+      As views tratavam o POST e renderizavam no mesmo request, sem redirect. Os dois
+      formulários de upload não têm `action`, então o F5 remanda o multipart inteiro e a
+      importação roda de novo. **O custo é dinheiro:** o fluxo da vaga manda cada candidato
+      para o LLM, e ainda põe dois upserts correndo sobre o mesmo candidato.
+
+      Antes do R-20a isso era **invisível**: as duas threads escreviam na mesma chave de
+      cache e o progresso de uma tapava o da outra. A tabela nova é que separou.
+  - [x] POST/Redirect/GET nas 3 branches — upload da vaga, upload do pool e cadastro manual
+  - [x] `messages` do Django no lugar de `import_message` no contexto, que virou código
+        morto e saiu dos 2 templates
+  - [x] **Formulário inválido continua sem redirect, de propósito** — redirect ali jogaria
+        fora os erros de validação. Tem teste garantindo.
+  - [x] 8 testes de regressão, **7 vermelhos antes** (o 8º é o do formulário inválido, que
+        não muda)
+  - [x] Suíte completa verde — 356 testes, cobertura **79,17%**; piso do CI 75 → 78
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — importar, dar F5 e conferir que `core_importjob` ganha
+        **uma** linha só
+  - [ ] Commitado — `<hash>`
+  - Status: **código pronto** · Notas: **a guarda de "já existe importação rodando" ficou
+    de fora de propósito.** Ela depende de saber se um `RUNNING` está vivo ou morreu num
+    restart — que é exatamente o que o R-20b resolve com o `heartbeat_at`. Feita agora,
+    uma linha `RUNNING` órfã de um deploy antigo travaria a importação para sempre.
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -2782,6 +2814,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
 | 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
 | 2026-08-18 | **R-27 e R-40 → produção** | 6º release (PR #62): `76f8e32` → `99018df`. CD limpo. `No migrations to apply` e `1 static file copied, 130 unmodified, **387 post-processed**`. Confirmado de fora: a home serve `/static/img/logo.334f5c205457.png` e `job_detail.b75f1bbb634b.js` responde 200 com 29.654 bytes. | **Três, e uma delas me desmente.** (1) **A compressão já existia — eu estava errado.** Escrevi no R-40 que sem o Whitenoise ativo 'todo CSS e JS ia pela rede sem compressão'; o `curl` mostra `Content-Encoding: gzip` no `/static/`, porque quem serve ali é o **Nginx**, não o Whitenoise, e ele já comprimia. O ganho real do R-40 é o **hash no nome**, não a compressão. (2) **Não dá para prever o hash a partir de um checkout Windows:** meu arquivo local é CRLF e o do servidor é LF, então os hashes diferem (`1a1dd8a7bcfa` contra `b75f1bbb634b`) e a primeira URL que testei deu 404. O conteúdo é o mesmo; o fim de linha não. (3) **O Nginx serve `/static/` sem `expires`**, então o cache imutável que o hash permite ainda não está sendo usado — virou follow-up colado no R-23. |
+| 2026-08-18 | **R-41** 🐛 | POST/Redirect/GET nas 3 branches de POST de `talent_pool` e `job_detail`. `import_message` sai do contexto e dos 2 templates, substituído pelo `messages` do Django, que o `base_logged.html` já renderizava. 8 testes de regressão, 7 vermelhos antes. Piso do CI 75 → 78. | **Duas. (1) O bug foi achado pelo item anterior, não por alguém procurando.** A primeira importação real depois do R-20a gravou **duas linhas para 1 PDF**, porque o dono deu F5 e o browser remandou o multipart. Antes da tabela isso era invisível: as duas threads escreviam na mesma chave de cache e uma tapava a outra. É o argumento do expand-contract se pagando — a etapa *expand* já rendeu um bug real antes de a leitura sequer migrar. **(2) A guarda óbvia é a errada agora.** "Não iniciar se já houver uma importação RUNNING" parece a correção completa, mas depende de distinguir vivo de morto — sem isso, uma linha órfã de um restart travaria a importação para sempre, que é o próprio D-6. Fica para depois do R-20b, e está escrito no item. |
 
 ---
 
