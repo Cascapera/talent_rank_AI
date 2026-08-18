@@ -170,9 +170,6 @@
     <p style="margin-bottom: 10px; color: var(--muted);">
       Envie um ou mais arquivos: ZIP (com múltiplos PDFs), PDF individual ou vários PDFs de uma vez.
     </p>
-    {% if import_message %}
-      <div class="muted" style="margin-bottom: 10px;">{{ import_message }}</div>
-    {% endif %}
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <label for="candidates_zip">Arquivos ZIP/PDF</label>
