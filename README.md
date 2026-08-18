@@ -77,7 +77,7 @@ Prometheus **counters** and **histograms** cover the same vacancy flow: candidat
 
 ### Endpoint
 
-The app exposes **`GET /metrics`** in Prometheus text format for scraping. It is meant to be reached from an internal network or behind a reverse proxy; no authentication is implemented on this route.
+The app exposes **`GET /metrics`** in Prometheus text format for scraping. Access is guarded by the `METRICS_TOKEN` setting: when it is set, the request must carry the token in `X-Metrics-Token` or `Authorization: Bearer <token>`, otherwise the endpoint answers **401**. When `METRICS_TOKEN` is empty — the default, and the local development case — the route stays open.
 
 ### Scope
 

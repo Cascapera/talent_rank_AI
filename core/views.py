@@ -1,3 +1,4 @@
+import hmac
 import shutil
 import tempfile
 import threading
@@ -5,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -74,8 +76,35 @@ _JOB_FILTERS = (
 )
 
 
+def _metrics_token_ok(request) -> bool:
+    """Confere o token do /metrics (R-22).
+
+    Aceita `X-Metrics-Token: <token>` e `Authorization: Bearer <token>` — o segundo
+    porque o Prometheus manda esse header nativamente (`authorization` no scrape_config)
+    e nao exige configurar header customizado.
+    """
+    esperado = settings.METRICS_TOKEN
+    if not esperado:
+        # Sem token configurado o endpoint segue aberto: e o passo "expand" do
+        # expand-contract, para o deploy nao derrubar um scraper ja existente.
+        return True
+    enviado = request.headers.get("X-Metrics-Token", "")
+    if not enviado:
+        autorizacao = request.headers.get("Authorization", "")
+        prefixo, _, valor = autorizacao.partition(" ")
+        if prefixo.lower() == "bearer":
+            enviado = valor.strip()
+    # compare_digest e nao `==`: comparacao de string vaza o tamanho do prefixo comum
+    # pelo tempo de resposta. Em bytes, e nao em str, porque a versao str aceita so
+    # ASCII: um header com acento levantaria TypeError e viraria 500 em vez de 401.
+    return hmac.compare_digest(enviado.encode("utf-8"), esperado.encode("utf-8"))
+
+
 def metrics_view(request):
     """Endpoint Prometheus (texto exposition format)."""
+    if not _metrics_token_ok(request):
+        # 401 seco, sem redirect para a tela de login: scraper nao segue redirect.
+        return HttpResponse("unauthorized", status=401, content_type="text/plain")
     return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
 
 
