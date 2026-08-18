@@ -253,6 +253,12 @@ class ImportJob(models.Model):
     processed = models.PositiveIntegerField(default=0)
     total = models.PositiveIntegerField(default=0)
     error = models.TextField(blank=True)
+    # R-20b: o payload exato que a tela recebe, portado do cache sem mudar de forma.
+    # As colunas acima servem para consultar; esta serve para responder o poll. Guardar o
+    # dicionario inteiro foi deliberado: `processed`/`total` nao cobrem tudo que a tela
+    # mostra — o contador de erros ao vivo e o resumo final ("3 criados, 2 atualizados")
+    # vivem aqui. Sem isso, trocar cache por banco apagaria da tela o que o R-32 pos la.
+    payload = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(auto_now_add=True)
     # Atualizado a cada passo do job. É o que permite ao R-20b distinguir "ainda
     # trabalhando" de "morreu no meio" — um `status=RUNNING` com heartbeat velho.

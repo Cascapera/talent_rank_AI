@@ -2175,7 +2175,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 3 — Confiabilidade dos jobs em background
 
-- [ ] **R-18** · Fechar conexões de banco nas threads
+- [x] **R-18** · Fechar conexões de banco nas threads
       risco: baixo · 3h · produção: transparente · PR: ~20 linhas / 1 arquivo
       pré-requisito: R-14
   - [x] Correção aplicada + 14 testes
@@ -2183,9 +2183,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#48**, CI verde
   - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
-  - [ ] Verificado em produção — `pg_stat_activity` volta ao patamar após importação
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: em vez de repetir `try/finally` nas 4 funções,
+  - [x] Verificado em produção — **2026-08-18**, depois de duas importações reais:
+        `pg_stat_activity` mostra **1 conexão no banco da aplicação, que é a própria
+        sessão do `dbshell`**. Zero penduradas.
+  - [x] Commitado — PR #48
+  - Status: **✅ concluído** · Notas: em vez de repetir `try/finally` nas 4 funções,
     criei o decorator `background_job` — fecha na entrada e no `finally`, num lugar só.
 
     Fecha **na entrada** também porque a thread herda o estado do processo e pode pegar
@@ -2222,7 +2224,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     chave antiga fica órfão e a tela volta a "idle". Sem perda de dado — a importação em
     si continua —, mas a barra some. Subir quando não houver importação rodando.
 
-- [ ] **R-20a** · Estado do job no banco — modelo + escrita dupla
+- [x] **R-20a** · Estado do job no banco — modelo + escrita dupla
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~120 linhas / 3 arquivos
       pré-requisito: R-18, R-19
   - [x] Migration criada (tabela nova, vazia — ninguém lê ainda) — `0021_importjob`
@@ -2231,9 +2233,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes · `makemigrations --check` sem pendências
   - [x] PR aberto e revisado — **#50**, CI verde
   - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
-  - [ ] Verificado em produção — tabela sendo populada em uma importação real
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: **a primeira migration do projeto de refatoração.**
+  - [x] Verificado em produção — **2026-08-18**: importação real gravou `RUNNING` →
+        `COMPLETED` com `processed = total`. **É o que destravou o R-20b.**
+  - [x] Commitado — PR #50
+  - Status: **✅ concluído** · Notas: **a primeira migration do projeto de refatoração.**
     Os três deploys anteriores foram `No migrations to apply`; o próximo não será.
     Tabela nova e vazia, ninguém lê dela — o `deploy.yml` roda `migrate` antes de o
     código novo servir tráfego, então o risco é o menor possível.
@@ -2252,19 +2255,43 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
     expand, perder uma linha não custa nada; perder uma importação custa.
 
-- [ ] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
+- [~] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos
       pré-requisito: **R-20a implantado e confirmado populando em produção**
-  - [ ] R-20a confirmado no ar e escrevendo corretamente
-  - [ ] Leitura migrada para o banco; escrita no cache removida
-  - [ ] Teste que simula morte da thread → UI mostra "interrompido"
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] R-20a confirmado no ar e escrevendo corretamente — **2026-08-18**, importação real
+  - [x] Leitura migrada para o banco; escrita no cache removida nos 3 fluxos
+        rastreados (o do parecer continua no cache, não está na tabela)
+  - [x] Teste que simula morte da thread → a tela recebe "interrompido"
+  - [x] Suíte completa verde — 366 testes, cobertura **79,82%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — restart no meio da importação mostra "interrompido"
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto** · Notas: **dois desvios da especificação, os dois
+    necessários.**
+
+    **1. A tabela não tinha onde guardar o que a tela mostra.** O item dizia "a escrita no
+    cache é removida", mas `processed`/`total` não cobrem o contador de erros ao vivo nem o
+    resumo final ("3 criados, 2 atualizados, 1 sem alteração") — que foi exatamente o que o
+    R-32 colocou lá. Removê-lo sem mais nada apagaria isso da tela. Entrou um campo
+    `payload` (JSONField, migration `0023`) que guarda **o mesmo dicionário que ia para o
+    cache, na mesma forma** — então nenhuma linha de JS mudou.
+
+    **2. A linha passou a nascer na view, não na thread.** Havia uma corrida: o primeiro
+    poll acontece ~2s depois do POST, e se a linha ainda não existisse o endpoint
+    responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. Era isso que a
+    escrita síncrona no cache garantia. Tem teste travando.
+
+    **O limiar de "morreu" é 15 minutos**, configurável por `IMPORT_JOB_STALE_AFTER_SECONDS`.
+    Generoso de propósito: o heartbeat é escrito **por lote**, e um lote de 10 PDFs com
+    timeout de 180s e 4 tentativas pode passar de 12 minutos sem sinal **estando vivo**.
+    Limiar curto faria a recrutadora reiniciar uma importação viva — pagando o LLM duas
+    vezes. Há teste com um lote de 13 minutos exigindo que ele ainda apareça como vivo.
+
+    A linha **continua `RUNNING` no banco** quando é exibida como interrompida: a tabela
+    guarda o fato, a interpretação é da leitura. Marcar como `ERROR` exigiria um varredor, e
+    um job que só parecia morto voltaria a andar sozinho.
 
 - [ ] **Onda 3 concluída** — jobs não vazam conexão nem falham em silêncio
 
@@ -2427,14 +2454,15 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Template compila e `{% static %}` resolve para `/static/js/job_detail.js`
   - [x] Suíte completa verde — 342 testes, cobertura 75,53%
   - [x] Lint e format verdes
-  - [ ] **Validação manual completa:** importar · filtrar · paginar · mudar status ·
-        gerar parecer · gerar busca booleana · preview de match
+  - [x] **Validação manual completa** — 2026-08-18, em produção: importação real,
+        navegação, mudança de status, parecer e busca booleana, com console limpo
   - [x] PR aberto e revisado — PR #60
   - [x] Implantado (com `collectstatic`) — **2026-08-18**, PR #62, deploy `99018df`
-  - [x] `job_detail.<hash>.js` retornando **200** em produção (29.654 bytes, conteúdo
-        conferido) — falta só o console durante o uso
+  - [x] Verificado em produção — `job_detail.<hash>.js` em **200** (29.654 bytes) e
+        console sem erro durante o uso
+  - [x] Commitado — `e8b127b`
   - [ ] Commitado — `<hash>`
-  - Status: **código pronto, esperando a validação manual** · Notas: `job_detail.html`
+  - Status: **✅ concluído** · Notas: `job_detail.html`
     1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
     o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
@@ -2815,6 +2843,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
 | 2026-08-18 | **R-27 e R-40 → produção** | 6º release (PR #62): `76f8e32` → `99018df`. CD limpo. `No migrations to apply` e `1 static file copied, 130 unmodified, **387 post-processed**`. Confirmado de fora: a home serve `/static/img/logo.334f5c205457.png` e `job_detail.b75f1bbb634b.js` responde 200 com 29.654 bytes. | **Três, e uma delas me desmente.** (1) **A compressão já existia — eu estava errado.** Escrevi no R-40 que sem o Whitenoise ativo 'todo CSS e JS ia pela rede sem compressão'; o `curl` mostra `Content-Encoding: gzip` no `/static/`, porque quem serve ali é o **Nginx**, não o Whitenoise, e ele já comprimia. O ganho real do R-40 é o **hash no nome**, não a compressão. (2) **Não dá para prever o hash a partir de um checkout Windows:** meu arquivo local é CRLF e o do servidor é LF, então os hashes diferem (`1a1dd8a7bcfa` contra `b75f1bbb634b`) e a primeira URL que testei deu 404. O conteúdo é o mesmo; o fim de linha não. (3) **O Nginx serve `/static/` sem `expires`**, então o cache imutável que o hash permite ainda não está sendo usado — virou follow-up colado no R-23. |
 | 2026-08-18 | **R-41** 🐛 | POST/Redirect/GET nas 3 branches de POST de `talent_pool` e `job_detail`. `import_message` sai do contexto e dos 2 templates, substituído pelo `messages` do Django, que o `base_logged.html` já renderizava. 8 testes de regressão, 7 vermelhos antes. Piso do CI 75 → 78. | **Duas. (1) O bug foi achado pelo item anterior, não por alguém procurando.** A primeira importação real depois do R-20a gravou **duas linhas para 1 PDF**, porque o dono deu F5 e o browser remandou o multipart. Antes da tabela isso era invisível: as duas threads escreviam na mesma chave de cache e uma tapava a outra. É o argumento do expand-contract se pagando — a etapa *expand* já rendeu um bug real antes de a leitura sequer migrar. **(2) A guarda óbvia é a errada agora.** "Não iniciar se já houver uma importação RUNNING" parece a correção completa, mas depende de distinguir vivo de morto — sem isso, uma linha órfã de um restart travaria a importação para sempre, que é o próprio D-6. Fica para depois do R-20b, e está escrito no item. |
+| 2026-08-18 | **R-20b** | A leitura do status sai do cache e vai para o `ImportJob`. Campo `payload` novo (migration `0023`), `start_import_job` passa a ser chamada **pela view**, os 3 endpoints de poll e os 3 contextos de template leem do banco. Job `RUNNING` com heartbeat velho vira "interrompido". 10 testes novos; 366 no total, cobertura **79,82%**. | **Duas surpresas na especificação, achadas antes de escrever código. (1) O item mandava remover o cache, mas a tabela não tinha onde guardar o que a tela mostra** — o contador de erros ao vivo e o resumo final do R-32 só existiam no payload do cache. Sem um campo novo, o "contract" apagaria da tela o que um item anterior colocou lá. Resolvido com um JSONField que guarda **o mesmo dicionário, na mesma forma**: zero linha de JS alterada. **(2) Havia uma corrida escondida na ordem das operações:** a view escrevia `running` no cache **antes** de disparar a thread, e isso não era decoração — o primeiro poll chega ~2s depois, e sem a linha o endpoint responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. A criação subiu para a view. Terceiro achado, este de medida: o heartbeat é escrito **por lote**, então o limiar de morte tem que ser maior que o lote mais lento — 15 min contra os ~12 que um lote de 10 PDFs pode levar legitimamente. |
 
 ---
 
