@@ -79,6 +79,14 @@ Prometheus **counters** and **histograms** cover the same vacancy flow: candidat
 
 The app exposes **`GET /metrics`** in Prometheus text format for scraping. Access is guarded by the `METRICS_TOKEN` setting: when it is set, the request must carry the token in `X-Metrics-Token` or `Authorization: Bearer <token>`, otherwise the endpoint answers **401**. When `METRICS_TOKEN` is empty — the default, and the local development case — the route stays open.
 
+### Production settings
+
+`DJANGO_DEBUG` defaults to **False**, and with it off the app **refuses to start** without
+`DJANGO_SECRET_KEY` — the key committed to this repository is a development-only fallback
+and is not usable in production. Outside DEBUG the app also turns on `SESSION_COOKIE_SECURE`,
+`CSRF_COOKIE_SECURE`, `SECURE_SSL_REDIRECT` and a one-hour `SECURE_HSTS_SECONDS`
+(raise it with the `SECURE_HSTS_SECONDS` env var once the deploy has proven stable).
+
 ### Scope
 
 This is a first pass at observability, scoped to the core vacancy processing path. It does not include OpenTelemetry-style distributed tracing or bundled dashboards.
