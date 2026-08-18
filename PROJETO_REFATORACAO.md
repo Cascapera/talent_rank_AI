@@ -14,7 +14,7 @@
 | **Foco** | Global |
 | **Itens no backlog** | 39 (29 originais + 10 achados na execução) |
 | **Esforço total** | ~15–19 dias de trabalho focado |
-| **Executado** | **Ondas 0, 1 e 2 em produção** · 24 itens · PRs #13 a #46 |
+| **Executado** | **Ondas 0, 1 e 2 completas + Onda 3 e 5 parciais** · 29 itens em produção · PRs #13 a #53 |
 
 ## ⛔ Impacto em produção — leia primeiro
 
@@ -2147,8 +2147,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Correção aplicada + 14 testes
   - [x] Suíte completa verde — 286 testes, cobertura 73,27%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#48**, CI verde
+  - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
   - [ ] Verificado em produção — `pg_stat_activity` volta ao patamar após importação
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: em vez de repetir `try/finally` nas 4 funções,
@@ -2172,8 +2172,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Correção aplicada
   - [x] Suíte completa verde — 290 testes, cobertura 73,38%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#49**, CI verde
+  - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
   - [ ] Verificado em produção — 2 contas importando, cada uma vê seu progresso
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: a chave era a string fixa
@@ -2195,8 +2195,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Escrita dupla (cache + banco) aplicada nos **3 fluxos** de importação/ranking
   - [x] Suíte completa verde — 301 testes, cobertura 73,69%
   - [x] Lint e format verdes · `makemigrations --check` sem pendências
-  - [ ] PR aberto e revisado
-  - [ ] Implantado — migration antes do código
+  - [x] PR aberto e revisado — **#50**, CI verde
+  - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
   - [ ] Verificado em produção — tabela sendo populada em uma importação real
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: **a primeira migration do projeto de refatoração.**
@@ -2297,8 +2297,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         o mesmo número de 1 vaga
   - [x] Suíte completa verde — 310 testes, cobertura 75,13%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#51**, CI verde
+  - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
   - [ ] Verificado em produção — `/relatorios/` com os mesmos números de antes
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: o laço aninhado virou uma agregação única
@@ -2338,8 +2338,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Contagem de queries provando 1 a menos — **2 → 1** no save comum
   - [x] Suíte completa verde — 318 testes, cobertura 75,19%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
+  - [x] PR aberto e revisado — **#52**, CI verde
+  - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
   - [ ] Verificado em produção — status "Candidato pronto" preenche a data
   - [ ] Commitado — `<hash>`
   - Status: **em andamento** · Notas: a leitura do status anterior saiu do topo do
@@ -2644,6 +2644,39 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-16** | `domain/job_description.py` e `domain/boolean_search.py`. As funções recebem **campos**, não o objeto `Job`. `views.py` 746 → **692 linhas**. Piso 71 → 72. | A garantia crítica do item era a string sair byte a byte igual — ela vai direto no prompt, e mudá-la mudaria o ranking de todos os candidatos. Capturei as strings **rodando a implementação antiga** e colei literalmente em `test_job_prompts.py`: 12 testes golden que rodam **sem banco e sem HTTP, em 0,06s**. Antes, testar a montagem do prompt exigia subir uma request — que é por que nunca tinha sido testada. Desfez o remendo do R-14 (import adiado para evitar ciclo). Um teste do R-13 mudou de alvo: `views` não consome mais o dicionário de sinônimos, quem consome é `domain.boolean_search`. |
 | 2026-08-17 | **R-17** | `pdf_extractor.py` deixa de existir: vira `services/candidate_import.py` (579 linhas) e `core/pdf.py` (59). O `_prepare_uploaded_files` veio junto do `views.py`. `views.py` 692 → **665 linhas**. README atualizado. | O nome mentia desde o começo: depois do R-03 e do R-37, o que sobrava não extraía PDF, coordenava importação. **Armadilha na movimentação:** havia um `from .models import ...` **dentro de uma função** — import adiado que o script de recorte não pegou por não estar no topo. Com o módulo um nível mais fundo virou `core.services.models` e 19 testes quebraram de uma vez. É o tipo de coisa que a suíte pega e a revisão de diff não. |
 | 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
+
+---
+
+### ▶ Onde retomar (atualizado em 2026-08-18)
+
+**Em produção:** Ondas 0, 1 e 2 completas, mais R-18, R-19, R-20a (Onda 3) e R-24, R-26
+(Onda 5). 318 testes, cobertura real **75,19%**. `main` em `3320174`.
+
+**O próximo passo é uma verificação, não um item.** O R-20b só pode ser aberto depois de
+confirmar que a tabela do R-20a está sendo populada em produção:
+
+```sql
+SELECT id, kind, status, processed, total, heartbeat_at
+FROM core_importjob ORDER BY id DESC LIMIT 5;
+```
+
+Rode uma importação real primeiro. Com linhas aparecendo, o R-20b está liberado — e é ele
+que resolve a barra de progresso travada depois de um restart, que é o sintoma mais
+visível do D-6.
+
+**Bloqueados por informação que só o dono do projeto tem:**
+
+| Item | O que falta |
+|---|---|
+| **R-21** | `grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` — se não existir, a aplicação **não sobe** depois daquele deploy |
+| **R-23** | mexe na configuração do Nginx, em 3 etapas |
+| **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
+
+**Disponíveis sem depender de ninguém:** R-25 (índice funcional, tem migration com
+`AddIndexConcurrently` e P-7), R-22 (proteger `/metrics`), R-27 e R-28 (Onda 6, frontend
+— grandes e com validação visual manual).
+
+**Prazo em aberto:** o **R-34** (Python 3.10 → 3.12) vence em **outubro/2026**.
 
 ---
 
