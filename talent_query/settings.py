@@ -206,6 +206,17 @@ LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
 # outro deploy.
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
 
+# Depois de quantos segundos sem heartbeat um job RUNNING e considerado morto (R-20b).
+# As threads sao daemon: no `systemctl restart` do deploy elas somem sem rodar o
+# `finally`, e antes disso a barra de progresso girava ate o cache expirar, uma hora
+# depois.
+# 15 minutos, e o numero e generoso de proposito. O heartbeat e escrito POR LOTE, nao por
+# tempo: um lote vai ate 10 PDFs numa unica chamada ao LLM, com LLM_TIMEOUT_SECONDS de
+# 180s e ate 4 tentativas — pode passar de 12 minutos sem sinal e estar vivo. Limiar curto
+# trocaria um problema chato (barra girando a toa) por um pior: dizer que uma importacao
+# viva morreu e fazer a recrutadora reiniciar tudo, pagando o LLM duas vezes.
+IMPORT_JOB_STALE_AFTER_SECONDS = int(os.getenv("IMPORT_JOB_STALE_AFTER_SECONDS", "900"))
+
 # Auth
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
