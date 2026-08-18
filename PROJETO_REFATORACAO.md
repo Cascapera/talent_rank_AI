@@ -1188,9 +1188,10 @@ Não muda:    nenhum comportamento da tela — mesma lógica, outro arquivo
 Pré-requisito: nenhum
 PR:          2 arquivos · ~+850 / −830 linhas (majoritariamente movimentação)
 Produção:    REQUER CUIDADO — depende de collectstatic no deploy
-Deploy:      o deploy já roda `collectstatic --noinput`; o Whitenoise faz hash no nome
-             do arquivo, então não há problema de cache velho. Confirme mesmo assim
-             que o /static/ do Nginx está servindo o arquivo novo.
+Deploy:      o deploy já roda `collectstatic --noinput`. ⚠️ A frase original deste item
+             dizia que o Whitenoise faz hash no nome do arquivo — **não faz**, ver R-40.
+             Para o R-27 não muda nada (arquivo novo não tem versão velha em cache),
+             mas confirme que o /static/ está servindo o arquivo.
 Como validar: abrir /vagas/<id>/ e exercitar TUDO: importar, filtrar, paginar, mudar
              status, gerar parecer, gerar busca booleana, preview de match
 Verificação pós-deploy: DevTools sem erro no console; job_detail.js retornando 200
@@ -1443,7 +1444,7 @@ commit. Onde havia risco de indisponibilidade, o plano usa a alternativa increme
 | Migrar status de cache para banco (R-20) | Expand-contract: escrita dupla → migrar leitura → remover o antigo |
 | Fechar `/media/` público (R-23) | Expand-contract: nova rota → migrar links → remover a antiga |
 | Fechar `/metrics` (R-22) | Aceitar token e sem-token → configurar scraper → exigir token |
-| Mover 33 KB de JS (R-27) | Whitenoise já versiona por hash; sem invalidação manual de cache |
+| Mover 33 KB de JS (R-27) | ⚠️ **Errado, corrigido em 2026-08-18:** o projeto usa `CompressedStaticFilesStorage`, que **não** versiona por hash — e o setting que o escolhe (`STATICFILES_STORAGE`) foi **removido no Django 5.1**, então nem isso está valendo. Ver R-40. Para este item não há risco: arquivo novo não tem cache velho. |
 
 ### Itens "requer cuidado" — procedimento
 
@@ -2413,18 +2414,26 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 6 — Frontend
 
-- [ ] **R-27** · Extrair o JavaScript de `job_detail.html`
+- [~] **R-27** · Extrair o JavaScript de `job_detail.html`
       risco: médio · 0,5d · produção: requer cuidado · PR: ~1.680 linhas / 2 arquivos
-  - [ ] Movimentação aplicada; dados dinâmicos via `data-*`
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Movimentação aplicada — **não foi preciso criar nenhum `data-*`**: o bloco não
+        tinha uma única tag Django dentro, o JS já lia tudo de atributos que o HTML
+        preenche. O item previa essa conversão; ela não existia.
+  - [x] **Conteúdo conferido idêntico** — `diff` do bloco original contra o arquivo novo
+        acusa só o recuo de 4 espaços
+  - [x] `node --check static/js/job_detail.js` — o arquivo compila sozinho
+  - [x] Template compila e `{% static %}` resolve para `/static/js/job_detail.js`
+  - [x] Suíte completa verde — 342 testes, cobertura 75,53%
+  - [x] Lint e format verdes
   - [ ] **Validação manual completa:** importar · filtrar · paginar · mudar status ·
         gerar parecer · gerar busca booleana · preview de match
-  - [ ] PR aberto e revisado
+  - [x] PR aberto e revisado
   - [ ] Implantado (com `collectstatic`)
   - [ ] Verificado em produção — console sem erro, `job_detail.js` retornando 200
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto, esperando a validação manual** · Notas: `job_detail.html`
+    1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
+    o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
 - [ ] **R-28** · Consolidar o CSS repetido em `static/css/app.css` (3 sub-PRs)
       risco: médio · 1d · produção: requer cuidado · PR: ~250 linhas cada
@@ -2679,6 +2688,40 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Decidir se vale — depende de alguém realmente consumir `/metrics`
   - Status: não iniciado · Notas: registrado como achado, **não como compromisso**.
 
+- [ ] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
+      risco: baixo · estimativa: 1h · produção: requer cuidado (mexe em `collectstatic`)
+      **Achado no R-27, em 2026-08-18.** O `settings.py` tem:
+
+      ```python
+      STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
+      ```
+
+      Esse setting foi **removido no Django 5.1** (substituído por `STORAGES`), e produção
+      roda **5.2.10** — ou seja, **está sendo ignorado em silêncio**. O que vale hoje é o
+      `StaticFilesStorage` padrão: o `collectstatic` não gera os arquivos `.gz`/`.br` que o
+      Whitenoise serviria, então cada CSS e JS vai pela rede sem compressão.
+
+      Confirmado localmente com `settings.STORAGES`, que mostra o backend padrão. **Confirme
+      no servidor antes de mexer**, porque o Django local é 6.0.6 e não o 5.2.10 de produção:
+
+      ```
+      python manage.py shell -c "from django.conf import settings; print(settings.STORAGES)"
+      ```
+
+      **Duas correções possíveis, e a diferença importa:**
+
+      | Backend | O que ganha | O que arrisca |
+      |---|---|---|
+      | `CompressedStaticFilesStorage` | compressão, que era a intenção original | ~nada |
+      | `CompressedManifestStaticFilesStorage` | compressão **+ hash no nome**, que mata cache velho de vez | erra o build se algum `{% static %}` apontar para arquivo inexistente |
+
+      O segundo é o que o plano **supunha** que já estava valendo (ver seção 9 e o item
+      R-27). É também o que resolveria de vez o risco de cache velho no R-28, que vai
+      editar CSS já existente — situação diferente do R-27, que só criou arquivo novo.
+  - [ ] Confirmado no servidor que o setting está sendo ignorado
+  - [ ] Decidido entre `Compressed` e `CompressedManifest`
+  - Status: não iniciado · Notas: **fazer antes do R-28**, que edita arquivos já servidos.
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -2720,6 +2763,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
 | 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
 | 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
+| 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
 
 ---
 
