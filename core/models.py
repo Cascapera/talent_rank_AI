@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Upper
 
 
 def resume_upload_to(instance, filename):
@@ -124,6 +125,22 @@ class Candidate(models.Model):
                 fields=("user", "linkedin_url"),
                 name="core_candidate_user_linkedin_unique",
             ),
+        ]
+        indexes = [
+            # R-25. Todo upsert de importacao procura o candidato por
+            # `linkedin_url__iexact`, e a UniqueConstraint acima nao atende essa busca:
+            # o indice dela e sobre a coluna crua, case-sensitive.
+            #
+            # UPPER e nao LOWER, ao contrario do que o plano dizia: no PostgreSQL o
+            # Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)`
+            # (django/db/backends/postgresql/operations.py::lookup_cast). Indice em
+            # Lower() nunca seria usado. Ha um teste travando isso.
+            #
+            # Um indice so, sobre a URL, atende as tres formas da query (com user_id,
+            # sem, e a do pool compartilhado): a URL e seletiva o bastante para o
+            # planner filtrar o user_id depois. Indice composto seria ganho marginal
+            # com custo de manutencao em toda escrita.
+            models.Index(Upper("linkedin_url"), name="core_candidate_linkedin_upper"),
         ]
 
     def __str__(self) -> str:
