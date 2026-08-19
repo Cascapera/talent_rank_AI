@@ -1594,21 +1594,23 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40. 6 releases: PRs #26,
-           #35, #46, #53, #57, #62. `main` em `99018df`.
-Progresso: 30 itens em produção · **3 prontos em `develop` esperando release**
-           (R-41, R-20b, R-21) · 1 fechado sem correção (R-29, decisão de produto)
-           · 2 achados registrados (**R-39** aberto, **R-40** já em produção)
-           atualizado em 2026-08-18, fim do dia
-
-           🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
-           Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
+           R-20a, R-20b (Onda 3), R-21, R-22 (Onda 4), R-27 (Onda 6), R-40 e R-41.
+           7 releases: PRs #26, #35, #46, #53, #57, #62, #69. `main` em `84180f1`.
+Progresso: 33 itens em produção · **nada esperando release** · 1 fechado sem correção
+           (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
+           **R-40** já em produção)
+           atualizado em 2026-08-19
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
 
            ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
            em texto claro durante a verificação e **precisam ser rotacionados**.
+
+           ⚠️ **A `DJANGO_SECRET_KEY` de produção tinha 11 caracteres** (medido em
+           2026-08-19; Django gera 50). Não era a chave do repositório — era outra,
+           curta. Foi passada a receita de troca por `secrets.token_urlsafe(64)`;
+           **a execução não foi confirmada**. Ver "Onde retomar".
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
            foram implantados (PR #53) e estão marcados no checklist, mas nenhum deles
@@ -1644,10 +1646,10 @@ Progresso: 30 itens em produção · **3 prontos em `develop` esperando release*
 
 ### Resultado até aqui
 
-| Métrica | Linha de base | Hoje em produção (2026-08-18) |
+| Métrica | Linha de base | Hoje em produção (2026-08-19) |
 |---|---:|---:|
-| Testes | 100 | **348** |
-| Cobertura real | 25% (reportada como 87,62%) | **75,58%** (real) |
+| Testes | 100 | **377** |
+| Cobertura real | 25% (reportada como 87,62%) | **79,82%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -2268,11 +2270,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — 366 testes, cobertura **79,82%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
+  - [x] Implantado — **7º release (PR #69), 2026-08-19**; migration `0023` aplicada no CD
   - [ ] Verificado em produção — restart no meio da importação mostra "interrompido"
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: **dois desvios da especificação, os dois
-    necessários.**
+  - [x] Commitado — `e62af9a`
+  - Status: **em produção, verificação manual pendente** · Notas: **dois desvios da
+    especificação, os dois necessários.**
 
     **1. A tabela não tinha onde guardar o que a tela mostra.** O item dizia "a escrita no
     cache é removida", mas `processed`/`total` não cobrem o contador de erros ao vivo nem o
@@ -2307,11 +2309,18 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       produção: **requer cuidado (P-5)** · PR: ~40 linhas / 2 arquivos
   - [x] ⛔ **`grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` retorna 1** —
         conferido em **2026-08-18**. A aplicação sobe depois do deploy.
-  - [ ] **Falta conferir a qualidade da chave**, não só a existência. O R-21 verifica que
-        a variável existe; se ela contiver uma cópia da chave do repositório, a aplicação
-        sobe e o ganho é zero. Comando que não imprime o segredo:
-        `awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env`
-        — espera-se tamanho ≥ 50 e contador 0.
+  - [x] **Qualidade da chave conferida em 2026-08-19 — e ela reprovou.** Não é cópia da
+        chave do repositório (`grep -c` = 0), mas tem **11 caracteres**; o Django gera 50.
+        Curta o bastante para força bruta valer a pena, e é o ponto cego do próprio R-21,
+        que só exige que a variável **exista**. Receita de troca (não imprime segredo, e a
+        chave nova só entra no próximo `restart`):
+        `cd /var/www/talent_rank_ai && cp -a .env .env.bak-AAAAMMDD && sed -i '/^DJANGO_SECRET_KEY=/d' .env && .venv/bin/python -c "import secrets;print('DJANGO_SECRET_KEY='+secrets.token_urlsafe(64))" >> .env`
+        — `token_urlsafe` em vez de `get_random_secret_key()` de propósito: o alfabeto do
+        Django inclui `#` e `$`, que são justamente o que quebra parser de `.env`.
+        ⏳ **Execução não confirmada** — ver "Onde retomar".
+  - [x] **Nginx conferido antes do deploy** — `proxy_set_header X-Forwarded-Proto $scheme`
+        existe no bloco `listen 443 ssl`, e os blocos da porta 80 já fazem `return 301`
+        para HTTPS. Era a condição que evitava o laço de redirect.
   - [x] **HTTPS confirmado funcionando no domínio** — `https://talentrankai.com/` responde
         200, verificado em 2026-08-18
   - [x] Janela de baixo uso — **15 dias sem usuária**, até ~2026-09-02
@@ -2324,10 +2333,14 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — 377 testes, cobertura 79,82%
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — `systemctl status` OK + login completo + cookies Secure
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto, release bloqueado pela conferência do `.env`** · Notas:
+  - [x] Implantado — **7º release (PR #69), 2026-08-19**
+  - [~] Verificado em produção — conferido de fora em 2026-08-19: home **200 com zero
+        redirects** (o laço não aconteceu), `Strict-Transport-Security: max-age=3600`,
+        `csrftoken` com `Secure; SameSite=Lax`, `/dashboard/` sem sessão → 302 para
+        `/login/`. **Falta o login completo** (cookie `sessionid` com `Secure`), que exige
+        credencial.
+  - [x] Commitado — `cd12756`
+  - Status: **em produção** · Notas:
 
     **O HSTS começa em 1 hora, não em 1 ano.** O navegador **memoriza** o prazo: publicar
     um ano e descobrir um problema no HTTPS deixaria a usuária sem acesso, sem nada que o
@@ -2807,11 +2820,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — 356 testes, cobertura **79,17%**; piso do CI 75 → 78
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
+  - [x] Implantado — **7º release (PR #69), 2026-08-19**
   - [ ] Verificado em produção — importar, dar F5 e conferir que `core_importjob` ganha
         **uma** linha só
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: **a guarda de "já existe importação rodando" ficou
+  - [x] Commitado — `2447b6e`
+  - Status: **em produção, verificação manual pendente** · Notas: **a guarda de "já existe
+    importação rodando" ficou
     de fora de propósito.** Ela depende de saber se um `RUNNING` está vivo ou morreu num
     restart — que é exatamente o que o R-20b resolve com o `heartbeat_at`. Feita agora,
     uma linha `RUNNING` órfã de um deploy antigo travaria a importação para sempre.
@@ -2875,46 +2889,52 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-41** 🐛 | POST/Redirect/GET nas 3 branches de POST de `talent_pool` e `job_detail`. `import_message` sai do contexto e dos 2 templates, substituído pelo `messages` do Django, que o `base_logged.html` já renderizava. 8 testes de regressão, 7 vermelhos antes. Piso do CI 75 → 78. | **Duas. (1) O bug foi achado pelo item anterior, não por alguém procurando.** A primeira importação real depois do R-20a gravou **duas linhas para 1 PDF**, porque o dono deu F5 e o browser remandou o multipart. Antes da tabela isso era invisível: as duas threads escreviam na mesma chave de cache e uma tapava a outra. É o argumento do expand-contract se pagando — a etapa *expand* já rendeu um bug real antes de a leitura sequer migrar. **(2) A guarda óbvia é a errada agora.** "Não iniciar se já houver uma importação RUNNING" parece a correção completa, mas depende de distinguir vivo de morto — sem isso, uma linha órfã de um restart travaria a importação para sempre, que é o próprio D-6. Fica para depois do R-20b, e está escrito no item. |
 | 2026-08-18 | **R-20b** | A leitura do status sai do cache e vai para o `ImportJob`. Campo `payload` novo (migration `0023`), `start_import_job` passa a ser chamada **pela view**, os 3 endpoints de poll e os 3 contextos de template leem do banco. Job `RUNNING` com heartbeat velho vira "interrompido". 10 testes novos; 366 no total, cobertura **79,82%**. | **Duas surpresas na especificação, achadas antes de escrever código. (1) O item mandava remover o cache, mas a tabela não tinha onde guardar o que a tela mostra** — o contador de erros ao vivo e o resumo final do R-32 só existiam no payload do cache. Sem um campo novo, o "contract" apagaria da tela o que um item anterior colocou lá. Resolvido com um JSONField que guarda **o mesmo dicionário, na mesma forma**: zero linha de JS alterada. **(2) Havia uma corrida escondida na ordem das operações:** a view escrevia `running` no cache **antes** de disparar a thread, e isso não era decoração — o primeiro poll chega ~2s depois, e sem a linha o endpoint responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. A criação subiu para a view. Terceiro achado, este de medida: o heartbeat é escrito **por lote**, então o limiar de morte tem que ser maior que o lote mais lento — 15 min contra os ~12 que um lote de 10 PDFs pode levar legitimamente. |
 | 2026-08-18 | **R-21** | `DEBUG` passa a ter default **False**; sem `DJANGO_SECRET_KEY` fora de `DEBUG` a aplicação **levanta `ImproperlyConfigured` e não sobe**; cookies `Secure`, `SECURE_SSL_REDIRECT` e HSTS de 1h ligados fora de `DEBUG`. `check --deploy`: **5 → 2 avisos**. 11 testes novos; 377 no total. | **Três. (1) Seguir a letra do item derrubaria o site.** Ele mandava o `SECURE_PROXY_SSL_HEADER` deixar de vir ligado por default — mas o `SECURE_SSL_REDIRECT` depende dele para saber que a requisição chegou por HTTPS. Sem o header, o Nginx encaminha em HTTP, o Django redireciona para HTTPS e o site entra em **laço infinito**. O default passou a acompanhar o `DEBUG` em vez de sumir. **(2) O `ci.yml` exportava `SECRET_KEY` e `DEBUG`, que o `settings.py` não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas variáveis nunca tiveram efeito; ninguém notou porque nada dependia delas até agora. **(3) `importlib.reload` mente sobre settings condicionais:** ele reexecuta o módulo no namespace existente, então `SESSION_COOKIE_SECURE` definido numa carga com `DEBUG=False` sobrevivia à carga seguinte com `DEBUG=True`, e o teste afirmava o contrário do que verificava. Trocado por import limpo — e corrigido também no teste do R-40, onde a armadilha estava armada sem ainda ter disparado. |
+| 2026-08-19 | **R-41, R-20b e R-21 → produção** | 7º release (PR #69): 6 commits, 4 PRs, `99018df` → `84180f1`. CI 1m43s, CD 50s. Migration `0023` aplicada; `collectstatic` com **357 pós-processados** e manifesto intacto. Conferido de fora, sem depender do dono: home **200 com zero redirects**, `Strict-Transport-Security: max-age=3600`, `csrftoken` com `Secure; SameSite=Lax`, `/dashboard/` sem sessão → 302 para `/login/`, e HTTP → HTTPS 301 pelo Nginx. | **Três, e as três estão nas conferências de pré-deploy, não no código.** **(1) A `DJANGO_SECRET_KEY` de produção tem 11 caracteres.** Não é a chave do repositório — é outra, curta. O R-21 não pega isso: ele exige que a variável **exista**. O comando de conferência que sobrou do dia anterior existia justamente para achar o que o código não consegue ver, e achou. **(2) O comando de conferência estava errado e quase escondeu o achado.** `awk -F=` corta no **primeiro** `=`, e o alfabeto do `get_random_secret_key()` do Django inclui `=` — uma chave boa com um `=` na 12ª posição daria a mesma saída `tamanho: 11`. Só o `sub(/^DJANGO_SECRET_KEY=/,"")` mede de verdade. **(3) `grep -r` não segue symlink, e `/etc/nginx/sites-enabled/` é um diretório de symlinks.** O `grep -r` do `X-Forwarded-Proto` voltou vazio e isso parecia dizer 'o header não existe' — o que significaria laço de redirect garantido no deploy. Não olhou arquivo nenhum. O `nginx -T`, que imprime a configuração efetiva já resolvida, mostrou o header presente no bloco `listen 443 ssl` **e** os blocos da porta 80 já fazendo `return 301`. Silêncio de ferramenta não é evidência. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, fim do dia)
+### ▶ Onde retomar (atualizado em 2026-08-19)
 
-**Em produção** (`main` em `99018df`, 6 releases): Ondas 0, 1, 2 e 5 completas, mais
-R-18, R-19, R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40.
+**Em produção** (`main` em `84180f1`, 7 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22 (Onda 4), R-27 (Onda 6), R-40 e R-41.
 
-**Em `develop`, prontos e esperando release — 3 itens:**
-
-| Item | O que é | Verificação que ele exige depois do deploy |
-|---|---|---|
-| **R-41** 🐛 | refresh não importa mais de novo | importar, dar F5, conferir **uma** linha em `core_importjob` |
-| **R-20b** | status vem do banco; job morto vira "interrompido" | iniciar importação, **reiniciar o serviço no meio**, ver a tela avisar |
-| **R-21** | settings de produção endurecidos | `systemctl status` OK, login completo, cookies com flag `Secure` |
+**`develop` e `main` estão iguais — nada esperando release.**
 
 377 testes, cobertura **79,82%**. Piso do CI em 78.
 
 ## O que fazer no começo da próxima sessão
 
-**1. Um comando de conferência que sobrou** — o R-21 garante que `DJANGO_SECRET_KEY`
-existe (conferido: existe), mas não que ela é boa. Se for uma cópia da chave do
-repositório, a aplicação sobe e o ganho é zero. Este comando não imprime o segredo:
+**1. Terminar a troca da `DJANGO_SECRET_KEY`, se ainda não foi feita.** A chave de
+produção tem **11 caracteres** (Django gera 50). Não é a do repositório, mas é curta o
+bastante para força bruta valer a pena — e com ela qualquer um forja sessão e CSRF sem
+interceptar nada. A receita foi passada em 2026-08-19 e **a execução não foi confirmada**.
+Conferir primeiro, sem imprimir segredo:
 
 ```
-awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env
+awk '/^DJANGO_SECRET_KEY=/{sub(/^DJANGO_SECRET_KEY=/,"");print "tamanho:",length($0)}' /var/www/talent_rank_ai/.env
 ```
 
-Espera-se **tamanho ≥ 50** e **0**. Com isso, o release dos 3 itens está liberado.
+**86** = já trocada, nada a fazer. **11** = trocar, e depois `sudo systemctl restart
+talent_rank_ai` (o `.env` só é lido no boot). O comando de troca está no checklist do R-21.
 
-**2. O release.** Leva a migration `0023` (adiciona coluna com default — sem lock
-relevante) e muda comportamento de sessão: o R-21 pode **derrubar as sessões ativas** se a
-chave for trocada. Na janela de 15 dias, indiferente.
+**2. As duas verificações manuais que o 7º release deixou em aberto.** Nenhuma dá para
+fazer de fora — as duas exigem sessão logada e PDFs:
 
-**3. Depois do release, a verificação mais interessante do projeto:** iniciar uma
-importação e reiniciar o serviço no meio, de propósito, para ver o R-20b em ação.
+| Item | Como verificar | O que esperar |
+|---|---|---|
+| **R-41** 🐛 | importar, dar F5 | **uma** linha nova em `core_importjob`, não duas |
+| **R-20b** | iniciar importação e `sudo systemctl restart talent_rank_ai` no meio | a tela avisa **"interrompido"** — até 15 min de espera, que é o `IMPORT_JOB_STALE_AFTER_SECONDS` |
+| **R-21** | login completo | cookie `sessionid` com flag `Secure` (o `csrftoken` já foi conferido) |
+
+O do R-20b é a verificação mais interessante do projeto: é o único jeito de ver o
+`heartbeat_at` fazendo o trabalho para o qual foi criado.
+
+**3. Depois disso, o R-23** — maior valor restante do backlog.
 
 ## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
 
-Deploy a qualquer hora, sem caçar janela. Vale para tudo abaixo.
+Deploy a qualquer hora, sem caçar janela. Vale para tudo abaixo. **O restart do teste do
+R-20b também sai de graça por causa dela.**
 
 ## Backlog restante
 
