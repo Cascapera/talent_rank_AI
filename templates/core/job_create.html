@@ -2,46 +2,9 @@
 
 {% block title %}Nova vaga — Talent Rank AI{% endblock %}
 
+{% load static %}
 {% block extra_style %}
-  <style>
-    .form-wrap{
-      max-width: 100%;
-      width: 100%;
-    }
-    .form-helper{
-      color: #0f3441;
-    }
-    .form-grid{
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px 18px;
-    }
-    .form-grid .full{
-      grid-column: 1 / -1;
-    }
-    .form-grid .span-2{
-      grid-column: span 2;
-    }
-    .form-grid .span-3{
-      grid-column: span 3;
-    }
-    .field label{
-      font-weight: 700;
-    }
-    .field input,
-    .field select,
-    .field textarea{
-      width: 100%;
-      max-width: 100%;
-    }
-    .errorlist{
-      list-style:none;
-      padding: 0;
-      margin: 6px 0 0;
-      color: #fecaca;
-      font-size: 12px;
-    }
-  </style>
+  <link rel="stylesheet" href="{% static 'css/formulario.css' %}" />
 {% endblock %}
 
 {% block content %}
