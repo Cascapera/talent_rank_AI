@@ -2851,6 +2851,69 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [ ] Decidir se vale — depende de alguém realmente consumir `/metrics`
   - Status: não iniciado · Notas: registrado como achado, **não como compromisso**.
 
+- [x] **R-43** 🐛 · Resposta vazia do LLM passava como sucesso, sem retry
+      risco: baixo · 2h · produção: transparente · PR: ~90 linhas / 2 arquivos
+      **Achado na validação manual de 2026-08-19**, numa importação real de 5 PDFs: o
+      resumo final acusou `1 erro(s)`, e o detalhe guardado no payload era
+      `0005.pdf: Expecting value: line 1 column 1 (char 0)` — o `json.loads` de string
+      vazia. **O mesmo arquivo, reimportado sozinho minutos depois, entrou sem erro**,
+      o que fecha o diagnóstico: foi transitório, e uma segunda tentativa teria salvado
+      o candidato.
+
+      O `_generate` só repetia em **exceção da API** (429, 503, timeout). Resposta vazia
+      era sucesso para ele: uma tentativa, o candidato se perdia, e chegava à tela uma
+      mensagem de parser que não diz nada a quem opera.
+  - [x] `_garantir_conteudo` transforma texto vazio em falha **no lugar certo**, dentro
+        do `try` do laço — assim o retry e o backoff que já existiam passam a valer para
+        ela sem uma linha nova de controle de fluxo
+  - [x] `finish_reason` passa a ser lido. `SAFETY`, `RECITATION`, `BLOCKLIST`,
+        `PROHIBITED_CONTENT`, `SPII` e `IMAGE_SAFETY` levantam `RecusaDoLLM` e **saem na
+        primeira tentativa** — repetir um bloqueio gastaria 4 chamadas e ~56s de backoff
+        para chegar ao mesmo lugar. Qualquer outro motivo continua sendo repetido.
+  - [x] Mensagem em português, que é o que chega ao `error_details` da importação
+  - [x] 6 testes novos; 399 no total, cobertura **80,56%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção
+  - [ ] Commitado — `<hash>`
+  - Status: **código pronto** · Notas: **o characterization test do R-07 pegou um
+    segundo defeito, e ele é pior que o primeiro.**
+
+    O `generate_parecer` **tolerava resposta vazia de propósito** e devolvia `""`. O
+    chamador grava esse retorno direto em `candidate_job.parecer` e reporta `completed`
+    (`import_service.py:341-349`) — ou seja, a recrutadora clicava em gerar parecer, via
+    "concluído", e **o parecer que existia era substituído por vazio**. Com a mudança, a
+    falha sobe, o `except` do chamador marca erro e o texto antigo fica de pé.
+
+    Foi mudança **deliberada** de contrato: o teste que fixava o `""` foi reescrito
+    explicando por quê, em vez de contornado. É exatamente para isso que ele existia.
+
+    **Não sei ainda com que frequência isso acontece** — 1 em 5 PDFs numa única
+    importação observada não é estatística. O R-42 é o que vai tornar isso visível.
+
+- [ ] **R-42** · Os detalhes de erro da importação nunca chegam à tela
+      risco: baixo · 2h · produção: transparente
+      **Achado junto com o R-43, em 2026-08-19.** O importador monta um `error_details`
+      com arquivo e motivo (`candidate_import.py:231`) e guarda no payload. Mas
+      `grep error_details` em `templates/` e `static/js/` **não devolve nada**: a tela
+      mostra só o número, `1 erro(s)`.
+
+      Para quem opera, isso é o mesmo que não avisar — ela não sabe **qual** currículo
+      ficou de fora, não tem como reenviar o certo, e se não conferir a lista depois, o
+      candidato simplesmente não existe.
+
+      **O nome do arquivo já serve hoje:** o exportador entrega os PDFs numerados
+      (`001.pdf`, `002.pdf`…) e o `prepare_uploaded_files` renomeia para o mesmo número
+      com 4 dígitos, então `0005.pdf` **é** o `005.pdf` dela. Preservar o nome original
+      vira melhoria, não pré-requisito — passa a importar se algum dia os arquivos vierem
+      com nome de gente dentro de um ZIP.
+  - [ ] Mostrar a lista de erros na tela do banco de talentos e na da vaga
+  - [ ] (depois) Preservar o nome original no rename, para o dia em que ele não for
+        numerado
+  - Status: não iniciado · Notas: o dado já existe e está gravado; é trabalho de front.
+    Cai bem junto com o R-28, que já vai mexer em template.
+
 - [~] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
       risco: baixo · 1h · produção: **requer cuidado** (mexe em `collectstatic`)
       **Achado no R-27, resolvido no mesmo dia.** O `settings.py` tinha
