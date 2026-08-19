@@ -2570,7 +2570,8 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         visual pendente · `static/css/tokens.css` + `static/css/auth.css`
   - [x] Sub-PR b — telas de vagas · **código pronto**, validação visual pendente ·
         `static/css/formulario.css`. **Muito menor que o previsto — ver notas**
-  - [ ] Sub-PR c — talentos, relatórios, dashboard, base · **medir antes**, ver notas
+  - [x] Sub-PR c — **fechado sem extração: não há o que consolidar.** Medido em
+        2026-08-19, zero regras repetidas idênticas no grupo — ver notas
   - [x] Suíte completa verde — 14 testes novos, 423 no total, cobertura **81,01%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado (sub-PR a)
@@ -2645,8 +2646,41 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     11 e 12 regras conferidas, **zero diferenças**. `collectstatic` rodado com
     `DEBUG=False`: 4 copiados, 371 pós-processados, sem falha.
 
-    **Para o sub-PR c: medir primeiro.** A premissa de "12 templates com CSS repetido" já
-    caiu duas vezes. O comando de medição está no registro de execução deste dia.
+    ---
+
+    **Sub-PR c (2026-08-19): fechado sem extrair uma linha, e a medição é a justificativa.**
+
+    | Template | Regras próprias |
+    |---|---:|
+    | `base_logged.html` | 36 |
+    | `dashboard.html` | 6 |
+    | `talent_pool.html` | 11 |
+    | `reports.html` | 18 |
+
+    **Regras repetidas idênticas no grupo: zero.** As únicas três sobreposições são o
+    `talent_pool` **sobrescrevendo** o `base_logged` de propósito — `.table`, `.table th`
+    e `.table th, .table td`, com fonte menor, padding menor e `white-space: nowrap`. É a
+    tela que lista muitos candidatos e precisa de tabela mais densa.
+
+    Isso é **cascata intencional, não duplicação**. Consolidar ali mudaria a aparência —
+    exatamente o que o item proíbe ("se a aparência mudar, a extração errou").
+
+    ## O R-28 inteiro era menor do que o plano dizia
+
+    | Sub-PR | Previsto | Real |
+    |---|---|---|
+    | a — autenticação | ~250 linhas | **82 linhas**, 2 arquivos novos |
+    | b — vagas | ~250 linhas | **9 regras**, e só entre criar e editar |
+    | c — talentos e afins | ~250 linhas | **nada**: zero repetição |
+
+    A premissa "12 templates com `<style>` próprio" era verdadeira; a conclusão tirada
+    dela — que havia CSS repetido nos 12 — não. **Onze templates têm `<style>`, e a
+    duplicação real estava em 4 deles.** O ganho que o item prometia veio do `tokens.css`
+    do sub-PR a, que é onde as variáveis de tema moram; o resto era CSS específico de tela,
+    que continua onde deve estar.
+
+    ⚠️ **A validação visual continua pendente** para os sub-PRs a e b — é a única coisa que
+    falta para o R-28 poder ser marcado como concluído.
 
 - [ ] **Onda 6 concluída** — JS e CSS fora dos templates, sem mudança visual
 
