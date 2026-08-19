@@ -1595,9 +1595,9 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
-           R-40 e R-41. 8 releases: PRs #26, #35, #46, #53, #57, #62, #69, **#74**.
-           `main` em `819441c`.
-Progresso: 35 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-40, R-41, **R-43** e **R-44**. 9 releases: PRs #26, #35, #46, #53, #57,
+           #62, #69, #74, **#79**. `main` em `dbd811a`.
+Progresso: 37 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
@@ -1654,8 +1654,8 @@ Progresso: 35 itens em produção · **nada esperando release** · 1 fechado sem
 
 | Métrica | Linha de base | Hoje em produção (2026-08-19) |
 |---|---:|---:|
-| Testes | 100 | **393** |
-| Cobertura real | 25% (reportada como 87,62%) | **80,36%** (real) |
+| Testes | 100 | **409** |
+| Cobertura real | 25% (reportada como 87,62%) | **80,56%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -2874,10 +2874,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] 6 testes novos; 399 no total, cobertura **80,56%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: **o characterization test do R-07 pegou um
+  - [x] Implantado — **9º release (PR #79), 2026-08-19**
+  - [~] Verificado em produção — o caminho feliz não dá para forçar de fora: só aparece
+        quando o Gemini devolver vazio de novo. O que se sabe é que **o erro que motivou
+        o item não volta em silêncio**: ou o retry salva, ou chega mensagem legível.
+  - [x] Commitado — `c14699e`
+  - Status: **em produção** · Notas: **o characterization test do R-07 pegou um
     segundo defeito, e ele é pior que o primeiro.**
 
     O `generate_parecer` **tolerava resposta vazia de propósito** e devolvia `""`. O
@@ -2919,11 +2921,14 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] 8 testes novos; 409 no total, cobertura **80,56%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — repetir o passo 5: restart no meio da importação, **sem
-        dar F5**, e o aviso tem que aparecer sozinho
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: **o R-20b estava certo no servidor e mudo na tela.**
+  - [x] Implantado — **9º release (PR #79), 2026-08-19**
+  - [~] Verificado em produção — de fora: o `job_detail.1552ff779dc8.js` servido contém o
+        `reagendarPoll` (1 definição + 6 usos). **Falta o teste de comportamento:**
+        repetir o passo 5 — restart no meio da importação, **sem dar F5** — e o aviso tem
+        que aparecer sozinho.
+  - [x] Commitado — `ef749ee`
+  - Status: **em produção, verificação de tela pendente** · Notas: **o R-20b estava certo
+    no servidor e mudo na tela.**
 
     Vale como lição de método, não só como bug: o R-20b tinha 10 testes, todos verdes, e
     nenhum podia pegar isto — eles testam o payload que o backend devolve, e o defeito é
@@ -3088,27 +3093,43 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-23** | View `resume_download` com `@login_required`, visibilidade espelhando a listagem e `X-Accel-Redirect` para um `location` `internal;`. Entra tambem o botao **Baixar PDF** (banco de talentos e preview da vaga), download como anexo. 9 testes novos. | **O item descrevia um app diferente do que existe.** **(1) Nao havia link nenhum para migrar** — a etapa 2 mandava "apontar os links da aplicacao para a nova rota", e nenhum template ou JS usa o `.url` do `resume_pdf`: o que chega a tela e um booleano que vira o texto `PDF` numa celula. Ou seja, **a recrutadora nao tinha como abrir um curriculo pela interface**. **(2) Por isso o item ganhou escopo**, por decisao do dono (2026-08-19): o app e de onde ela recupera o PDF quando perde da propria maquina, entao proteger sem dar o botao so fecharia a porta. **(3) A checagem espelha a listagem, nao o dono do registro** — `user=request.user` seria mais estreito e faria o botao dar 404 numa linha visivel no pool PREMIUM. **(4) Risco calibrado para baixo depois de olhar:** o nome tem `uuid4` e o Nginx nao lista diretorio, entao ninguem enumera; a exposicao real e a URL vazar e valer para sempre. |
 | 2026-08-19 | **R-28, sub-PR a** | `login.html` e `signup.html` perdem 85 e 90 linhas de `<style>`; entram `static/css/tokens.css` (so variaveis) e `static/css/auth.css`. No cadastro sobram inline as 4 regras exclusivas dele. 7 testes novos. | **Quatro. (1) Nao sao 12 templates com tokens duplicados, sao 4** — onze tem `<style>`, mas so `base_logged`, `home`, `login` e `signup` definem `:root`. **(2) `home.html` fica de fora de proposito:** `--radius` 18px contra 16px, `--max` 1120px contra 1600px; uniformizar mudaria pixel na landing, e o proprio item proibe. **(3) Aqui o `<style>` TINHA tag Django dentro**, ao contrario do R-27 — a imagem de fundo saia por tag do Django, que nao e processada em `.css`. Virou caminho relativo, e quem repoe o hash e o `collectstatic`: conferido rodando com `DEBUG=False` antes da PR, e confirmado em producao (`back.febfb1a8f015.png`, 200). De brinde, a imagem passa a ter cache-busting. **(4) A equivalencia foi provada regra a regra** contra o `git show HEAD:`, com a cascata aplicada: zero diferencas reais. Um dos testes novos pegou erro meu — eu tinha deixado a tag do Django literal dentro de um comentario do `auth.css`, pronta para alguem copiar de volta. |
 | 2026-08-19 | **R-23 e R-28a → producao** | 8º release (PR #74): `84180f1` → `819441c`. CI 1m47s, CD 27s. `No migrations to apply`; `collectstatic` com **363 pos-processados**. Conferido de fora: home, `/login/` e `/cadastro/` em 200, os dois CSS novos servidos com hash, a imagem reescrita dentro do CSS respondendo 200, e `/curriculos/1/` deslogado → 302 para `/login/?next=`. | **Subiu sabidamente incompleto, e isso foi decisao, nao descuido.** O botao "Baixar PDF" **da 404 ate a etapa 1 do Nginx ser aplicada** — o `X-Accel-Redirect` aponta para um caminho que o Nginx ainda nao conhece, o pedido cai no `location /` e volta para o Django. Com a usuaria fora ate ~02/09, um botao quebrado nao atrapalha ninguem, e o conserto **nao exige novo deploy**: e um `reload` do Nginx. **Segundo ponto, e vale para sempre:** o `main` local estava em `99018df` e o `git diff main..develop` acusou a migration `0023` como nova — ela ja tinha subido no 7º release. **Comparar sempre contra `origin/main`, nao contra o ref local.** |
+| 2026-08-19 | **R-43** 🐛 | `_garantir_conteudo` transforma resposta vazia do LLM em falha dentro do `try` do laço, então o retry e o backoff que já existiam passam a valer para ela. `finish_reason` passa a ser lido: bloqueios saem na primeira tentativa. 6 testes novos. | **Duas. (1) O achado veio de uma importação real, não de leitura de código:** `1 erro(s)` no resumo, e o payload guardava `0005.pdf: Expecting value: line 1 column 1 (char 0)`. O mesmo arquivo, sozinho, entrou minutos depois — transitório, e **não havia retry** porque o laço só reagia a exceção da API. **(2) O characterization test do R-07 pegou um defeito pior que o original:** `generate_parecer` tolerava resposta vazia e devolvia `""`, e o chamador grava isso direto em `candidate_job.parecer` reportando `completed` — o parecer escrito era **substituído por vazio**, com a tela dizendo 'concluído'. |
+| 2026-08-19 | **R-44** 🐛 | Os 4 polls de status passam a reagendar nos dois caminhos de falha (resposta ruim e exceção), com 5s em vez de 2s. O do parecer fica como está: usa `setInterval`. 8 testes novos. | **Achado ao executar o passo 5, e ele derrota o R-20b exatamente no caso para o qual o R-20b foi feito.** Os polls se reagendavam só dentro do ramo `running`; um `fetch` que falhasse caía em `return` ou num `catch` vazio e **matava o laço para sempre**. No `systemctl restart`, o poll em voo bate num serviço fora do ar, desiste, e a tela congela no contador — mesmo depois de o backend voltar respondendo 'interrompida'. **O R-20b tinha 10 testes verdes e nenhum podia pegar isto:** eles testam o payload que o backend devolve, e o defeito é do lado que pergunta. Só apareceu porque alguém reiniciou o serviço de verdade, com a tela aberta. |
+| 2026-08-19 | **R-43, R-44 e o complemento do R-23 → produção** | 9º release (PR #79): `819441c` → `dbd811a`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.1552ff779dc8.js` servido **contém o `reagendarPoll`** — o hash bate com o conteúdo do `main`. | **O release fecha um dia em que a validação manual rendeu mais que a leitura de código.** Quatro defeitos reais em uma tarde — R-43 (candidato perdido em silêncio), o parecer sobrescrito por vazio, R-44 (tela muda no restart) e R-42 (a tela nunca diz qual arquivo falhou) —, e **nenhum deles apareceria em teste automatizado**: os três primeiros exigiam operar a tela com o servidor real, e o quarto é ausência, não erro. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19, fim do dia)
+### ▶ Onde retomar (atualizado em 2026-08-19, depois do 9º release)
 
-**Em produção** (`main` em `819441c`, 8 releases): Ondas 0, 1, 2 e 5 completas, mais
+**Em produção** (`main` em `dbd811a`, 9 releases): Ondas 0, 1, 2 e 5 completas, mais
 R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
-R-40 e R-41.
+R-40, R-41, R-43 e R-44.
 
 **`develop` e `main` estão iguais — nada esperando release.**
 
-393 testes, cobertura **80,36%**. Piso do CI em 78.
+409 testes, cobertura **80,56%**. Piso do CI em 78.
 
-## ⏳ Duas coisas subiram sabidamente incompletas
+## O dia em que a validação manual valeu mais que a leitura de código
 
-Foi decisão, não descuido: com a usuária fora até ~02/09, nenhuma das duas atrapalha
-ninguém, e as duas destravam trabalho que está parado esperando por elas.
+Uma tarde operando a tela rendeu **quatro defeitos reais**, e nenhum apareceria em teste
+automatizado. Vale registrar porque muda a prioridade das próximas rodadas:
 
-**1. O botão "Baixar PDF" dá 404 até o Nginx receber a etapa 1.** O `X-Accel-Redirect`
-aponta para um caminho que o Nginx ainda não conhece. **Não precisa de novo deploy** —
-acrescentar no bloco do `listen 443` e recarregar:
+| Achado | Como só a tela poderia mostrar |
+|---|---|
+| **R-43** — resposta vazia do LLM sem retry | precisou de uma importação real falhar 1 em 5 |
+| **parecer sobrescrito por vazio** | veio de brinde, pelo characterization test do R-07 |
+| **R-44** — o poll morre quando o servidor reinicia | precisou de um `restart` de verdade com a tela aberta |
+| **R-42** — a tela nunca diz qual arquivo falhou | é ausência, não erro: nada quebra, só falta |
+
+O R-44 é o mais eloquente: o R-20b tinha **10 testes verdes** e nenhum podia pegá-lo —
+eles testam o payload que o backend devolve, e o defeito era do lado que pergunta.
+
+## O que fazer no começo da próxima sessão
+
+**1. A etapa 1 do Nginx — é o único item que trava três telas de uma vez.** Os botões
+"Baixar PDF" do banco de talentos, do preview da vaga e da tabela da vaga estão todos no
+ar **dando 404**, porque o `location /protected-media/` não existe. Não é regressão, é o
+estado conhecido, e o conserto é um `reload`:
 
 ```
     location /protected-media/ {
@@ -3120,44 +3141,43 @@ acrescentar no bloco do `listen 443` e recarregar:
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Depois disso: abrir o banco de talentos logado, clicar em **Baixar PDF** e conferir que o
-arquivo vem com o nome do candidato (`fulano-de-tal.pdf`), não com o `uuid` do disco.
-Confirmado isso, vem a **etapa 3** — remover o `location /media/` público, que é o que
-fecha a LGPD de fato. As três etapas estão na seção 11.2 do `DEPLOY_LIGHTSAIL.md`.
+Confirmado o download logado, vem a **etapa 3** — remover o `location /media/` público,
+que é o que fecha a LGPD de fato. Seção 11.2 do `DEPLOY_LIGHTSAIL.md`.
 
-**2. O R-28a espera validação visual, e ela é o que destrava os sub-PRs b e c.** De fora
-já foi conferido o que dá: `/login/` e `/cadastro/` em 200, os dois CSS servidos com hash,
-a imagem de fundo reescrita para `back.febfb1a8f015.png` respondendo 200. Falta o olho:
+**2. Repetir o passo 5, que agora verifica dois itens de uma vez.** Importar, dar
+`systemctl restart` no meio, e o aviso de **interrompida** tem que aparecer **sozinho, sem
+F5**. Se aparecer, fecha R-44 e R-20b juntos. O roteiro com o limiar curto
+(`IMPORT_JOB_STALE_AFTER_SECONDS=60`, e desfazer depois) está no registro do dia.
 
-- `/login/` e `/cadastro/` em **desktop e celular**;
-- **com erro de formulário na tela** — usuário ou senha inválidos no login; campo
-  obrigatório vazio no cadastro, que é o que produz a `.errorlist`, justamente a regra que
-  mudou de forma (virou `.error, .errorlist` num arquivo só).
+**3. A validação visual do R-28a** — `/login/` e `/cadastro/`, desktop e celular, **com
+erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais depende dela.
 
-**Não abrir os sub-PRs b e c antes disso.** Eles reusam o `tokens.css` e a mesma técnica de
-extração; um problema visual no a viraria retrabalho nos três.
+## Verificado em produção neste dia
 
-## O resto da fila
-
-| O quê | Por que ainda está aberto |
-|---|---|
-| **R-41** | verificação que ficou do 7º release: importar, dar F5, conferir **uma** linha em `core_importjob` |
-| **R-20b** | verificação que ficou do 7º release: reiniciar o serviço no meio de uma importação e ver a tela dizer "interrompido" (limiar de 15 min) |
-| **`DJANGO_SECRET_KEY`** | 11 caracteres; higiene barata, **não incêndio** — avaliação no checklist do R-21 |
-
-## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
-
-Deploy a qualquer hora, sem caçar janela. É ela que torna gratuitos tanto o botão quebrado
-quanto o restart do teste do R-20b.
+- **R-41** ✅ — F5 várias vezes depois de iniciar importação: **uma** linha em
+  `core_importjob`, não duas. O bug que motivou o item não volta.
+- **R-20b (parcial)** — o banco fez a parte dele: `RUNNING` com 63s sem heartbeat depois
+  do restart. Faltou a tela, que era o R-44.
+- **R-21** — HSTS, `csrftoken` com `Secure`, `/dashboard/` deslogado → 302.
+- **R-23** — `/curriculos/1/` deslogado → 302 para o login.
+- **R-28a** — `/login/` e `/cadastro/` em 200, CSS com hash, imagem de fundo reescrita.
+- **R-44** — o JS servido em produção contém o `reagendarPoll`.
 
 ## Backlog restante
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-28 b e c** | **bloqueado pela validação visual do a** | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
+| **R-42** | achado hoje, não iniciado | mostrar na tela **qual** arquivo falhou; o dado já está no payload |
+| **R-28 b e c** | bloqueado pela validação visual do a | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
+| **`DJANGO_SECRET_KEY`** | 11 caracteres | higiene barata, **não incêndio** — avaliação no checklist do R-21 |
+
+## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
+
+Deploy a qualquer hora. É ela que torna gratuitos o botão quebrado esperando o Nginx e o
+restart do teste do passo 5.
 
 ## ⛔ Item obrigatório de fechamento do refactor
 
