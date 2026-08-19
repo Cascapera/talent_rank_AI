@@ -2400,19 +2400,49 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
 
-- [ ] **R-23** · Servir currículos em PDF por view autenticada
-      risco: médio · 0,5d · produção: **requer cuidado (P-6)** · PR: ~70 linhas / 3 arquivos
-  - [ ] Etapa 1: view + `location` interno no Nginx, `/media/` ainda público
-  - [ ] Etapa 2: links da aplicação apontando para a nova rota
+- [~] **R-23** · Servir currículos em PDF por view autenticada
+      risco: médio · 0,5d · produção: **requer cuidado (P-6)** · PR: ~70 linhas / 6 arquivos
+  - [x] Etapa 1 escrita: view `resume_download` + `location /protected-media/` `internal;`
+        documentado na seção 11.2 do `DEPLOY_LIGHTSAIL.md`, com `/media/` ainda público
+  - [x] Etapa 2: **o item supunha links que não existiam** — virou link novo, ver notas
+  - [ ] Etapa 1 aplicada no Nginx (é o Guilherme quem aplica)
   - [ ] Etapa 2 confirmada funcionando em produção
   - [ ] Etapa 3: `location /media/` público removido do Nginx
-  - [ ] Suíte completa verde (403 para PDF de outro usuário, 200 para o próprio)
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] Suíte completa verde — **9 testes novos**, 386 no total, cobertura **80,06%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — download logado OK; URL `/media/` direta = 404
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto, esperando a etapa 1 no Nginx** · Notas: **o item descrevia um
+    app diferente do que existe.**
+
+    **1. Não havia link nenhum para migrar.** A etapa 2 dizia "apontar os links da
+    aplicação para a nova rota"; varrendo `templates/` e `static/`, **nenhum** usa o
+    `.url` do `resume_pdf`. O que chega à tela é um booleano (`views.py:594`,
+    `"has_resume"`) que vira o texto `PDF` ou `Dados cadastrados` numa célula
+    (`job_detail.js:547`). Ou seja: **a Bruna não tinha como abrir um currículo pela
+    interface** — o único caminho web até o arquivo era a URL crua do `/media/` e o link
+    do Django admin.
+
+    **2. Por isso o item ganhou escopo, por decisão do Guilherme (2026-08-19):** o app é de
+    onde ela recupera o PDF quando perde da própria máquina, então o botão **Baixar PDF**
+    entra junto — no banco de talentos e na tabela de preview da vaga — e o download vai
+    como **anexo**, não como preview. Sem botão, a rota protegida só fecharia a porta.
+
+    **3. A checagem de dono espelha a listagem, não o dono do registro.** `user=request.user`
+    seria mais estreito e mais seguro — e **errado aqui**: no PREMIUM o pool é comunitário
+    (`Candidate.objects.all()` em `talent_pool`), então o botão daria 404 numa linha que a
+    própria tela mostra. Ficou `_visible_candidates(user)`, com teste fixando os dois lados.
+    **Se a decisão de produto da seção 15 mudar** (pool comunitário virar vazamento entre
+    clientes), este é um dos lugares que muda junto.
+
+    **4. 404 e não 403** para PDF de outro dono, ao contrário do que o item pedia: 403
+    confirmaria que aquele candidato existe.
+
+    **Risco calibrado para baixo depois de olhar:** o nome em disco é
+    `resumes/{user_id}/{uuid4}.pdf` e o Nginx não lista diretório, então ninguém enumera.
+    A exposição real é a URL vazar (log, referrer, backup, print) e valer para sempre.
 
 - [ ] **Onda 4 concluída** — `check --deploy` limpo, currículos e métricas protegidos
 

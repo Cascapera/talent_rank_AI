@@ -240,6 +240,18 @@ LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
 # outro deploy.
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
 
+# R-23: em producao quem le o disco e o Nginx. O Django confere a permissao e devolve
+# resposta vazia com `X-Accel-Redirect` apontando para um `location` marcado `internal;`
+# — inalcancavel de fora, so por redirecionamento interno. Em DEBUG nao ha Nginx nenhum,
+# entao o proprio Django manda o arquivo com FileResponse; o default acompanha o DEBUG
+# pelo mesmo motivo do R-21: esquecer de configurar tem que cair no lado seguro.
+USE_X_ACCEL_REDIRECT = os.getenv("USE_X_ACCEL_REDIRECT", str(not DEBUG)).lower() in (
+    "1",
+    "true",
+    "yes",
+)
+PROTECTED_MEDIA_PREFIX = os.getenv("PROTECTED_MEDIA_PREFIX", "/protected-media/")
+
 # Depois de quantos segundos sem heartbeat um job RUNNING e considerado morto (R-20b).
 # As threads sao daemon: no `systemctl restart` do deploy elas somem sem rodar o
 # `finally`, e antes disso a barra de progresso girava ate o cache expirar, uma hora

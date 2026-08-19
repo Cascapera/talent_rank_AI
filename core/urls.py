@@ -50,6 +50,7 @@ urlpatterns = [
         "talentos/import-status/", views.talent_pool_import_status, name="talent_pool_import_status"
     ),
     path("relatorios/", views.reports, name="reports"),
+    path("curriculos/<int:candidate_id>/", views.resume_download, name="resume_download"),
     path(
         "login/",
         auth_views.LoginView.as_view(template_name="registration/login.html"),
