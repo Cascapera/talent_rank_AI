@@ -4,13 +4,30 @@
 // todo dado dinamico ja vinha por atributo data-* no HTML. A unica transformacao
 // aplicada foi tirar 4 espacos de recuo de cada linha.
 
+// R-44: falha de rede nao e resposta — e ausencia dela.
+//
+// Os polls de status se reagendavam SO dentro do ramo `running`. Um `fetch` que falhasse
+// (502 do Nginx enquanto o servico reinicia, ou conexao recusada) caia no `return` ou no
+// `catch` vazio e **matava o laco para sempre**: a tela congelava no contador e nunca mais
+// perguntava nada, mesmo depois de o servidor voltar.
+//
+// O caso em que isso doi e exatamente o caso que o R-20b existe para avisar — o deploy
+// reiniciando o servico no meio de uma importacao. O backend passava a responder
+// "interrompida" e ninguem estava ouvindo. Achado na validacao manual de 2026-08-19.
+//
+// 5s em vez de 2s de proposito: se o servidor esta fora, insistir mais rapido nao o traz
+// de volta mais cedo.
+function reagendarPoll(poll) {
+  setTimeout(poll, 5000);
+}
+
 const importStatusEl = document.getElementById('importStatus');
 if (importStatusEl) {
   const statusUrl = importStatusEl.getAttribute('data-status-url');
   const poll = async () => {
     try {
       const resp = await fetch(statusUrl, { cache: 'no-store' });
-      if (!resp.ok) return;
+      if (!resp.ok) { reagendarPoll(poll); return; }
       const data = await resp.json();
       if (data.status === 'running') {
         const total = data.total ?? '?';
@@ -45,7 +62,7 @@ if (importStatusEl) {
         importStatusEl.style.color = 'var(--text)';
       }
     } catch (err) {
-      // silêncio
+      reagendarPoll(poll);
     }
   };
   poll();
@@ -700,7 +717,7 @@ if (searchInPoolBtn && searchFiltersModal) {
           const poll = async () => {
             try {
               const resp = await fetch(statusUrl, { cache: 'no-store' });
-              if (!resp.ok) return;
+              if (!resp.ok) { reagendarPoll(poll); return; }
               const data = await resp.json();
               if (data.status === 'running') {
                 const total = data.total ?? '?';
@@ -736,7 +753,7 @@ if (searchInPoolBtn && searchFiltersModal) {
                 searchStatusEl.style.color = 'var(--text)';
               }
             } catch (err) {
-              // silêncio
+              reagendarPoll(poll);
             }
           };
           poll();
@@ -761,7 +778,7 @@ if (searchStatusEl) {
   const pollSearch = async () => {
     try {
       const resp = await fetch(statusUrl, { cache: 'no-store' });
-      if (!resp.ok) return;
+      if (!resp.ok) { reagendarPoll(poll); return; }
       const data = await resp.json();
       if (data.status === 'running') {
         const total = data.total ?? '?';
@@ -793,7 +810,7 @@ if (searchStatusEl) {
         searchStatusEl.style.color = 'var(--text)';
       }
     } catch (err) {
-      // silêncio
+      reagendarPoll(poll);
     }
   };
   pollSearch();
