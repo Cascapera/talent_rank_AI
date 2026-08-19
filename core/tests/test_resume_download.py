@@ -152,3 +152,40 @@ def test_x_accel_nao_dispensa_a_checagem_de_permissao(client, user, settings):
 
     assert response.status_code == 404
     assert "X-Accel-Redirect" not in response
+
+
+class TestBotaoNaTelaDaVaga:
+    """A tabela de candidatos da vaga é onde ela trabalha — e era a que não tinha botão.
+
+    O R-23 pôs o link no banco de talentos e na tabela do **preview de busca**, que é um
+    modal e só existe depois de clicar em buscar. A tabela principal da vaga, essa que
+    lista quem já está vinculado, ficou de fora — achado na validação manual de
+    2026-08-19.
+    """
+
+    @pytest.fixture
+    def vaga_com_candidato(self, user):
+        from core.models import CandidateJob, Job
+
+        vaga = Job.objects.create(user=user, title="Dev Python")
+        candidate = make_candidate(user, name="Ana Souza")
+        CandidateJob.objects.create(job=vaga, candidate=candidate)
+        return vaga, candidate
+
+    def test_a_tabela_da_vaga_tem_o_link_de_download(self, client_logged, vaga_com_candidato):
+        vaga, candidate = vaga_com_candidato
+
+        html = client_logged.get(f"/vagas/{vaga.id}/").content.decode()
+
+        assert f"/curriculos/{candidate.id}/" in html
+
+    def test_candidato_sem_pdf_nao_ganha_link(self, client_logged, user):
+        from core.models import CandidateJob, Job
+
+        vaga = Job.objects.create(user=user, title="Dev Python")
+        candidate = make_candidate(user, name="Sem Curriculo", with_pdf=False)
+        CandidateJob.objects.create(job=vaga, candidate=candidate)
+
+        html = client_logged.get(f"/vagas/{vaga.id}/").content.decode()
+
+        assert f"/curriculos/{candidate.id}/" not in html

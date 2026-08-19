@@ -72,6 +72,14 @@ def pdf(tmp_path):
     return path
 
 
+def _resposta_bloqueada(motivo: str):
+    """Resposta sem texto e com `finish_reason`, como o SDK entrega num bloqueio."""
+    return SimpleNamespace(
+        text="",
+        candidates=[SimpleNamespace(finish_reason=SimpleNamespace(name=motivo))],
+    )
+
+
 @pytest.fixture
 def llm(monkeypatch):
     """Substitui `genai.Client` e captura os `time.sleep`.
@@ -462,10 +470,20 @@ class TestContracts:
 
         assert result == "Parecer do candidato."
 
-    def test_parecer_with_empty_response_returns_empty_string(self, llm):
-        llm.responses = [resp(None)]
+    def test_parecer_com_resposta_vazia_agora_falha_em_vez_de_devolver_vazio(self, llm):
+        """R-43: mudanca deliberada de contrato, 2026-08-19.
 
-        assert generate_parecer("vaga", {}, "RESUMIDO", "Dev") == ""
+        Antes esta funcao devolvia `""` quando o modelo nao respondia. O chamador grava
+        o retorno direto em `candidate_job.parecer` e reporta `completed` — ou seja, a
+        recrutadora via "concluido" e o parecer que existia era **substituido por vazio**.
+        Falhar deixa o `except` do chamador marcar erro, e o texto antigo fica de pe.
+        """
+        llm.responses = [resp(None)] * 4
+
+        with pytest.raises(llm_extractor.RespostaVaziaDoLLM):
+            generate_parecer("vaga", {}, "RESUMIDO", "Dev")
+
+        assert len(llm.calls) == 4, "resposta vazia passa a ser retentavel"
 
     def test_missing_fields_become_empty_string_not_none(self, llm, pdf):
         """Todo campo de texto ausente vira `""`, nunca `None` — é o que permite ao
@@ -527,3 +545,65 @@ class TestBatchSizeMismatch:
             calculate_adherence_batch_for_candidates(
                 [{"name": "Ana"}, {"name": "Bia"}], "vaga", WEIGHTS
             )
+
+
+class TestRespostaVazia:
+    """R-43: resposta vazia do Gemini deixa de passar como sucesso.
+
+    Achado em produção em 2026-08-19: numa importação real de 5 PDFs, um falhou com
+    `Expecting value: line 1 column 1 (char 0)` — o `json.loads` de string vazia. O
+    mesmo arquivo, reimportado sozinho, entrou sem erro. Era transitório, e não havia
+    retry nenhum porque o laço só reagia a exceção da API.
+    """
+
+    def test_resposta_vazia_e_repetida_e_a_seguinte_vale(self, llm, pdf):
+        llm.responses = [resp(""), resp('{"name": "Ana"}')]
+
+        resultado = extract_candidate_no_ranking(pdf)
+
+        assert resultado["name"] == "Ana"
+        assert len(llm.calls) == 2, "a vazia tem que ter sido repetida"
+
+    def test_so_espaco_em_branco_tambem_conta_como_vazia(self, llm, pdf):
+        llm.responses = [resp("   \n  "), resp('{"name": "Ana"}')]
+
+        extract_candidate_no_ranking(pdf)
+
+        assert len(llm.calls) == 2
+
+    def test_texto_none_conta_como_vazia(self, llm, pdf):
+        llm.responses = [resp(None), resp('{"name": "Ana"}')]
+
+        extract_candidate_no_ranking(pdf)
+
+        assert len(llm.calls) == 2
+
+    def test_vazia_ate_o_fim_vira_erro_legivel(self, llm, pdf):
+        llm.responses = [resp("")] * 4
+
+        with pytest.raises(llm_extractor.RespostaVaziaDoLLM) as erro:
+            extract_candidate_no_ranking(pdf)
+
+        # A mensagem chega à tela pelo `error_details` da importação. Antes chegava
+        # "Expecting value: line 1 column 1 (char 0)", que não diz nada a quem opera.
+        assert "não devolveu conteúdo" in str(erro.value)
+        assert len(llm.calls) == 4
+
+    def test_recusa_por_filtro_nao_gasta_as_outras_tentativas(self, llm, pdf):
+        llm.responses = [_resposta_bloqueada("SAFETY")]
+
+        with pytest.raises(llm_extractor.RecusaDoLLM) as erro:
+            extract_candidate_no_ranking(pdf)
+
+        assert "SAFETY" in str(erro.value)
+        assert len(llm.calls) == 1, "repetir não muda o resultado de um bloqueio"
+        assert llm.sleeps == [], "e não faz sentido esperar backoff para isso"
+
+    def test_motivo_desconhecido_continua_sendo_repetido(self, llm, pdf):
+        """Só a lista de motivos definitivos corta o retry. Qualquer outro repete —
+        o custo de repetir à toa é menor que o de desistir de algo recuperável."""
+        llm.responses = [_resposta_bloqueada("MAX_TOKENS"), resp('{"name": "Ana"}')]
+
+        extract_candidate_no_ranking(pdf)
+
+        assert len(llm.calls) == 2

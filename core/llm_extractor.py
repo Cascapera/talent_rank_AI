@@ -233,6 +233,74 @@ def _extract_json(text: str) -> dict | list:
         raise
 
 
+class RespostaVaziaDoLLM(RuntimeError):
+    """O modelo respondeu, mas sem conteúdo. Vale tentar de novo.
+
+    R-43: achado em produção em 2026-08-19. Um dos 5 PDFs de uma importação real falhou
+    com `Expecting value: line 1 column 1 (char 0)` — o `json.loads` de string vazia. O
+    mesmo arquivo, reimportado sozinho minutos depois, entrou sem erro: foi transitório.
+
+    O retry do `_generate` só reagia a **exceção da API** (429, 503, timeout). Resposta
+    vazia era sucesso do ponto de vista dele, então não havia segunda tentativa e o
+    candidato se perdia — com uma mensagem de parser na tela, que não diz nada a quem
+    opera o sistema.
+    """
+
+
+class RecusaDoLLM(RuntimeError):
+    """O modelo se recusou a responder. Repetir não adianta.
+
+    Separado de `RespostaVaziaDoLLM` de propósito: em `SAFETY` ou `RECITATION`, as 4
+    tentativas gastariam 4 chamadas e ~56s de backoff para chegar ao mesmo lugar, e a
+    usuária esperaria o quádruplo para ver o mesmo erro.
+    """
+
+
+# Motivos em que repetir não muda o resultado.
+_MOTIVOS_DEFINITIVOS = frozenset(
+    {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"}
+)
+
+
+def _motivo_de_parada(response) -> str:
+    """Nome do `finish_reason` da resposta, ou string vazia se não der para saber.
+
+    O SDK entrega um enum; `str()` dele vem como `FinishReason.SAFETY`. Aqui sai só
+    `SAFETY`. Defensivo de ponta a ponta porque o formato do objeto varia com a versão
+    do SDK, e isto roda no caminho de erro — não pode ser ele a estourar.
+    """
+    candidatos = getattr(response, "candidates", None) or []
+    if not candidatos:
+        return ""
+    motivo = getattr(candidatos[0], "finish_reason", None)
+    if motivo is None:
+        return ""
+    nome = getattr(motivo, "name", None) or str(motivo)
+    return nome.rsplit(".", 1)[-1].upper()
+
+
+def _garantir_conteudo(response) -> None:
+    """Levanta se a resposta veio sem texto. É o que transforma vazio em falha (R-43).
+
+    Antes daqui, `response.text` vazio seguia adiante e estourava lá na frente, no
+    `json.loads`, como erro de parsing — longe da causa e ilegível para quem opera.
+    """
+    texto = getattr(response, "text", None) or ""
+    if texto.strip():
+        return
+
+    motivo = _motivo_de_parada(response)
+    if motivo in _MOTIVOS_DEFINITIVOS:
+        raise RecusaDoLLM(
+            f"o modelo recusou este arquivo (motivo: {motivo}). Reenviar não resolve."
+        )
+    raise RespostaVaziaDoLLM(
+        "o modelo não devolveu conteúdo"
+        + (f" (motivo: {motivo})" if motivo else "")
+        + ". Pode ser PDF ilegível ou instabilidade do serviço."
+    )
+
+
 def _generate(payload: list, *, model: str = DEFAULT_GEMINI_MODEL) -> tuple[str, str]:
     """Único ponto do sistema que fala com o Gemini.
 
@@ -281,9 +349,16 @@ def _generate(payload: list, *, model: str = DEFAULT_GEMINI_MODEL) -> tuple[str,
                     model=model_name,
                     contents=payload,
                 )
+                # R-43: resposta vazia passa a ser falha aqui, no lugar certo — e como
+                # ela vira exceção, o retry e o backoff que já existiam passam a valer
+                # para ela sem nenhuma linha nova de controle de fluxo.
+                _garantir_conteudo(response)
                 model_used = model_name
                 last_error = None
                 break
+            except RecusaDoLLM:
+                # Definitivo: sai na hora, sem gastar as outras 3 tentativas.
+                raise
             except Exception as exc:
                 last_error = exc
         if not last_error:
