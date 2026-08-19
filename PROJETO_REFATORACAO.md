@@ -1594,12 +1594,17 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a, R-20b (Onda 3), R-21, R-22 (Onda 4), R-27 (Onda 6), R-40 e R-41.
-           7 releases: PRs #26, #35, #46, #53, #57, #62, #69. `main` em `84180f1`.
-Progresso: 33 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
+           R-40 e R-41. 8 releases: PRs #26, #35, #46, #53, #57, #62, #69, **#74**.
+           `main` em `819441c`.
+Progresso: 35 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
-           atualizado em 2026-08-19
+           atualizado em 2026-08-19, fim do dia
+
+           ⏳ **Duas coisas subiram sem estar completas, de propósito:** o botão do R-23
+           dá 404 até a etapa 1 do Nginx (seção 11.2 do `DEPLOY_LIGHTSAIL.md`), e o R-28a
+           espera validação visual. Ver "Onde retomar".
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -1649,8 +1654,8 @@ Progresso: 33 itens em produção · **nada esperando release** · 1 fechado sem
 
 | Métrica | Linha de base | Hoje em produção (2026-08-19) |
 |---|---:|---:|
-| Testes | 100 | **377** |
-| Cobertura real | 25% (reportada como 87,62%) | **79,82%** (real) |
+| Testes | 100 | **393** |
+| Cobertura real | 25% (reportada como 87,62%) | **80,36%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -2405,16 +2410,18 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Etapa 1 escrita: view `resume_download` + `location /protected-media/` `internal;`
         documentado na seção 11.2 do `DEPLOY_LIGHTSAIL.md`, com `/media/` ainda público
   - [x] Etapa 2: **o item supunha links que não existiam** — virou link novo, ver notas
-  - [ ] Etapa 1 aplicada no Nginx (é o Guilherme quem aplica)
+  - [ ] Etapa 1 aplicada no Nginx (é o Guilherme quem aplica) — **é o que falta para o
+        botão funcionar**; sem ela o `X-Accel-Redirect` cai no `location /` e vira 404
   - [ ] Etapa 2 confirmada funcionando em produção
   - [ ] Etapa 3: `location /media/` público removido do Nginx
   - [x] Suíte completa verde — **9 testes novos**, 386 no total, cobertura **80,06%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — download logado OK; URL `/media/` direta = 404
-  - [ ] Commitado — `<hash>`
-  - Status: **código pronto, esperando a etapa 1 no Nginx** · Notas: **o item descrevia um
+  - [x] Implantado — **8º release (PR #74), 2026-08-19**
+  - [~] Verificado em produção — de fora: `/curriculos/1/` deslogado → **302 para
+        `/login/?next=`**. Falta o download logado, que depende da etapa 1 do Nginx.
+  - [x] Commitado — `c8af11d`
+  - Status: **em produção, esperando a etapa 1 no Nginx** · Notas: **o item descrevia um
     app diferente do que existe.**
 
     **1. Não havia link nenhum para migrar.** A etapa 2 dizia "apontar os links da
@@ -2566,10 +2573,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — 7 testes novos, 393 no total, cobertura **80,36%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado (sub-PR a)
-  - [ ] Implantado
-  - [ ] Verificado em produção — cada tela do grupo em desktop e celular
-  - [ ] Commitado — `<hash>` `<hash>` `<hash>`
-  - Status: **sub-PR a pronto** · Notas: **o terreno é menor e mais irregular do que o
+  - [x] Implantado (sub-PR a) — **8º release (PR #74), 2026-08-19**
+  - [~] Verificado em produção — de fora: `/login/` e `/cadastro/` em **200**, os dois CSS
+        servidos com hash e a imagem de fundo reescrita para `back.febfb1a8f015.png`, 200.
+        **Falta o olho humano**, que é a única verificação que vale para CSS.
+  - [x] Commitado — `f991d24`
+  - Status: **sub-PR a em produção, validação visual pendente** · Notas: **o terreno é menor e mais irregular do que o
     item diz.**
 
     **1. Não são 12 templates com tokens duplicados — são 4.** Onze templates têm
@@ -2970,58 +2979,77 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-18 | **R-20b** | A leitura do status sai do cache e vai para o `ImportJob`. Campo `payload` novo (migration `0023`), `start_import_job` passa a ser chamada **pela view**, os 3 endpoints de poll e os 3 contextos de template leem do banco. Job `RUNNING` com heartbeat velho vira "interrompido". 10 testes novos; 366 no total, cobertura **79,82%**. | **Duas surpresas na especificação, achadas antes de escrever código. (1) O item mandava remover o cache, mas a tabela não tinha onde guardar o que a tela mostra** — o contador de erros ao vivo e o resumo final do R-32 só existiam no payload do cache. Sem um campo novo, o "contract" apagaria da tela o que um item anterior colocou lá. Resolvido com um JSONField que guarda **o mesmo dicionário, na mesma forma**: zero linha de JS alterada. **(2) Havia uma corrida escondida na ordem das operações:** a view escrevia `running` no cache **antes** de disparar a thread, e isso não era decoração — o primeiro poll chega ~2s depois, e sem a linha o endpoint responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. A criação subiu para a view. Terceiro achado, este de medida: o heartbeat é escrito **por lote**, então o limiar de morte tem que ser maior que o lote mais lento — 15 min contra os ~12 que um lote de 10 PDFs pode levar legitimamente. |
 | 2026-08-18 | **R-21** | `DEBUG` passa a ter default **False**; sem `DJANGO_SECRET_KEY` fora de `DEBUG` a aplicação **levanta `ImproperlyConfigured` e não sobe**; cookies `Secure`, `SECURE_SSL_REDIRECT` e HSTS de 1h ligados fora de `DEBUG`. `check --deploy`: **5 → 2 avisos**. 11 testes novos; 377 no total. | **Três. (1) Seguir a letra do item derrubaria o site.** Ele mandava o `SECURE_PROXY_SSL_HEADER` deixar de vir ligado por default — mas o `SECURE_SSL_REDIRECT` depende dele para saber que a requisição chegou por HTTPS. Sem o header, o Nginx encaminha em HTTP, o Django redireciona para HTTPS e o site entra em **laço infinito**. O default passou a acompanhar o `DEBUG` em vez de sumir. **(2) O `ci.yml` exportava `SECRET_KEY` e `DEBUG`, que o `settings.py` não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas variáveis nunca tiveram efeito; ninguém notou porque nada dependia delas até agora. **(3) `importlib.reload` mente sobre settings condicionais:** ele reexecuta o módulo no namespace existente, então `SESSION_COOKIE_SECURE` definido numa carga com `DEBUG=False` sobrevivia à carga seguinte com `DEBUG=True`, e o teste afirmava o contrário do que verificava. Trocado por import limpo — e corrigido também no teste do R-40, onde a armadilha estava armada sem ainda ter disparado. |
 | 2026-08-19 | **R-41, R-20b e R-21 → produção** | 7º release (PR #69): 6 commits, 4 PRs, `99018df` → `84180f1`. CI 1m43s, CD 50s. Migration `0023` aplicada; `collectstatic` com **357 pós-processados** e manifesto intacto. Conferido de fora, sem depender do dono: home **200 com zero redirects**, `Strict-Transport-Security: max-age=3600`, `csrftoken` com `Secure; SameSite=Lax`, `/dashboard/` sem sessão → 302 para `/login/`, e HTTP → HTTPS 301 pelo Nginx. | **Três, e as três estão nas conferências de pré-deploy, não no código.** **(1) A `DJANGO_SECRET_KEY` de produção tem 11 caracteres.** Não é a chave do repositório — é outra, curta. O R-21 não pega isso: ele exige que a variável **exista**. O comando de conferência que sobrou do dia anterior existia justamente para achar o que o código não consegue ver, e achou. **(2) O comando de conferência estava errado e quase escondeu o achado.** `awk -F=` corta no **primeiro** `=`, e o alfabeto do `get_random_secret_key()` do Django inclui `=` — uma chave boa com um `=` na 12ª posição daria a mesma saída `tamanho: 11`. Só o `sub(/^DJANGO_SECRET_KEY=/,"")` mede de verdade. **(3) `grep -r` não segue symlink, e `/etc/nginx/sites-enabled/` é um diretório de symlinks.** O `grep -r` do `X-Forwarded-Proto` voltou vazio e isso parecia dizer 'o header não existe' — o que significaria laço de redirect garantido no deploy. Não olhou arquivo nenhum. O `nginx -T`, que imprime a configuração efetiva já resolvida, mostrou o header presente no bloco `listen 443 ssl` **e** os blocos da porta 80 já fazendo `return 301`. Silêncio de ferramenta não é evidência. |
+| 2026-08-19 | **R-23** | View `resume_download` com `@login_required`, visibilidade espelhando a listagem e `X-Accel-Redirect` para um `location` `internal;`. Entra tambem o botao **Baixar PDF** (banco de talentos e preview da vaga), download como anexo. 9 testes novos. | **O item descrevia um app diferente do que existe.** **(1) Nao havia link nenhum para migrar** — a etapa 2 mandava "apontar os links da aplicacao para a nova rota", e nenhum template ou JS usa o `.url` do `resume_pdf`: o que chega a tela e um booleano que vira o texto `PDF` numa celula. Ou seja, **a recrutadora nao tinha como abrir um curriculo pela interface**. **(2) Por isso o item ganhou escopo**, por decisao do dono (2026-08-19): o app e de onde ela recupera o PDF quando perde da propria maquina, entao proteger sem dar o botao so fecharia a porta. **(3) A checagem espelha a listagem, nao o dono do registro** — `user=request.user` seria mais estreito e faria o botao dar 404 numa linha visivel no pool PREMIUM. **(4) Risco calibrado para baixo depois de olhar:** o nome tem `uuid4` e o Nginx nao lista diretorio, entao ninguem enumera; a exposicao real e a URL vazar e valer para sempre. |
+| 2026-08-19 | **R-28, sub-PR a** | `login.html` e `signup.html` perdem 85 e 90 linhas de `<style>`; entram `static/css/tokens.css` (so variaveis) e `static/css/auth.css`. No cadastro sobram inline as 4 regras exclusivas dele. 7 testes novos. | **Quatro. (1) Nao sao 12 templates com tokens duplicados, sao 4** — onze tem `<style>`, mas so `base_logged`, `home`, `login` e `signup` definem `:root`. **(2) `home.html` fica de fora de proposito:** `--radius` 18px contra 16px, `--max` 1120px contra 1600px; uniformizar mudaria pixel na landing, e o proprio item proibe. **(3) Aqui o `<style>` TINHA tag Django dentro**, ao contrario do R-27 — a imagem de fundo saia por tag do Django, que nao e processada em `.css`. Virou caminho relativo, e quem repoe o hash e o `collectstatic`: conferido rodando com `DEBUG=False` antes da PR, e confirmado em producao (`back.febfb1a8f015.png`, 200). De brinde, a imagem passa a ter cache-busting. **(4) A equivalencia foi provada regra a regra** contra o `git show HEAD:`, com a cascata aplicada: zero diferencas reais. Um dos testes novos pegou erro meu — eu tinha deixado a tag do Django literal dentro de um comentario do `auth.css`, pronta para alguem copiar de volta. |
+| 2026-08-19 | **R-23 e R-28a → producao** | 8º release (PR #74): `84180f1` → `819441c`. CI 1m47s, CD 27s. `No migrations to apply`; `collectstatic` com **363 pos-processados**. Conferido de fora: home, `/login/` e `/cadastro/` em 200, os dois CSS novos servidos com hash, a imagem reescrita dentro do CSS respondendo 200, e `/curriculos/1/` deslogado → 302 para `/login/?next=`. | **Subiu sabidamente incompleto, e isso foi decisao, nao descuido.** O botao "Baixar PDF" **da 404 ate a etapa 1 do Nginx ser aplicada** — o `X-Accel-Redirect` aponta para um caminho que o Nginx ainda nao conhece, o pedido cai no `location /` e volta para o Django. Com a usuaria fora ate ~02/09, um botao quebrado nao atrapalha ninguem, e o conserto **nao exige novo deploy**: e um `reload` do Nginx. **Segundo ponto, e vale para sempre:** o `main` local estava em `99018df` e o `git diff main..develop` acusou a migration `0023` como nova — ela ja tinha subido no 7º release. **Comparar sempre contra `origin/main`, nao contra o ref local.** |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19)
+### ▶ Onde retomar (atualizado em 2026-08-19, fim do dia)
 
-**Em produção** (`main` em `84180f1`, 7 releases): Ondas 0, 1, 2 e 5 completas, mais
-R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22 (Onda 4), R-27 (Onda 6), R-40 e R-41.
+**Em produção** (`main` em `819441c`, 8 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
+R-40 e R-41.
 
 **`develop` e `main` estão iguais — nada esperando release.**
 
-377 testes, cobertura **79,82%**. Piso do CI em 78.
+393 testes, cobertura **80,36%**. Piso do CI em 78.
 
-## O que fazer no começo da próxima sessão
+## ⏳ Duas coisas subiram sabidamente incompletas
 
-**1. Terminar a troca da `DJANGO_SECRET_KEY`, se ainda não foi feita.** A chave de
-produção tem **11 caracteres** (Django gera 50). A receita foi passada em 2026-08-19 e
-**a execução não foi confirmada**. É higiene barata, **não incêndio** — a avaliação de
-risco está no checklist do R-21. Conferir primeiro, sem imprimir segredo:
+Foi decisão, não descuido: com a usuária fora até ~02/09, nenhuma das duas atrapalha
+ninguém, e as duas destravam trabalho que está parado esperando por elas.
+
+**1. O botão "Baixar PDF" dá 404 até o Nginx receber a etapa 1.** O `X-Accel-Redirect`
+aponta para um caminho que o Nginx ainda não conhece. **Não precisa de novo deploy** —
+acrescentar no bloco do `listen 443` e recarregar:
 
 ```
-awk '/^DJANGO_SECRET_KEY=/{sub(/^DJANGO_SECRET_KEY=/,"");print "tamanho:",length($0)}' /var/www/talent_rank_ai/.env
+    location /protected-media/ {
+        internal;
+        alias /var/www/talent_rank_ai/media/;
+    }
+```
+```
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-**86** = já trocada, nada a fazer. **11** = trocar, e depois `sudo systemctl restart
-talent_rank_ai` (o `.env` só é lido no boot). O comando de troca está no checklist do R-21.
+Depois disso: abrir o banco de talentos logado, clicar em **Baixar PDF** e conferir que o
+arquivo vem com o nome do candidato (`fulano-de-tal.pdf`), não com o `uuid` do disco.
+Confirmado isso, vem a **etapa 3** — remover o `location /media/` público, que é o que
+fecha a LGPD de fato. As três etapas estão na seção 11.2 do `DEPLOY_LIGHTSAIL.md`.
 
-**2. As duas verificações manuais que o 7º release deixou em aberto.** Nenhuma dá para
-fazer de fora — as duas exigem sessão logada e PDFs:
+**2. O R-28a espera validação visual, e ela é o que destrava os sub-PRs b e c.** De fora
+já foi conferido o que dá: `/login/` e `/cadastro/` em 200, os dois CSS servidos com hash,
+a imagem de fundo reescrita para `back.febfb1a8f015.png` respondendo 200. Falta o olho:
 
-| Item | Como verificar | O que esperar |
-|---|---|---|
-| **R-41** 🐛 | importar, dar F5 | **uma** linha nova em `core_importjob`, não duas |
-| **R-20b** | iniciar importação e `sudo systemctl restart talent_rank_ai` no meio | a tela avisa **"interrompido"** — até 15 min de espera, que é o `IMPORT_JOB_STALE_AFTER_SECONDS` |
-| **R-21** | login completo | cookie `sessionid` com flag `Secure` (o `csrftoken` já foi conferido) |
+- `/login/` e `/cadastro/` em **desktop e celular**;
+- **com erro de formulário na tela** — usuário ou senha inválidos no login; campo
+  obrigatório vazio no cadastro, que é o que produz a `.errorlist`, justamente a regra que
+  mudou de forma (virou `.error, .errorlist` num arquivo só).
 
-O do R-20b é a verificação mais interessante do projeto: é o único jeito de ver o
-`heartbeat_at` fazendo o trabalho para o qual foi criado.
+**Não abrir os sub-PRs b e c antes disso.** Eles reusam o `tokens.css` e a mesma técnica de
+extração; um problema visual no a viraria retrabalho nos três.
 
-**3. Depois disso, o R-23** — maior valor restante do backlog.
+## O resto da fila
+
+| O quê | Por que ainda está aberto |
+|---|---|
+| **R-41** | verificação que ficou do 7º release: importar, dar F5, conferir **uma** linha em `core_importjob` |
+| **R-20b** | verificação que ficou do 7º release: reiniciar o serviço no meio de uma importação e ver a tela dizer "interrompido" (limiar de 15 min) |
+| **`DJANGO_SECRET_KEY`** | 11 caracteres; higiene barata, **não incêndio** — avaliação no checklist do R-21 |
 
 ## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
 
-Deploy a qualquer hora, sem caçar janela. Vale para tudo abaixo. **O restart do teste do
-R-20b também sai de graça por causa dela.**
+Deploy a qualquer hora, sem caçar janela. É ela que torna gratuitos tanto o botão quebrado
+quanto o restart do teste do R-20b.
 
 ## Backlog restante
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-23** | não iniciado — **maior valor restante** | currículos em `/media/` são públicos (LGPD). 3 etapas de Nginx; leva junto o `expires max` do `/static/` que o R-40 destravou |
+| **R-28 b e c** | **bloqueado pela validação visual do a** | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
-| **R-28** | não iniciado | CSS repetido em 12 templates, 3 sub-PRs com comparação visual tela a tela |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 
