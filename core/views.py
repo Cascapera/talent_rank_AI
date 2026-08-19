@@ -4,7 +4,7 @@ import tempfile
 import threading
 from collections import defaultdict
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -15,8 +15,9 @@ from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Count, F, Func, Q
 from django.db.models.functions import Lower
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.text import slugify
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .domain.boolean_search import build_boolean_search_from
@@ -112,6 +113,19 @@ def home(request):
 def _uses_shared_pool(user) -> bool:
     profile, _ = Profile.objects.get_or_create(user=user)
     return profile.plan == Profile.Plan.PREMIUM
+
+
+def _visible_candidates(user):
+    """Candidatos que este usuario enxerga — a MESMA regra da listagem do banco de talentos.
+
+    Espelhar em vez de reescrever e deliberado: no plano PREMIUM o pool e compartilhado
+    (`Candidate.objects.all()`, tratado como intencional na secao 15 do plano), e uma
+    checagem mais estreita aqui faria o botao de baixar dar 404 numa linha que a propria
+    tela esta mostrando.
+    """
+    if _uses_shared_pool(user):
+        return Candidate.objects.all()
+    return Candidate.objects.filter(user=user)
 
 
 def _apply_unaccent_filter(qs, field: str, term: str, alias_prefix: str):
@@ -291,6 +305,45 @@ def talent_pool_import_status(request):
     """Endpoint AJAX para status da importação do banco de talentos."""
     return JsonResponse(
         job_status_payload(user_id=request.user.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
+    )
+
+
+@login_required
+@required_plan("BASIC")
+def resume_download(request, candidate_id: int):
+    """R-23: entrega o PDF do curriculo por rota autenticada.
+
+    Antes disto o arquivo saia do Nginx direto de `/media/`, **sem passar pelo Django**:
+    quem tivesse a URL baixava, logado ou nao, para sempre — inclusive depois de um
+    candidato pedir exclusao. E dado pessoal (LGPD). O nome tem um `uuid4`, entao ninguem
+    enumerava; o risco e a URL vazar em log, referrer ou backup.
+
+    Nao e so protecao: o app e de onde a recrutadora recupera o PDF quando perde da
+    propria maquina, entao o download precisa existir de verdade — vai como **anexo**.
+
+    404 e nao 403 de proposito: 403 confirmaria que aquele candidato existe.
+    """
+    candidate = get_object_or_404(_visible_candidates(request.user), id=candidate_id)
+    if not candidate.resume_pdf:
+        raise Http404("Candidato sem curriculo em PDF.")
+
+    filename = f"{slugify(candidate.name) or 'curriculo'}.pdf"
+
+    if settings.USE_X_ACCEL_REDIRECT:
+        # Resposta vazia: o corpo quem preenche e o Nginx. Sem isto o PDF inteiro
+        # atravessaria o worker do gunicorn, que fica bloqueado enquanto isso.
+        response = HttpResponse(content_type="application/pdf")
+        response["X-Accel-Redirect"] = settings.PROTECTED_MEDIA_PREFIX + quote(
+            candidate.resume_pdf.name
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    return FileResponse(
+        candidate.resume_pdf.open("rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type="application/pdf",
     )
 
 

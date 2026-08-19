@@ -270,6 +270,7 @@
             <th>Tecnologias</th>
             <th>Idiomas</th>
             <th>Certificações</th>
+            <th>Currículo</th>
           </tr>
         </thead>
         <tbody>
@@ -375,6 +376,15 @@
                       {{ candidate.certifications }}
                     {% endif %}
                   </span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if candidate.resume_pdf %}
+                  <a href="{% url 'resume_download' candidate.id %}"
+                     class="btn"
+                     style="padding: 4px 10px; font-size: 12px;">Baixar PDF</a>
                 {% else %}
                   -
                 {% endif %}

@@ -544,7 +544,7 @@ if (searchInPoolBtn && searchFiltersModal) {
           html += `<td>${candidate.company}</td>`;
           html += `<td><strong style="color: var(--primary);">${candidate.match_score}%</strong></td>`;
           html += `<td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${candidate.matched_terms}">${candidate.matched_terms}</td>`;
-          html += `<td>${candidate.has_resume ? 'PDF' : 'Dados cadastrados'}</td>`;
+          html += `<td>${candidate.has_resume ? `<a href="/curriculos/${candidate.id}/">Baixar PDF</a>` : 'Dados cadastrados'}</td>`;
           html += `<td>${candidate.ready_at}</td>`;
           html += '</tr>';
         });
