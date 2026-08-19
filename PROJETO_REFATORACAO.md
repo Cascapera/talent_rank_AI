@@ -2556,19 +2556,52 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
     o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
-- [ ] **R-28** · Consolidar o CSS repetido em `static/css/app.css` (3 sub-PRs)
+- [~] **R-28** · Consolidar o CSS repetido em `static/css/` (3 sub-PRs)
       risco: médio · 1d · produção: requer cuidado · PR: ~250 linhas cada
       pré-requisito: R-27
-  - [ ] Sub-PR a — telas de autenticação (login, cadastro) · screenshots comparados
+  - [x] Sub-PR a — telas de autenticação (login, cadastro) · **código pronto**, validação
+        visual pendente · `static/css/tokens.css` + `static/css/auth.css`
   - [ ] Sub-PR b — telas de vagas (jobs, job_create, job_edit, job_detail) · screenshots
   - [ ] Sub-PR c — talentos, relatórios, dashboard, base · screenshots
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PRs abertos e revisados
+  - [x] Suíte completa verde — 7 testes novos, 393 no total, cobertura **80,36%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado (sub-PR a)
   - [ ] Implantado
   - [ ] Verificado em produção — cada tela do grupo em desktop e celular
   - [ ] Commitado — `<hash>` `<hash>` `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **sub-PR a pronto** · Notas: **o terreno é menor e mais irregular do que o
+    item diz.**
+
+    **1. Não são 12 templates com tokens duplicados — são 4.** Onze templates têm
+    `<style>`, mas só `base_logged`, `home`, `login` e `signup` definem `:root`; os outros
+    7 herdam do shell logado. A duplicação real de variáveis é entre 3 arquivos.
+
+    **2. `home.html` fica de fora, e não é preguiça.** Os valores dela divergem de
+    propósito: `--radius: 18px` contra 16px, `--max: 1120px` contra 1600px, mais 5
+    variáveis que só ela tem. Uniformizar mudaria pixel na landing, e o próprio item diz
+    "se a aparência mudar, a extração errou".
+
+    **3. Aqui o `<style>` TINHA tag Django dentro** — ao contrário do R-27, onde o
+    `<script>` não tinha nenhuma e o recorte foi puro. A imagem de fundo saia por
+    `{% static %}`, que **não é processado em arquivo `.css`**. Virou caminho relativo, e
+    quem repõe o hash é o `collectstatic`: conferido rodando de verdade com `DEBUG=False`,
+    o manifesto reescreveu para `back.febfb1a8f015.png`. **Ganho de brinde:** a imagem de
+    fundo passa a ter cache-busting, que antes não tinha.
+
+    **4. A equivalência foi provada por comparação regra a regra, não no olho.** Um
+    comparador leu os blocos antigos do `git show HEAD:` e o CSS novo, aplicou a cascata e
+    conferiu declaração por declaração: **zero diferenças reais** nas duas telas. As únicas
+    adições são invisíveis por construção — `.errorlist` (elemento que não existe no login)
+    e `list-style` num `<div>`.
+
+    **5. Nomes:** `tokens.css` + `auth.css` em vez do `app.css` único que o item previa. As
+    telas de autenticação não compartilham base com o shell logado e têm `body` próprio
+    (card centralizado, imagem de fundo); um `app.css` único carregaria layout que elas não
+    usam. O `tokens.css` é só variável, sem uma regra — é ele que o `base_logged` vai usar
+    no sub-PR c.
+
+    ⚠️ **Validação visual continua sendo obrigatória e é manual:** abrir `/login/` e
+    `/cadastro/`, com erro de formulário na tela, em desktop e celular.
 
 - [ ] **Onda 6 concluída** — JS e CSS fora dos templates, sem mudança visual
 
