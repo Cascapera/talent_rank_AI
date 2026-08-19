@@ -1,0 +1,87 @@
+/* Telas de autenticacao — login e cadastro (R-28).
+
+   Os dois <style> tinham 85 e 90 linhas e diferiam em 8: o cadastro acrescenta
+   `.link-primary`, estende `.error` para a `.errorlist` que o Django gera, e ajusta o
+   rodape. Essas 8 continuam inline no signup.html, que e o unico lugar onde valem.
+
+   A imagem de fundo vinha por tag do Django dentro do <style>, e tag nenhuma e
+   processada em arquivo .css — por isso aqui ela e caminho relativo. Quem repoe o hash e
+   o collectstatic: o ManifestStaticFilesStorage (R-40) reescreve o caminho para
+   `back.<hash>.png`, entao o cache-busting continua valendo e passa a valer tambem para
+   a imagem, que antes ia sem hash nenhum. */
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    url("../img/back.png") center top / cover no-repeat,
+    var(--bg);
+  background-attachment: fixed;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 24px;
+}
+a{color:inherit; text-decoration:none}
+.card{
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.94);
+  box-shadow: 0 12px 40px rgba(15, 52, 65, 0.12);
+  backdrop-filter: blur(10px);
+}
+.brand{
+  display:flex; align-items:center; gap:10px; margin-bottom: 10px;
+}
+.brand img{height:63px; width:auto}
+h1{margin: 0 0 6px; font-size: 22px;}
+p{margin: 0 0 16px; color: var(--muted); font-size: 14px;}
+label{display:block; margin: 10px 0 6px; font-size: 13px; color: var(--muted);}
+input{
+  width: 100%;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.95);
+  color: var(--text);
+  padding: 0 12px;
+  outline: none;
+}
+.btn{
+  width: 100%;
+  height: 44px;
+  margin-top: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(13, 148, 136, 0.4);
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.2), rgba(45, 212, 191, 0.18));
+  color: #0f3441;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover{
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.28), rgba(45, 212, 191, 0.24));
+}
+.error, .errorlist{
+  /* `.errorlist` e a <ul> que o Django gera no cadastro. Mesma caixa, escrita uma vez.
+     Em login nao existe esse elemento, e `list-style` num <div> nao muda nada. */
+  list-style: none;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: #7f1d1d;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.errorlist{ padding-left: 12px; }
+.footer{
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}

@@ -1,0 +1,22 @@
+/* Tokens de tema do Talent Rank AI (R-28).
+
+   Vinham repetidos, identicos, no <style> de base_logged.html, login.html e
+   signup.html. Aqui ficam so as variaveis: nenhuma regra, para este arquivo poder ser
+   carregado por qualquer tela sem trazer layout junto.
+
+   O `--max` (largura maxima do conteudo) NAO esta aqui — e do shell logado, e as telas
+   de autenticacao nao tem. Entra quando o base_logged.html usar este arquivo.
+
+   home.html tambem nao usa: os valores dela divergem de proposito (--radius 18px contra
+   16px, --max 1120px contra 1600px). Uniformizar mudaria pixel, e o R-28 proibe. */
+:root{
+  --bg: #e0f2f7;
+  --surface: #ffffff;
+  --border: rgba(30, 111, 140, 0.18);
+  --text: #0f3441;
+  --muted: #446b7a;
+  --primary: #0d9488;
+  --primary-2: #2dd4bf;
+  --radius: 16px;
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}

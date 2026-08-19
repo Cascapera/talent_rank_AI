@@ -285,6 +285,74 @@ Inverter 2 e 3 deixa o scraper cego ate ser reconfigurado.
 
 ---
 
+### 11.2 Tirar os curriculos de `/media/` publico (R-23)
+
+O `location /media/` entrega qualquer PDF de curriculo **sem autenticacao nenhuma** — o
+Nginx serve direto do disco, o Django nem ve o pedido. Quem tiver a URL baixa, logado ou
+nao, para sempre, inclusive depois de o candidato pedir exclusao. O nome do arquivo tem um
+`uuid4`, entao ninguem enumera; o risco e a URL vazar em log, referrer, backup ou print.
+
+A rota nova (`/curriculos/<id>/`) confere login e visibilidade no Django e delega a
+entrega do arquivo ao Nginx por `X-Accel-Redirect`, apontando para um `location` marcado
+`internal;` — inalcancavel de fora, so por redirecionamento interno. O PDF **nao**
+atravessa o worker do gunicorn.
+
+**Sao 3 etapas, e a ordem importa** (expand-contract). Pular para a 3 antes da 2 tira os
+PDFs do ar.
+
+**Etapa 1 — antes do deploy do codigo.** Adicione o location interno, **mantendo o
+`/media/` publico**, no mesmo `server` do `listen 443`:
+
+```
+    location /protected-media/ {
+        internal;
+        alias /var/www/talent_rank_ai/media/;
+    }
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Sozinha, esta etapa nao muda nada para quem usa: nenhuma URL responde diferente. Se ela
+nao existir quando o codigo subir, o botao "Baixar PDF" da **404** — o Nginx nao conhece o
+caminho interno e devolve o pedido ao Django.
+
+**Etapa 2 — deploy do codigo, e conferir logado.** Entre no banco de talentos, clique em
+**Baixar PDF** e confirme que o arquivo abre com o nome do candidato (`fulano-de-tal.pdf`,
+nao o `uuid` do disco). Confira tambem que a URL antiga `/media/resumes/...` **ainda**
+funciona — nesta etapa ela deve funcionar mesmo; e o que torna a volta atras barata.
+
+**Etapa 3 — so depois da 2 passar.** Remova o bloco publico:
+
+```
+    location /media/ {
+        alias /var/www/talent_rank_ai/media/;
+    }
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Verificacao final, de fora e deslogado:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" https://talentrankai.com/media/resumes/<user>/<uuid>.pdf   # 404
+```
+
+E, logado, o botao **Baixar PDF** continua funcionando.
+
+**O que a etapa 3 tambem derruba, de proposito:** o link de arquivo que o Django admin
+mostra no candidato passa a dar 404, porque ele aponta para `MEDIA_URL`. O caminho para
+baixar passa a ser um so, e ele confere permissao.
+
+**Volta atras:** recolocar o `location /media/` e recarregar o Nginx. Os arquivos nunca
+saem do lugar no disco — nenhuma das 3 etapas move, copia ou apaga arquivo.
+
+---
+
 ## 12. HTTPS no Lightsail
 
 ### Opção A (mais simples): Certificado via Lightsail
