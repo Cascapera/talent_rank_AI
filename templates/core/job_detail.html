@@ -672,6 +672,11 @@
             {% if import_status.errors %}
               <span style="color: #d32f2f;">({{ import_status.errors }} erro(s))</span>
             {% endif %}
+            {% if import_status.error_details %}
+              <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: #d32f2f;">
+                {% for erro in import_status.error_details %}<li>{{ erro }}</li>{% endfor %}
+              </ul>
+            {% endif %}
           </div>
         {% elif import_status and import_status.status == "completed" %}
           <div style="color: var(--primary);">
@@ -681,6 +686,11 @@
                 {{ import_status.result.created }} criados, {{ import_status.result.updated }} atualizados, {{ import_status.result.unchanged|default:0 }} sem alteração, {{ import_status.result.skipped }} ignorados
                 {% if import_status.result.errors %}
                   <span style="color: #d32f2f;">, {{ import_status.result.errors }} erro(s)</span>
+                {% endif %}
+                {% if import_status.result.error_details %}
+                  <ul style="margin: 6px 0 0; padding-left: 18px; color: #d32f2f;">
+                    {% for erro in import_status.result.error_details %}<li>{{ erro }}</li>{% endfor %}
+                  </ul>
                 {% endif %}
               </div>
             {% endif %}

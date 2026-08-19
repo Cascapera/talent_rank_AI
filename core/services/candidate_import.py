@@ -183,6 +183,10 @@ def _process_in_batches(
                 current=f"Lote {batch_label}: {item.name}{suffix}",
                 status="running",
                 errors=errors,
+                # R-42: a lista vai junto do contador. Antes so o numero viajava durante a
+                # execucao, e o detalhe so existia no payload final — a recrutadora via
+                # "2 erro(s)" no meio da importacao sem saber de quais arquivos.
+                error_details=list(error_details),
             )
 
     if is_incomplete is None:
