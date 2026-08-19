@@ -4,6 +4,23 @@
 // todo dado dinamico ja vinha por atributo data-* no HTML. A unica transformacao
 // aplicada foi tirar 4 espacos de recuo de cada linha.
 
+// R-42: os detalhes de erro existiam no payload e nunca chegavam a tela — ela via
+// "1 erro(s)" sem saber qual curriculo ficou de fora, nem como reenviar o certo.
+//
+// `escaparHtml` e obrigatorio aqui: estes textos carregam nome de arquivo e mensagem de
+// excecao, e tudo isto entra por innerHTML.
+function escaparHtml(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+function listaDeErros(detalhes) {
+  if (!detalhes || !detalhes.length) return '';
+  const itens = detalhes.map(d => `<li>${escaparHtml(d)}</li>`).join('');
+  return `<ul style="margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: #d32f2f;">${itens}</ul>`;
+}
+
 // R-44: falha de rede nao e resposta — e ausencia dela.
 //
 // Os polls de status se reagendavam SO dentro do ramo `running`. Um `fetch` que falhasse
@@ -37,6 +54,7 @@ if (importStatusEl) {
         if (errors > 0) {
           html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
         }
+        html += listaDeErros(data.error_details);
         importStatusEl.innerHTML = html;
         importStatusEl.style.color = 'var(--text)';
         setTimeout(poll, 2000);
@@ -54,6 +72,7 @@ if (importStatusEl) {
           html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
         }
         html += `</div>`;
+        html += listaDeErros(result.error_details);
         importStatusEl.innerHTML = html;
         importStatusEl.style.color = 'var(--text)';
       } else if (data.status === 'error') {
@@ -727,6 +746,7 @@ if (searchInPoolBtn && searchFiltersModal) {
                 if (errors > 0) {
                   html += ` <span style="color: #d32f2f;">(${errors} erro(s))</span>`;
                 }
+                html += listaDeErros(data.error_details);
                 searchStatusEl.innerHTML = html;
                 searchStatusEl.style.color = 'var(--text)';
                 setTimeout(poll, 2000);

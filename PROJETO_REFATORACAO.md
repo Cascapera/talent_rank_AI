@@ -2940,7 +2940,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     observado no passo 5 confirma o backend (a linha ficou `RUNNING` com heartbeat velho),
     mas não o comportamento de tela, que é o que importa para quem opera.
 
-- [ ] **R-42** · Os detalhes de erro da importação nunca chegam à tela
+- [x] **R-42** · Os detalhes de erro da importação nunca chegam à tela
       risco: baixo · 2h · produção: transparente
       **Achado junto com o R-43, em 2026-08-19.** O importador monta um `error_details`
       com arquivo e motivo (`candidate_import.py:231`) e guarda no payload. Mas
@@ -2956,11 +2956,40 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       com 4 dígitos, então `0005.pdf` **é** o `005.pdf` dela. Preservar o nome original
       vira melhoria, não pré-requisito — passa a importar se algum dia os arquivos vierem
       com nome de gente dentro de um ZIP.
-  - [ ] Mostrar a lista de erros na tela do banco de talentos e na da vaga
+  - [x] Lista de erros na tela do banco de talentos e na da vaga — nos **quatro** lugares
+        que renderizam status: os dois blocos do servidor (para quem abre a página com a
+        importação já terminada) e os dois polls
+  - [x] **Uma linha de backend que faltava:** durante a execução o `progress_callback` só
+        mandava o **número** de erros. Agora manda `error_details` junto, então a lista
+        aparece **enquanto** a importação roda, não só no resumo final
+  - [x] `escaparHtml` no JS — estes textos carregam nome de arquivo e mensagem de exceção,
+        e entram por `innerHTML`. Nos blocos do servidor o Django já escapa sozinho
+  - [x] 7 testes novos; 416 no total, cobertura **80,56%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — importar algo que falhe e ver o nome do arquivo na tela
+  - [ ] Commitado — `<hash>`
   - [ ] (depois) Preservar o nome original no rename, para o dia em que ele não for
         numerado
-  - Status: não iniciado · Notas: o dado já existe e está gravado; é trabalho de front.
-    Cai bem junto com o R-28, que já vai mexer em template.
+  - Status: **código pronto** · Notas: **o item nasceu de uma pergunta do dono do projeto,
+    não de leitura de código.**
+
+    Ao ver `0005.pdf: Expecting value...` no payload, ele perguntou: *"como saber qual é o
+    cinco? nenhum tem o número 5"*. A resposta mudou o item duas vezes:
+
+    **1. O nome é gerado, não é o dele.** O `prepare_uploaded_files` renomeia todo PDF
+    recebido para um contador de 4 dígitos. `0005.pdf` significa "o 5º PDF daquele envio".
+
+    **2. Mas no fluxo real ele já basta** — o exportador entrega os arquivos numerados
+    (`001.pdf`, `002.pdf`…), então o nome interno bate com o dela por coincidência
+    sistemática. Por isso mostrar veio primeiro, e preservar o nome original ficou como
+    melhoria: ela só passa a importar no dia em que os PDFs vierem com nome de gente
+    dentro de um ZIP.
+
+    Um teste negativo quase passou por engano: `padding-left: 18px` aparece no **código do
+    helper JS**, que mora na mesma página, então a asserção acusava a fonte em vez da lista
+    renderizada. Trocado por regex no `<li>` de verdade.
 
 - [~] **R-40** · A configuração de estáticos do Whitenoise está morta desde o Django 5.1
       risco: baixo · 1h · produção: **requer cuidado** (mexe em `collectstatic`)
