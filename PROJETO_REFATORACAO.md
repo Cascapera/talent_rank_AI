@@ -1594,13 +1594,18 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a (Onda 3) e R-22 (Onda 4). 5 releases: PRs #26, #35, #46, #53, #57.
-           `main` em `76f8e32`.
-Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 fechado
-           sem correção (R-29, decisão de produto) · `develop` limpa · 3 itens
-           bloqueados por informação do servidor · 1 achado novo (**R-39**) · o resto
-           no backlog
-           atualizado em 2026-08-18
+           R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40. 6 releases: PRs #26,
+           #35, #46, #53, #57, #62. `main` em `99018df`.
+Progresso: 30 itens em produção · **3 prontos em `develop` esperando release**
+           (R-41, R-20b, R-21) · 1 fechado sem correção (R-29, decisão de produto)
+           · 2 achados registrados (**R-39** aberto, **R-40** já em produção)
+           atualizado em 2026-08-18, fim do dia
+
+           🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
+           Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
+
+           🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
+           Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
 
            ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
            em texto claro durante a verificação e **precisam ser rotacionados**.
@@ -1641,8 +1646,8 @@ Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 
 
 | Métrica | Linha de base | Hoje em produção (2026-08-18) |
 |---|---:|---:|
-| Testes | 100 | **336** |
-| Cobertura real | 25% (reportada como 87,62%) | **75,53%** (real) |
+| Testes | 100 | **348** |
+| Cobertura real | 25% (reportada como 87,62%) | **75,58%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
 | Código morto | 872 linhas | **0** |
@@ -1650,7 +1655,7 @@ Progresso: 28 itens implantados, **R-22 e R-25 verificados em produção** · 1 
 | Cópias do laço de lotes | 3 | **1** |
 | Cópias do cliente Gemini | 7 | **1** |
 | Arquivos > 500 linhas | 6 | **5** (2 são templates — Onda 6) |
-| Bugs reais corrigidos | — | **3** (R-09, R-35, R-19) |
+| Bugs reais corrigidos | — | **4** (R-09, R-35, R-19, R-41) |
 
 > O número de `views.py` merece leitura: fechou a Onda 2 em **665** linhas e voltou a
 > **792** com R-18/R-19/R-20a, que adicionaram código novo em vez de mover código velho.
@@ -2173,7 +2178,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 3 — Confiabilidade dos jobs em background
 
-- [ ] **R-18** · Fechar conexões de banco nas threads
+- [x] **R-18** · Fechar conexões de banco nas threads
       risco: baixo · 3h · produção: transparente · PR: ~20 linhas / 1 arquivo
       pré-requisito: R-14
   - [x] Correção aplicada + 14 testes
@@ -2181,9 +2186,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#48**, CI verde
   - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
-  - [ ] Verificado em produção — `pg_stat_activity` volta ao patamar após importação
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: em vez de repetir `try/finally` nas 4 funções,
+  - [x] Verificado em produção — **2026-08-18**, depois de duas importações reais:
+        `pg_stat_activity` mostra **1 conexão no banco da aplicação, que é a própria
+        sessão do `dbshell`**. Zero penduradas.
+  - [x] Commitado — PR #48
+  - Status: **✅ concluído** · Notas: em vez de repetir `try/finally` nas 4 funções,
     criei o decorator `background_job` — fecha na entrada e no `finally`, num lugar só.
 
     Fecha **na entrada** também porque a thread herda o estado do processo e pode pegar
@@ -2220,7 +2227,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     chave antiga fica órfão e a tela volta a "idle". Sem perda de dado — a importação em
     si continua —, mas a barra some. Subir quando não houver importação rodando.
 
-- [ ] **R-20a** · Estado do job no banco — modelo + escrita dupla
+- [x] **R-20a** · Estado do job no banco — modelo + escrita dupla
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~120 linhas / 3 arquivos
       pré-requisito: R-18, R-19
   - [x] Migration criada (tabela nova, vazia — ninguém lê ainda) — `0021_importjob`
@@ -2229,9 +2236,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes · `makemigrations --check` sem pendências
   - [x] PR aberto e revisado — **#50**, CI verde
   - [x] Implantado — **2026-08-18**, PR #53, deploy `3320174`
-  - [ ] Verificado em produção — tabela sendo populada em uma importação real
-  - [ ] Commitado — `<hash>`
-  - Status: **em andamento** · Notas: **a primeira migration do projeto de refatoração.**
+  - [x] Verificado em produção — **2026-08-18**: importação real gravou `RUNNING` →
+        `COMPLETED` com `processed = total`. **É o que destravou o R-20b.**
+  - [x] Commitado — PR #50
+  - Status: **✅ concluído** · Notas: **a primeira migration do projeto de refatoração.**
     Os três deploys anteriores foram `No migrations to apply`; o próximo não será.
     Tabela nova e vazia, ninguém lê dela — o `deploy.yml` roda `migrate` antes de o
     código novo servir tráfego, então o risco é o menor possível.
@@ -2250,19 +2258,43 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
     expand, perder uma linha não custa nada; perder uma importação custa.
 
-- [ ] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
+- [~] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos
       pré-requisito: **R-20a implantado e confirmado populando em produção**
-  - [ ] R-20a confirmado no ar e escrevendo corretamente
-  - [ ] Leitura migrada para o banco; escrita no cache removida
-  - [ ] Teste que simula morte da thread → UI mostra "interrompido"
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] R-20a confirmado no ar e escrevendo corretamente — **2026-08-18**, importação real
+  - [x] Leitura migrada para o banco; escrita no cache removida nos 3 fluxos
+        rastreados (o do parecer continua no cache, não está na tabela)
+  - [x] Teste que simula morte da thread → a tela recebe "interrompido"
+  - [x] Suíte completa verde — 366 testes, cobertura **79,82%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — restart no meio da importação mostra "interrompido"
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto** · Notas: **dois desvios da especificação, os dois
+    necessários.**
+
+    **1. A tabela não tinha onde guardar o que a tela mostra.** O item dizia "a escrita no
+    cache é removida", mas `processed`/`total` não cobrem o contador de erros ao vivo nem o
+    resumo final ("3 criados, 2 atualizados, 1 sem alteração") — que foi exatamente o que o
+    R-32 colocou lá. Removê-lo sem mais nada apagaria isso da tela. Entrou um campo
+    `payload` (JSONField, migration `0023`) que guarda **o mesmo dicionário que ia para o
+    cache, na mesma forma** — então nenhuma linha de JS mudou.
+
+    **2. A linha passou a nascer na view, não na thread.** Havia uma corrida: o primeiro
+    poll acontece ~2s depois do POST, e se a linha ainda não existisse o endpoint
+    responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. Era isso que a
+    escrita síncrona no cache garantia. Tem teste travando.
+
+    **O limiar de "morreu" é 15 minutos**, configurável por `IMPORT_JOB_STALE_AFTER_SECONDS`.
+    Generoso de propósito: o heartbeat é escrito **por lote**, e um lote de 10 PDFs com
+    timeout de 180s e 4 tentativas pode passar de 12 minutos sem sinal **estando vivo**.
+    Limiar curto faria a recrutadora reiniciar uma importação viva — pagando o LLM duas
+    vezes. Há teste com um lote de 13 minutos exigindo que ele ainda apareça como vivo.
+
+    A linha **continua `RUNNING` no banco** quando é exibida como interrompida: a tabela
+    guarda o fato, a interpretação é da leitura. Marcar como `ERROR` exigiria um varredor, e
+    um job que só parecia morto voltaria a andar sozinho.
 
 - [ ] **Onda 3 concluída** — jobs não vazam conexão nem falham em silêncio
 
@@ -2270,21 +2302,48 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ### Onda 4 — Segurança e configuração de produção
 
-- [ ] **R-21** · Endurecer settings de produção
+- [~] **R-21** · Endurecer settings de produção
       risco: **alto se o `.env` do servidor estiver incompleto** · 3h
       produção: **requer cuidado (P-5)** · PR: ~40 linhas / 2 arquivos
-  - [ ] **`grep DJANGO_SECRET_KEY` no `.env` do servidor retorna chave real**
-  - [ ] **HTTPS confirmado funcionando no domínio** (cookies Secure dependem disso)
-  - [ ] Janela de baixo uso escolhida
-  - [ ] Mudança aplicada
-  - [ ] `manage.py check --deploy` sai de 6 avisos para ≤1
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] ⛔ **`grep -c DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` retorna 1** —
+        conferido em **2026-08-18**. A aplicação sobe depois do deploy.
+  - [ ] **Falta conferir a qualidade da chave**, não só a existência. O R-21 verifica que
+        a variável existe; se ela contiver uma cópia da chave do repositório, a aplicação
+        sobe e o ganho é zero. Comando que não imprime o segredo:
+        `awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env`
+        — espera-se tamanho ≥ 50 e contador 0.
+  - [x] **HTTPS confirmado funcionando no domínio** — `https://talentrankai.com/` responde
+        200, verificado em 2026-08-18
+  - [x] Janela de baixo uso — **15 dias sem usuária**, até ~2026-09-02
+  - [x] Mudança aplicada
+  - [x] `manage.py check --deploy` sai de **5 avisos para 2** — e os 2 que sobraram são
+        recusas conscientes, não esquecimento: `SECURE_HSTS_INCLUDE_SUBDOMAINS` derrubaria
+        qualquer subdomínio fora de HTTPS, e `SECURE_HSTS_PRELOAD` é praticamente
+        irreversível. **Não silenciei** — os dois devem voltar à mesa quando o HSTS subir
+        de 1 hora para 1 ano.
+  - [x] Suíte completa verde — 377 testes, cobertura 79,82%
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `systemctl status` OK + login completo + cookies Secure
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **código pronto, release bloqueado pela conferência do `.env`** · Notas:
+
+    **O HSTS começa em 1 hora, não em 1 ano.** O navegador **memoriza** o prazo: publicar
+    um ano e descobrir um problema no HTTPS deixaria a usuária sem acesso, sem nada que o
+    servidor pudesse fazer. Uma hora dá o mesmo benefício prático e expira sozinha. Sobe
+    por `SECURE_HSTS_SECONDS` depois de o deploy provar estabilidade.
+
+    **Desvio do item, deliberado:** ele mandava o `SECURE_PROXY_SSL_HEADER` "deixar de vir
+    ligado por default". Ligado fora de `DEBUG`, e não só quando a variável existir — o
+    `SECURE_SSL_REDIRECT` depende dele para saber que a requisição já chegou por HTTPS.
+    Seguir a letra do item deixaria o site em **laço infinito de redirect** se o `.env` do
+    servidor não tivesse `DJANGO_SECURE_PROXY_SSL`. O default agora acompanha o `DEBUG`.
+
+    **Achado de graça:** o `ci.yml` exportava `SECRET_KEY` e `DEBUG`, nomes que o
+    `settings.py` **não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas
+    variáveis nunca tiveram efeito nenhum. Corrigido aqui, que é quando passaram a
+    importar de verdade.
 
 - [~] **R-22** · Proteger o endpoint `/metrics`
       risco: baixo · 2h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
@@ -2425,13 +2484,15 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Template compila e `{% static %}` resolve para `/static/js/job_detail.js`
   - [x] Suíte completa verde — 342 testes, cobertura 75,53%
   - [x] Lint e format verdes
-  - [ ] **Validação manual completa:** importar · filtrar · paginar · mudar status ·
-        gerar parecer · gerar busca booleana · preview de match
-  - [x] PR aberto e revisado
-  - [ ] Implantado (com `collectstatic`)
-  - [ ] Verificado em produção — console sem erro, `job_detail.js` retornando 200
+  - [x] **Validação manual completa** — 2026-08-18, em produção: importação real,
+        navegação, mudança de status, parecer e busca booleana, com console limpo
+  - [x] PR aberto e revisado — PR #60
+  - [x] Implantado (com `collectstatic`) — **2026-08-18**, PR #62, deploy `99018df`
+  - [x] Verificado em produção — `job_detail.<hash>.js` em **200** (29.654 bytes) e
+        console sem erro durante o uso
+  - [x] Commitado — `e8b127b`
   - [ ] Commitado — `<hash>`
-  - Status: **código pronto, esperando a validação manual** · Notas: `job_detail.html`
+  - Status: **✅ concluído** · Notas: `job_detail.html`
     1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
     o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
@@ -2711,18 +2772,61 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         `staticfiles.json` gerado, `job_detail.1a1dd8a7bcfa.js` e `.gz` no lugar
   - [x] Suíte completa verde — 348 testes, cobertura 75,58%
   - [x] Lint e format verdes
+  - [x] PR aberto e revisado — PR #61
+  - [x] Implantado — **2026-08-18**, PR #62, deploy `99018df`. `1 static file copied,
+        130 unmodified, **387 post-processed**`
+  - [x] Verificado em produção — a home pública já serve
+        `/static/img/logo.334f5c205457.png`, e o JS com hash responde 200
+  - [x] Commitado — `d7fc76d`
+  - Status: **✅ concluído** · Notas: 6 testes novos.
+  - **Follow-up que este item destrava:** o Nginx serve `/static/` **sem `expires`**, então
+    o browser revalida todo asset a cada visita. Agora que o nome leva hash, dá para pôr
+    `expires max;` no `location /static/` e transformar isso em cache imutável. É mudança
+    de Nginx, então anda junto com o R-23.
+
+- [x] **R-41** 🐛 · Dar refresh na página importa tudo de novo
+      risco: baixo · 1h · produção: transparente
+      **Achado em produção em 2026-08-18**, na primeira importação real depois do deploy do
+      R-20a — e achado **porque** o R-20a existe: `core_importjob` mostrou **duas linhas
+      para um upload de 1 PDF**. O dono do projeto tinha dado F5.
+
+      As views tratavam o POST e renderizavam no mesmo request, sem redirect. Os dois
+      formulários de upload não têm `action`, então o F5 remanda o multipart inteiro e a
+      importação roda de novo. **O custo é dinheiro:** o fluxo da vaga manda cada candidato
+      para o LLM, e ainda põe dois upserts correndo sobre o mesmo candidato.
+
+      Antes do R-20a isso era **invisível**: as duas threads escreviam na mesma chave de
+      cache e o progresso de uma tapava o da outra. A tabela nova é que separou.
+  - [x] POST/Redirect/GET nas 3 branches — upload da vaga, upload do pool e cadastro manual
+  - [x] `messages` do Django no lugar de `import_message` no contexto, que virou código
+        morto e saiu dos 2 templates
+  - [x] **Formulário inválido continua sem redirect, de propósito** — redirect ali jogaria
+        fora os erros de validação. Tem teste garantindo.
+  - [x] 8 testes de regressão, **7 vermelhos antes** (o 8º é o do formulário inválido, que
+        não muda)
+  - [x] Suíte completa verde — 356 testes, cobertura **79,17%**; piso do CI 75 → 78
+  - [x] Lint e format verdes
   - [x] PR aberto e revisado
   - [ ] Implantado
-  - [ ] Verificado em produção — página abre, `/static/...<hash>.js` retornando 200
+  - [ ] Verificado em produção — importar, dar F5 e conferir que `core_importjob` ganha
+        **uma** linha só
   - [ ] Commitado — `<hash>`
-  - Status: **código pronto** · Notas: 6 testes novos. ⚠️ **No deploy, rodar
-    `collectstatic` à mão antes** — ver a nota de deploy abaixo.
+  - Status: **código pronto** · Notas: **a guarda de "já existe importação rodando" ficou
+    de fora de propósito.** Ela depende de saber se um `RUNNING` está vivo ou morreu num
+    restart — que é exatamente o que o R-20b resolve com o `heartbeat_at`. Feita agora,
+    uma linha `RUNNING` órfã de um deploy antigo travaria a importação para sempre.
 
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
 
 ### Registro de execução
+
+> As seis linhas de **R-18, R-19, R-20a, R-24, R-26 e do 4º release** foram
+> **reconstruídas em 2026-08-18** a partir das PRs #48 a #53 — na época elas não foram
+> escritas. As PRs eram detalhadas o bastante para as surpresas sobreviverem, mas o que
+> não estiver lá se perdeu.
+
 
 | Data | Item | O que mudou de fato | Surpresas encontradas |
 |---|---|---|---|
@@ -2755,72 +2859,94 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-17 | **R-16** | `domain/job_description.py` e `domain/boolean_search.py`. As funções recebem **campos**, não o objeto `Job`. `views.py` 746 → **692 linhas**. Piso 71 → 72. | A garantia crítica do item era a string sair byte a byte igual — ela vai direto no prompt, e mudá-la mudaria o ranking de todos os candidatos. Capturei as strings **rodando a implementação antiga** e colei literalmente em `test_job_prompts.py`: 12 testes golden que rodam **sem banco e sem HTTP, em 0,06s**. Antes, testar a montagem do prompt exigia subir uma request — que é por que nunca tinha sido testada. Desfez o remendo do R-14 (import adiado para evitar ciclo). Um teste do R-13 mudou de alvo: `views` não consome mais o dicionário de sinônimos, quem consome é `domain.boolean_search`. |
 | 2026-08-17 | **R-17** | `pdf_extractor.py` deixa de existir: vira `services/candidate_import.py` (579 linhas) e `core/pdf.py` (59). O `_prepare_uploaded_files` veio junto do `views.py`. `views.py` 692 → **665 linhas**. README atualizado. | O nome mentia desde o começo: depois do R-03 e do R-37, o que sobrava não extraía PDF, coordenava importação. **Armadilha na movimentação:** havia um `from .models import ...` **dentro de uma função** — import adiado que o script de recorte não pegou por não estar no topo. Com o módulo um nível mais fundo virou `core.services.models` e 19 testes quebraram de uma vez. É o tipo de coisa que a suíte pega e a revisão de diff não. |
 | 2026-08-17 | **Onda 2 + achados → produção** | Terceiro release do dia (PR #46): 20 commits, 9 PRs, `8c2130a` → `d3e9394`. Entram R-14 a R-17 (Onda 2), R-33 e R-38 (rede de teste), R-35, R-36 e R-37. CI verde; CD em 48s, `No migrations to apply`, `pip install` no-op. | **Meta da Onda 2 NÃO atingida e registrada como tal:** `views.py` em 665 linhas contra ≤450. Caiu 33% desde a linha de base, mas o que sobrou é handler HTTP de verdade — chegar a 450 exigiria extrair regra de `reports`, `preview_candidates_search` e `search_candidates_in_pool`, fora do escopo da onda. A meta era otimista; o trabalho da onda está completo. Arquivos > 500 linhas: 5 (era 6), e os dois maiores são templates, que são da Onda 6. Resultado do dia: testes 100 → **272**, cobertura real 25% → **72,64%**, `views.py` 987 → 665, e as quatro duplicações estruturais (upsert, cliente Gemini, laço de lotes, sinônimos) todas em 1 cópia. |
+| 2026-08-17 | **R-18** 🐛 | Decorator `@background_job` com `close_old_connections()` na entrada e no `finally`, aplicado nas 4 funções de job. Nenhum corpo de função tocado. 14 testes novos; 286 no total, cobertura 73,27%. PR #48. | **`close_old_connections` não existia em lugar nenhum do projeto.** O Django fecha conexão no sinal `request_finished`, que **thread manual não dispara** — então cada importação abria uma conexão Postgres e a deixava aberta para sempre, até o banco recusar novas. Numa app pequena isso demora a aparecer e, quando aparece, parece problema de infraestrutura. O teste que mais vale não é o do decorator, é o que verifica que **as 4 funções estão decoradas**: o modo de falha real é alguém adicionar um job novo daqui a três meses e esquecer. |
+| 2026-08-17 | **R-19** 🐛 | `_talent_pool_import_status_key()` deixa de ser string fixa e passa a levar `user_id`. 4 pontos de uso atualizados. 4 testes de regressão, todos vermelhos antes. 290 testes, cobertura 73,38%. PR #49. | A chave do progresso do banco de talentos era **a mesma para todo mundo**: duas contas importando ao mesmo tempo se sobrescreviam, e cada uma via a barra da outra. As chaves por vaga (`import_status_{job_id}`) sempre estiveram certas — esta passou despercebida. Um dos testes descreve o sintoma como a recrutadora o viveria: entrar na tela dela e ver o progresso que não é dela. **Custo no deploy (P-3):** o progresso gravado sob a chave antiga fica órfão e a barra volta a "idle" para quem estiver no meio de uma importação — sem perda de dado, mas é motivo de subir com ninguém importando. |
+| 2026-08-17 | **R-20a** | Modelo `ImportJob` + escrita dupla cache e banco nos 3 jobs com progresso. Leitura continua no cache. **Primeira migration do projeto** (`0021_importjob`). 11 testes novos; 301 no total, cobertura 73,69%. PR #50. | **Duas. (1) A especificação do plano não bastava:** ela listava `(user, job, status, processed, total, started_at, heartbeat_at, error)`, mas importação em vaga e busca no pool **têm as duas `job` preenchido**, então `job is None` não separava os fluxos — entrou um campo `kind` com três valores. (2) **A garantia mais testada foi a inversa da esperada:** não que a escrita funcione, mas que **rastrear não derrube o job**. Os três helpers engolem exceção, e há teste provando que a importação termina normalmente mesmo com o banco recusando a linha. Numa etapa expand, perder uma linha não custa nada; perder uma importação custa. O `_run_parecer_generation` ficou de fora de propósito: não é importação e não tem `processed`/`total`. |
+| 2026-08-17 | **R-24** | O laço aninhado do funil de `/relatorios/` vira uma agregação única (`.values('job_id','pipeline_status').annotate(Count)`). 8 characterization tests escritos antes + 1 de contagem. 310 testes, cobertura 75,13%; piso do CI 72 → 75. PR #51. | **A medição confirmou o diagnóstico na mosca:** 130 queries com 12 vagas contra 20 com 1 — exatos **10 por vaga**, como o D-9 previa; com 50 vagas seriam ~500. Depois: 20 queries com 12 vagas, o mesmo número de 1 vaga. **O quirk que a otimização quase apagou:** `total_candidates` conta **todos** os vínculos da vaga, inclusive os sem etapa de funil, então **a soma do funil pode ser menor que o total, e isso é correto**. Um `sum()` ingênuo sobre as oito etapas conhecidas teria mudado o número exibido sem ninguém notar — foi o characterization test, escrito antes, que pegou. |
+| 2026-08-17 | **R-26** | A leitura do status anterior sai do topo de `CandidateJob.save()` e vai para dentro do único ramo que a usa. 8 testes novos; 318 no total, cobertura 75,19%. PR #52. | **Os 13 testes de `test_models.py` passaram sem alteração** — era o requisito do item. A condição correta tem **duas** partes, não uma: só consulta quando o status novo é "Candidato pronto" **e** o `ready_at` já está preenchido; se ainda não está, a marcação acontece de qualquer jeito e a consulta seria desperdício. Saves comuns caem de 2 queries para 1, e o caso em que a consulta se paga continua fazendo ela — com teste próprio, porque **otimização que some com o caso legítimo não é otimização, é bug**. |
+| 2026-08-18 | **R-18, R-19, R-20a, R-24, R-26 → produção** | 4º release (PR #53): 12 commits, 5 PRs, `d3e9394` → `3320174`. CD em 54s. **Primeira migration do projeto aplicada:** `Applying core.0021_importjob... OK`. | O perfil do deploy mudou pela primeira vez: os três releases anteriores foram todos `No migrations to apply`. O pré-deploy teve **dois** cuidados em vez de um — além do restart matar a thread de importação (condição pré-existente), o R-19 muda a chave de cache, então o progresso gravado sob a chave antiga fica órfão. **O que este release destrava:** o R-20b só pode ser aberto depois de o R-20a estar em produção **e confirmado populando a tabela** — é a regra do expand-contract, e é ela que torna a troca de leitura segura. |
 | 2026-08-18 | **R-22** | `settings.METRICS_TOKEN` novo; `metrics_view` passa a exigir o token em `X-Metrics-Token` ou `Authorization: Bearer` quando a variável está preenchida. 10 testes novos. README e `DEPLOY_LIGHTSAIL.md` (seção 11.1 nova + checklist). Nenhuma migration. | Duas. (1) **O fechamento não é o deploy, é o `.env`.** Com `METRICS_TOKEN` vazio o endpoint continua aberto de propósito — expand-contract sem segundo deploy: sobe o código, configura o scraper, depois preenche a variável e reinicia. Como não achei nenhum scraper no repositório, o passo do meio pode ser vazio, mas o desenho não depende de eu saber isso. (2) Aceitar `Authorization: Bearer` além do header customizado saiu de graça e evita configuração exótica no Prometheus, que manda esse header nativamente (`authorization` no `scrape_config`). A comparação usa `hmac.compare_digest`, não `==`. |
 | 2026-08-18 | **R-25** | Índice funcional `core_candidate_linkedin_upper` sobre `Upper(linkedin_url)`, na `Meta.indexes` do `Candidate` e na migration `0022` (`atomic = False`, `AddIndexConcurrently`). 8 testes novos. | **Três. (1) O item prescrevia o índice errado.** Dizia `Lower(linkedin_url)`, mas no PostgreSQL o Django compila `iexact` para `UPPER(coluna::text) = UPPER(%s)` (`backends/postgresql/operations.py::lookup_cast`, conferido no pacote instalado). Índice em `Lower` teria passado no CI, subido em produção e **nunca sido usado** — custo de escrita sem ganho de leitura, e nenhum erro para avisar. Virou teste. (2) A `UniqueConstraint(user, linkedin_url)` que já existe **não atende** a busca: o índice dela é sobre a coluna crua, case-sensitive. A motivação do item se confirmou. (3) `AddIndexConcurrently` quebra em SQLite, e a suíte inteira roda em SQLite — a operação virou subclasse com guarda de vendor, no mesmo espírito da migration 0018 do unaccent. É também a **primeira migration não atômica do projeto**. |
 | 2026-08-18 | **R-22 e R-25 → produção** | 5º release (PR #57): 4 commits, 2 PRs, `3320174` → `76f8e32`. CI verde nas duas versões da matriz; CD em 42s. Superfície real: **3 arquivos de aplicação** (`views.py`, `models.py`, `settings.py`), **1 migration**, nenhum template, nenhum estático, `requirements.txt` intocado. | Nenhuma surpresa, e as três previsões do pré-voo se confirmaram. (1) A **primeira migration não atômica do projeto** aplicou limpa: `Applying core.0022_candidate_linkedin_upper_index... OK` em **0,2s** — o `CREATE INDEX CONCURRENTLY` não encontrou transação aberta para esperar, o que também diz que a tabela é pequena e que o ganho do R-25 é preventivo, não imediato. (2) `pip install` no-op de novo e `0 static files copied, 130 unmodified`. (3) **O `/metrics` continua público depois do deploy, de propósito** — fechar é preencher `METRICS_TOKEN` no `.env` e reiniciar, sem novo deploy. Faltam as três verificações em produção: `indisvalid`, `EXPLAIN` do upsert e o `curl` do `/metrics` depois de fechado. |
 | 2026-08-18 | **Verificação em produção — R-22 e R-25** | Os dois itens fechados ponta a ponta. `/metrics` sem token = **401**, com `X-Metrics-Token` = **200**, com `Authorization: Bearer` = **200**, testado de fora da rede do servidor. Índice do R-25 válido (`WHERE NOT indisvalid` vazio) e **em uso**. | **Três achados. (1) O `EXPLAIN` provou em produção que o `Upper` era o certo:** `Bitmap Index Scan on core_candidate_linkedin_upper` com `Index Cond: (upper((linkedin_url)::text) = ...)` — o `Index Cond` é exatamente o SQL que o Django gera para `iexact`. Com o `Lower` que o plano prescrevia, este mesmo comando mostraria `Seq Scan` e ninguém notaria. **(2) A tabela tem 746 candidatos e o planner já escolhe o índice** — eu tinha dito que o ganho seria só preventivo, e estava errado: é imediato. A migration ter rodado em 0,2s foi por não haver transação concorrente, não por tabela minúscula. **(3) Achado de brinde, sem item no plano:** logo após o restart, `vacancy_candidate_imports_total` estava em `0.0`. O `prometheus_client` guarda os contadores **em memória do processo**, então todo deploy zera a telemetria e, com mais de um worker do gunicorn, cada um teria a sua contagem. As métricas do D-8 servem para observar uma execução, não para série histórica. |
 | 2026-08-18 | **R-27** | 794 linhas de JS saem do `<script>` inline para `static/js/job_detail.js`, carregado com `{% static %}` e `defer`. `job_detail.html` **1.487 → 694 linhas**. 6 testes novos. | **Três. (1) A parte difícil do item não existia.** O plano previa converter dados interpolados no JS para atributos `data-*`; o bloco **não tinha uma única tag Django dentro** — quem escreveu já lia tudo de `data-*` preenchido pelo HTML. Virou recorte puro, e o `diff` do bloco original contra o arquivo novo acusa só o recuo de 4 espaços. **(2) O `defer` é seguro aqui por um motivo específico:** o `{% block extra_script %}` do `base_logged.html` fica imediatamente antes do `</body>`, então o script inline já rodava com o DOM pronto — `defer` mantém exatamente essa ordem. Em template onde o bloco ficasse no `<head>`, a troca mudaria comportamento. **(3) Achado de graça, virou R-40:** `STATICFILES_STORAGE` foi removido no Django 5.1 e produção roda 5.2.10 — a configuração do Whitenoise **está morta há um upgrade inteiro**, sem compressão e sem hash. A seção 9 do plano dizia o contrário, e foi corrigida. |
 | 2026-08-18 | **R-40** | `STATICFILES_STORAGE` (removido no Django 5.1) sai; entra `STORAGES` com `whitenoise.storage.CompressedManifestStaticFilesStorage` fora de `DEBUG`. `settings_test` força o backend simples. 6 testes novos. | **Duas. (1) A escolha do backend não é cosmética.** `Compressed` só comprime; `CompressedManifest` também põe hash do conteúdo no nome, que é o que mata cache velho — e era o que a seção 9 do plano **afirmava** já estar valendo. O preço é que `{% static %}` para arquivo inexistente vira **500 na renderização**, então auditei as 13 referências dos templates antes: 4 arquivos, todos literais, todos existentes. **(2) Manifesto e desenvolvimento não convivem sem cuidado:** o manifesto só nasce no `collectstatic`, então em `DEBUG` o backend continua o simples, e o `settings_test` força o mesmo — senão `runserver` e suíte passariam a exigir `collectstatic` para abrir qualquer página. `collectstatic` rodado de verdade antes de abrir a PR: 134 arquivos, 396 pós-processados. |
+| 2026-08-18 | **R-27 e R-40 → produção** | 6º release (PR #62): `76f8e32` → `99018df`. CD limpo. `No migrations to apply` e `1 static file copied, 130 unmodified, **387 post-processed**`. Confirmado de fora: a home serve `/static/img/logo.334f5c205457.png` e `job_detail.b75f1bbb634b.js` responde 200 com 29.654 bytes. | **Três, e uma delas me desmente.** (1) **A compressão já existia — eu estava errado.** Escrevi no R-40 que sem o Whitenoise ativo 'todo CSS e JS ia pela rede sem compressão'; o `curl` mostra `Content-Encoding: gzip` no `/static/`, porque quem serve ali é o **Nginx**, não o Whitenoise, e ele já comprimia. O ganho real do R-40 é o **hash no nome**, não a compressão. (2) **Não dá para prever o hash a partir de um checkout Windows:** meu arquivo local é CRLF e o do servidor é LF, então os hashes diferem (`1a1dd8a7bcfa` contra `b75f1bbb634b`) e a primeira URL que testei deu 404. O conteúdo é o mesmo; o fim de linha não. (3) **O Nginx serve `/static/` sem `expires`**, então o cache imutável que o hash permite ainda não está sendo usado — virou follow-up colado no R-23. |
+| 2026-08-18 | **R-41** 🐛 | POST/Redirect/GET nas 3 branches de POST de `talent_pool` e `job_detail`. `import_message` sai do contexto e dos 2 templates, substituído pelo `messages` do Django, que o `base_logged.html` já renderizava. 8 testes de regressão, 7 vermelhos antes. Piso do CI 75 → 78. | **Duas. (1) O bug foi achado pelo item anterior, não por alguém procurando.** A primeira importação real depois do R-20a gravou **duas linhas para 1 PDF**, porque o dono deu F5 e o browser remandou o multipart. Antes da tabela isso era invisível: as duas threads escreviam na mesma chave de cache e uma tapava a outra. É o argumento do expand-contract se pagando — a etapa *expand* já rendeu um bug real antes de a leitura sequer migrar. **(2) A guarda óbvia é a errada agora.** "Não iniciar se já houver uma importação RUNNING" parece a correção completa, mas depende de distinguir vivo de morto — sem isso, uma linha órfã de um restart travaria a importação para sempre, que é o próprio D-6. Fica para depois do R-20b, e está escrito no item. |
+| 2026-08-18 | **R-20b** | A leitura do status sai do cache e vai para o `ImportJob`. Campo `payload` novo (migration `0023`), `start_import_job` passa a ser chamada **pela view**, os 3 endpoints de poll e os 3 contextos de template leem do banco. Job `RUNNING` com heartbeat velho vira "interrompido". 10 testes novos; 366 no total, cobertura **79,82%**. | **Duas surpresas na especificação, achadas antes de escrever código. (1) O item mandava remover o cache, mas a tabela não tinha onde guardar o que a tela mostra** — o contador de erros ao vivo e o resumo final do R-32 só existiam no payload do cache. Sem um campo novo, o "contract" apagaria da tela o que um item anterior colocou lá. Resolvido com um JSONField que guarda **o mesmo dicionário, na mesma forma**: zero linha de JS alterada. **(2) Havia uma corrida escondida na ordem das operações:** a view escrevia `running` no cache **antes** de disparar a thread, e isso não era decoração — o primeiro poll chega ~2s depois, e sem a linha o endpoint responderia `idle`, o JS pararia de pollar e a barra nunca apareceria. A criação subiu para a view. Terceiro achado, este de medida: o heartbeat é escrito **por lote**, então o limiar de morte tem que ser maior que o lote mais lento — 15 min contra os ~12 que um lote de 10 PDFs pode levar legitimamente. |
+| 2026-08-18 | **R-21** | `DEBUG` passa a ter default **False**; sem `DJANGO_SECRET_KEY` fora de `DEBUG` a aplicação **levanta `ImproperlyConfigured` e não sobe**; cookies `Secure`, `SECURE_SSL_REDIRECT` e HSTS de 1h ligados fora de `DEBUG`. `check --deploy`: **5 → 2 avisos**. 11 testes novos; 377 no total. | **Três. (1) Seguir a letra do item derrubaria o site.** Ele mandava o `SECURE_PROXY_SSL_HEADER` deixar de vir ligado por default — mas o `SECURE_SSL_REDIRECT` depende dele para saber que a requisição chegou por HTTPS. Sem o header, o Nginx encaminha em HTTP, o Django redireciona para HTTPS e o site entra em **laço infinito**. O default passou a acompanhar o `DEBUG` em vez de sumir. **(2) O `ci.yml` exportava `SECRET_KEY` e `DEBUG`, que o `settings.py` não lê** — ele lê `DJANGO_SECRET_KEY` e `DJANGO_DEBUG`. As duas variáveis nunca tiveram efeito; ninguém notou porque nada dependia delas até agora. **(3) `importlib.reload` mente sobre settings condicionais:** ele reexecuta o módulo no namespace existente, então `SESSION_COOKIE_SECURE` definido numa carga com `DEBUG=False` sobrevivia à carga seguinte com `DEBUG=True`, e o teste afirmava o contrário do que verificava. Trocado por import limpo — e corrigido também no teste do R-40, onde a armadilha estava armada sem ainda ter disparado. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-18, depois do 5º release)
+### ▶ Onde retomar (atualizado em 2026-08-18, fim do dia)
 
-**Em produção** (`main` em `76f8e32`, 5 releases: PRs #26, #35, #46, #53, #57): Ondas 0,
-1, 2 e **5** completas, mais R-18, R-19, R-20a (Onda 3) e R-22, R-25. 336 testes,
-cobertura **75,53%**.
+**Em produção** (`main` em `99018df`, 6 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a (Onda 3), R-22 (Onda 4), R-27 (Onda 6) e R-40.
 
-**`develop` está limpa** — nada esperando release.
+**Em `develop`, prontos e esperando release — 3 itens:**
 
-## ✅ As três verificações de produção fecharam (2026-08-18)
+| Item | O que é | Verificação que ele exige depois do deploy |
+|---|---|---|
+| **R-41** 🐛 | refresh não importa mais de novo | importar, dar F5, conferir **uma** linha em `core_importjob` |
+| **R-20b** | status vem do banco; job morto vira "interrompido" | iniciar importação, **reiniciar o serviço no meio**, ver a tela avisar |
+| **R-21** | settings de produção endurecidos | `systemctl status` OK, login completo, cookies com flag `Secure` |
 
-`/metrics` devolve 401 sem token e 200 com token, testado de fora. O índice do R-25 é
-válido e o `EXPLAIN` mostra `Bitmap Index Scan on core_candidate_linkedin_upper` numa
-tabela de **746 candidatos** — o ganho é imediato, não só preventivo. Detalhes no registro
-de execução.
+377 testes, cobertura **79,82%**. Piso do CI em 78.
 
-**Sobrou uma pendência operacional, não de código:** a `GEMINI_API_KEY` e o `METRICS_TOKEN`
-apareceram em texto claro durante a verificação (um `tail -3 .env` mal escolhido) e
-**precisam ser rotacionados**. Enquanto não forem, valem como comprometidos:
+## O que fazer no começo da próxima sessão
+
+**1. Um comando de conferência que sobrou** — o R-21 garante que `DJANGO_SECRET_KEY`
+existe (conferido: existe), mas não que ela é boa. Se for uma cópia da chave do
+repositório, a aplicação sobe e o ganho é zero. Este comando não imprime o segredo:
 
 ```
+awk -F= '/^DJANGO_SECRET_KEY=/{print "tamanho:", length($2)}' .env; grep -c "DJANGO_SECRET_KEY=django-insecure" .env
+```
+
+Espera-se **tamanho ≥ 50** e **0**. Com isso, o release dos 3 itens está liberado.
+
+**2. O release.** Leva a migration `0023` (adiciona coluna com default — sem lock
+relevante) e muda comportamento de sessão: o R-21 pode **derrubar as sessões ativas** se a
+chave for trocada. Na janela de 15 dias, indiferente.
+
+**3. Depois do release, a verificação mais interessante do projeto:** iniciar uma
+importação e reiniciar o serviço no meio, de propósito, para ver o R-20b em ação.
+
+## 🪟 Janela de 15 dias sem usuária (até ~2026-09-02)
+
+Deploy a qualquer hora, sem caçar janela. Vale para tudo abaixo.
+
+## Backlog restante
+
+| Item | Estado | O que falta |
+|---|---|---|
+| **R-23** | não iniciado — **maior valor restante** | currículos em `/media/` são públicos (LGPD). 3 etapas de Nginx; leva junto o `expires max` do `/static/` que o R-40 destravou |
+| **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
+| **R-28** | não iniciado | CSS repetido em 12 templates, 3 sub-PRs com comparação visual tela a tela |
+| **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
+| **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
+
+## ⛔ Item obrigatório de fechamento do refactor
+
+`GEMINI_API_KEY` e `METRICS_TOKEN` foram expostos em texto claro em 2026-08-18 e valem como
+**comprometidos**. Decisão do dono do projeto (2026-08-18): a troca acontece **no fim do
+refactor**, junto com a entrada da chave de produção final. Até lá, a chave atual é
+descartável — consumo estranho na cota do Gemini é ela.
+
+**Não encerrar o projeto sem isto:**
+
+```
+cd /var/www/talent_rank_ai && source .venv/bin/activate
 sed -i "/^GEMINI_API_KEY=/d" .env && echo "GEMINI_API_KEY=A_CHAVE_NOVA" >> .env
 sed -i "/^METRICS_TOKEN=/d" .env && python -c "import secrets; print('METRICS_TOKEN=' + secrets.token_urlsafe(32))" >> .env
+grep -c GEMINI_API_KEY .env && grep -c METRICS_TOKEN .env    # 1 e 1, sem duplicata
 sudo systemctl restart talent_rank_ai
 ```
 
-## E a verificação que destrava o R-20b
+E, ao trocar o `METRICS_TOKEN`, refazer o par de `curl` do R-22 — 401 sem token, 200 com.
 
-Continua pendente, e agora vale a pena juntar com a primeira importação real depois deste
-deploy:
-
-```
-python manage.py dbshell -- -c "SELECT id, kind, status, processed, total, heartbeat_at FROM core_importjob ORDER BY id DESC LIMIT 5;"
-```
-
-Com linhas aparecendo, o **R-20b** está liberado — é ele que resolve a barra de progresso
-travada depois de um restart, o sintoma mais visível do D-6.
-
-## Bloqueados por informação que só o dono do projeto tem
-
-| Item | O que falta |
-|---|---|
-| **R-21** | `grep DJANGO_SECRET_KEY /var/www/talent_rank_ai/.env` — se não existir, a aplicação **não sobe** depois daquele deploy |
-| **R-23** | mexe na configuração do Nginx, em 3 etapas |
-| **R-31** | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar o problema |
-
-## Disponíveis sem depender de ninguém
-
-Só sobrou a **Onda 6**: R-27 e R-28, o JavaScript inline de `job_detail.html` e
-`home.html`. São os dois maiores itens que restam, são MOVER (mecânicos) e a validação é
-visual e manual — e eu nunca vi a aplicação rodando, então a lista de validação do plano
-foi montada lendo o template. Trate como mínimo, não como completa.
-
-**Dívida do próprio plano:** o registro de execução não tem linha para R-18, R-19, R-20a,
-R-24 e R-26, nem para o 4º release. Dá para reconstruir dos PRs #47 a #53, mas as
-surpresas encontradas na hora se perderam.
-
-**Prazo em aberto:** o **R-34** (Python 3.10 → 3.12) vence em **outubro/2026**.
+**Lição do episódio, para não repetir:** nunca pedir `cat`/`tail` de arquivo de ambiente.
+Pedir `grep CHAVE_ESPECIFICA`, ou só o comprimento com `awk`.
 
 ---
 

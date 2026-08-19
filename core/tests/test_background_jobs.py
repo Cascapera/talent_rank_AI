@@ -14,17 +14,18 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 
+from core.models import ImportJob
 from core.services import import_service
 from core.services.import_service import (
     _run_import_job,
     _run_parecer_generation,
     _run_search_in_pool,
     _run_talent_pool_import,
-    _set_talent_pool_import_status,
-    _talent_pool_import_status_key,
+    _track_progress,
     background_job,
+    job_status_payload,
+    start_import_job,
 )
 
 User = get_user_model()
@@ -100,43 +101,51 @@ class TestBackgroundJobDecorator:
 
 @pytest.mark.django_db
 class TestTalentPoolStatusIsPerUser:
-    """R-19: a chave do progresso do banco de talentos era uma string FIXA.
+    """R-19: o progresso do banco de talentos era compartilhado entre contas.
 
-    Duas contas importando ao mesmo tempo sobrescreviam o progresso uma da outra, e cada
-    uma via a barra da outra. As chaves por vaga (`import_status_{job_id}`) sempre
-    estiveram certas — esta passou despercebida.
+    A chave do cache era uma string FIXA, sem `user_id`: duas contas importando ao mesmo
+    tempo sobrescreviam o progresso uma da outra, e cada uma via a barra da outra.
+
+    **R-20b:** o cache saiu e o estado passou a viver na tabela `ImportJob`, que tem
+    `user` como coluna. Os testes de comportamento continuam iguais — o que mudou foi
+    onde o isolamento acontece. Os dois testes que checavam a string da chave sumiram
+    junto com a chave.
     """
 
-    @pytest.fixture(autouse=True)
-    def cache_limpo(self):
-        cache.clear()
-        yield
-        cache.clear()
+    def _importacao_de(self, usuario, processed):
+        job_id = start_import_job(
+            user_id=usuario.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT, total=100
+        )
+        _track_progress(job_id, {"processed": processed, "total": 100})
+        return job_id
 
     def test_two_users_do_not_overwrite_each_other(self, user):
         outro = User.objects.create_user(username="outra-recrutadora", password="x")
 
-        _set_talent_pool_import_status(user.id, {"status": "running", "processed": 3})
-        _set_talent_pool_import_status(outro.id, {"status": "running", "processed": 99})
+        self._importacao_de(user, 3)
+        self._importacao_de(outro, 99)
 
-        assert cache.get(_talent_pool_import_status_key(user.id))["processed"] == 3
-        assert cache.get(_talent_pool_import_status_key(outro.id))["processed"] == 99
+        meu = job_status_payload(user_id=user.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
+        dele = job_status_payload(user_id=outro.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
+        assert meu["processed"] == 3
+        assert dele["processed"] == 99
 
-    def test_the_key_carries_the_user(self, user):
-        assert str(user.id) in _talent_pool_import_status_key(user.id)
+    def test_the_row_carries_the_user(self, user):
+        self._importacao_de(user, 1)
+        assert ImportJob.objects.get().user_id == user.id
 
     def test_status_endpoint_does_not_leak_another_users_import(self, client_logged, user):
         """O teste que descreve o sintoma: a recrutadora entra na tela dela e vê uma
         barra de progresso que não é dela."""
         outro = User.objects.create_user(username="outra-recrutadora", password="x")
-        _set_talent_pool_import_status(outro.id, {"status": "running", "processed": 99})
+        self._importacao_de(outro, 99)
 
         resposta = client_logged.get("/talentos/import-status/")
 
         assert resposta.json() == {"status": "idle"}
 
     def test_status_endpoint_sees_its_own_import(self, client_logged, user):
-        _set_talent_pool_import_status(user.id, {"status": "running", "processed": 7})
+        self._importacao_de(user, 7)
 
         resposta = client_logged.get("/talentos/import-status/")
 

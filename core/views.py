@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -24,23 +25,19 @@ from .domain.normalization import normalize
 from .filters import collect_filters
 from .forms import CandidateForm, JobForm, SignupForm
 from .matching import get_min_match_score, job_has_match_criteria, match_candidates_for_job
-from .models import Candidate, CandidateJob, Job, Profile
+from .models import Candidate, CandidateJob, ImportJob, Job, Profile
 from .observability import new_correlation_id
 from .pdf import prepare_uploaded_files
 from .plans import required_plan
 from .services.import_service import (
-    _import_status_key,
     _parecer_status_key,
     _run_import_job,
     _run_parecer_generation,
     _run_search_in_pool,
     _run_talent_pool_import,
-    _search_status_key,
-    _set_import_status,
     _set_parecer_status,
-    _set_search_status,
-    _set_talent_pool_import_status,
-    _talent_pool_import_status_key,
+    job_status_payload,
+    start_import_job,
 )
 
 # Filtro do banco de talentos -> campo do modelo Candidate.
@@ -192,7 +189,6 @@ def search(request):
 @required_plan("BASIC")
 def talent_pool(request):
     message = ""
-    import_message = ""
     form = CandidateForm()
     shared_pool = _uses_shared_pool(request.user)
 
@@ -204,19 +200,25 @@ def talent_pool(request):
             prepare_uploaded_files(uploads, temp_dir)
             pdfs = list(temp_dir.glob("*.pdf"))
             if pdfs:
-                _set_talent_pool_import_status(
-                    request.user.id, {"status": "running", "processed": 0, "total": 0}
+                import_job_id = start_import_job(
+                    user_id=request.user.id,
+                    kind=ImportJob.Kind.TALENT_POOL_IMPORT,
+                    total=len(pdfs),
                 )
                 thread = threading.Thread(
                     target=_run_talent_pool_import,
-                    args=(temp_dir, False, request.user.id, shared_pool),
+                    args=(temp_dir, False, request.user.id, shared_pool, import_job_id),
                     daemon=True,
                 )
                 thread.start()
-                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+                # R-41: redirect em vez de render. Sem ele, o F5 remanda o multipart
+                # inteiro e a importação roda de novo — dinheiro de LLM gasto duas vezes.
+                messages.info(request, "Importação iniciada. Acompanhe o progresso abaixo.")
+                return redirect(request.get_full_path())
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                import_message = "Nenhum PDF encontrado nos arquivos enviados."
+                messages.warning(request, "Nenhum PDF encontrado nos arquivos enviados.")
+                return redirect(request.get_full_path())
         else:
             # Processa formulário manual (sem arquivos no POST)
             form = CandidateForm(request.POST)
@@ -235,15 +237,19 @@ def talent_pool(request):
                             changed = True
                     if changed:
                         candidate.save()
-                        message = "Candidato atualizado com novos dados."
+                        messages.success(request, "Candidato atualizado com novos dados.")
                     else:
-                        message = "Nenhuma alteração detectada para esse candidato."
+                        messages.info(request, "Nenhuma alteração detectada para esse candidato.")
                 else:
                     c = form.save(commit=False)
                     c.user = request.user
                     c.save()
-                    message = "Candidato cadastrado com sucesso."
+                    messages.success(request, "Candidato cadastrado com sucesso.")
+                return redirect(request.get_full_path())
             else:
+                # Sem redirect aqui de propósito: o formulário precisa voltar com os erros
+                # de validação, que um redirect jogaria fora. Reenviar um POST inválido não
+                # cria nada, então o refresh é inofensivo.
                 message = "Confira os campos obrigatórios."
 
     filters = collect_filters(request, _TALENT_POOL_FILTERS)
@@ -269,11 +275,12 @@ def talent_pool(request):
         "candidates": page_obj,
         "page_obj": page_obj,
         "message": message,
-        "import_message": import_message,
         "shared_pool": shared_pool,
         "filters": filters.values,
         "query_string": filters.query_string,
-        "import_status": cache.get(_talent_pool_import_status_key(request.user.id)),
+        "import_status": job_status_payload(
+            user_id=request.user.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT
+        ),
     }
     return render(request, "core/talent_pool.html", context)
 
@@ -282,8 +289,9 @@ def talent_pool(request):
 @required_plan("BASIC")
 def talent_pool_import_status(request):
     """Endpoint AJAX para status da importação do banco de talentos."""
-    payload = cache.get(_talent_pool_import_status_key(request.user.id)) or {"status": "idle"}
-    return JsonResponse(payload)
+    return JsonResponse(
+        job_status_payload(user_id=request.user.id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
+    )
 
 
 @login_required
@@ -418,7 +426,6 @@ def job_detail(request, job_id: int):
 
     filters = collect_filters(request, _JOB_FILTERS)
 
-    import_message = ""
     if request.method == "POST":
         uploads = request.FILES.getlist("candidates_zip")
         if uploads:
@@ -428,7 +435,12 @@ def job_detail(request, job_id: int):
             if pdfs:
                 job_description = build_job_description_from(job)
                 role_title = job.title
-                _set_import_status(job.id, {"status": "running", "processed": 0, "total": 0})
+                import_job_id = start_import_job(
+                    user_id=request.user.id,
+                    kind=ImportJob.Kind.VACANCY_IMPORT,
+                    job_id=job.id,
+                    total=len(pdfs),
+                )
                 shared_pool = _uses_shared_pool(request.user)
                 header_cid = request.headers.get("X-Correlation-ID", "").strip()
                 correlation_id = header_cid or new_correlation_id()
@@ -442,14 +454,19 @@ def job_detail(request, job_id: int):
                         request.user.id,
                         shared_pool,
                         correlation_id,
+                        import_job_id,
                     ),
                     daemon=True,
                 )
                 thread.start()
-                import_message = "Importação iniciada. Acompanhe o progresso abaixo."
+                # R-41: ver o comentário em `talent_pool`. Aqui o custo do refresh é o
+                # maior: o fluxo da vaga ainda ranqueia cada candidato com o LLM.
+                messages.info(request, "Importação iniciada. Acompanhe o progresso abaixo.")
+                return redirect(request.get_full_path())
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                import_message = "Nenhum PDF encontrado nos arquivos enviados."
+                messages.warning(request, "Nenhum PDF encontrado nos arquivos enviados.")
+                return redirect(request.get_full_path())
 
     candidate_links = job.candidate_links.select_related("candidate")
     if filters["pipeline_status"]:
@@ -472,15 +489,18 @@ def job_detail(request, job_id: int):
         "must_have_list": split_list(job.must_have),
         "nice_to_have_list": split_list(job.nice_to_have),
         "undesirable_list": split_list(job.undesirable),
-        "import_message": import_message,
         "candidate_links": page_obj,
         "page_obj": page_obj,
         "candidate_filters": filters.values,
         "query_string": filters.query_string,
         "pipeline_status_choices": job.candidate_links.model.PipelineStatus.choices,
         "job_status_choices": Job.Status.choices,
-        "import_status": cache.get(_import_status_key(job.id)),
-        "search_status": cache.get(_search_status_key(job.id)),
+        "import_status": job_status_payload(
+            user_id=request.user.id, kind=ImportJob.Kind.VACANCY_IMPORT, job_id=job.id
+        ),
+        "search_status": job_status_payload(
+            user_id=request.user.id, kind=ImportJob.Kind.POOL_SEARCH, job_id=job.id
+        ),
         "pool_match_min_score": get_min_match_score(),
     }
     return render(request, "core/job_detail.html", context)
@@ -490,8 +510,11 @@ def job_detail(request, job_id: int):
 @required_plan("BASIC")
 def job_import_status(request, job_id: int):
     get_object_or_404(Job, id=job_id, user=request.user)
-    payload = cache.get(_import_status_key(job_id)) or {"status": "idle"}
-    return JsonResponse(payload)
+    return JsonResponse(
+        job_status_payload(
+            user_id=request.user.id, kind=ImportJob.Kind.VACANCY_IMPORT, job_id=job_id
+        )
+    )
 
 
 @login_required
@@ -499,8 +522,9 @@ def job_import_status(request, job_id: int):
 def job_search_status(request, job_id: int):
     """Endpoint AJAX para status da busca no banco."""
     get_object_or_404(Job, id=job_id, user=request.user)
-    payload = cache.get(_search_status_key(job_id)) or {"status": "idle"}
-    return JsonResponse(payload)
+    return JsonResponse(
+        job_status_payload(user_id=request.user.id, kind=ImportJob.Kind.POOL_SEARCH, job_id=job_id)
+    )
 
 
 def _parse_min_score(request) -> int:
@@ -618,7 +642,12 @@ def search_candidates_in_pool(request, job_id: int):
     candidate_ids = [match["candidate"].id for match in matches]
     job_description = build_job_description_from(job)
 
-    _set_search_status(job.id, {"status": "running", "processed": 0, "total": len(candidate_ids)})
+    import_job_id = start_import_job(
+        user_id=request.user.id,
+        kind=ImportJob.Kind.POOL_SEARCH,
+        job_id=job.id,
+        total=len(candidate_ids),
+    )
     thread = threading.Thread(
         target=_run_search_in_pool,
         args=(
@@ -628,6 +657,7 @@ def search_candidates_in_pool(request, job_id: int):
             candidate_ids,
             None if shared_pool else request.user.id,
             shared_pool,
+            import_job_id,
         ),
         daemon=True,
     )

@@ -18,6 +18,7 @@ import shutil
 from functools import wraps
 from pathlib import Path
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import close_old_connections
 from django.utils import timezone
@@ -60,24 +61,40 @@ def background_job(fn):
     return wrapper
 
 
-def _start_import_job(*, user_id: int, kind: str, job_id: int | None = None) -> int | None:
-    """Abre a linha de rastreamento no banco (R-20a). Devolve o id, ou `None` se falhar.
+def start_import_job(
+    *, user_id: int, kind: str, job_id: int | None = None, total: int = 0
+) -> int | None:
+    """Cria a linha do job e devolve o id. **Chamada pela view, antes da thread.**
 
-    ⚠️ **Rastreamento nunca pode derrubar o job.** Se o banco recusar aqui, a importação
-    segue e só fica sem a linha — é por isso que os três helpers engolem exceção. Nesta
-    etapa (expand) ninguém lê daqui ainda, então perder uma linha não afeta a usuária.
+    R-20b: nascer na view e não dentro da thread não é detalhe. O primeiro poll acontece
+    ~2s depois do POST; se a linha ainda não existisse, o endpoint responderia `idle`, o
+    JS pararia de pollar e a barra de progresso nunca apareceria. Era isso que a escrita
+    síncrona no cache garantia antes.
+
+    Devolve `None` se a criação falhar — rastreamento não pode derrubar importação.
     """
     try:
-        return ImportJob.objects.create(user_id=user_id, kind=kind, job_id=job_id).id
+        return ImportJob.objects.create(
+            user_id=user_id,
+            kind=kind,
+            job_id=job_id,
+            total=total,
+            payload={"status": "running", "processed": 0, "total": total},
+        ).id
     except Exception:
         return None
 
 
 def _track_progress(import_job_id: int | None, payload: dict) -> None:
-    """Espelha no banco o progresso que acabou de ir para o cache."""
+    """Grava o progresso do job na linha do banco.
+
+    Chamado a cada lote pelo `progress_callback`. Escreve o `payload` inteiro além das
+    colunas: é ele que a tela recebe no poll. O `heartbeat_at` vai explícito porque
+    `.update()` não dispara `auto_now`.
+    """
     if import_job_id is None:
         return
-    campos = {}
+    campos = {"payload": {"status": "running", **payload}}
     if payload.get("processed") is not None:
         campos["processed"] = payload["processed"]
     if payload.get("total") is not None:
@@ -90,50 +107,70 @@ def _track_progress(import_job_id: int | None, payload: dict) -> None:
         pass
 
 
-def _finish_import_job(import_job_id: int | None, *, status: str, error: str = "") -> None:
+def _finish_import_job(
+    import_job_id: int | None, *, status: str, error: str = "", payload: dict | None = None
+) -> None:
     if import_job_id is None:
         return
     try:
         ImportJob.objects.filter(id=import_job_id).update(
-            status=status, error=error[:2000], heartbeat_at=timezone.now()
+            status=status,
+            error=error[:2000],
+            payload=payload or {},
+            heartbeat_at=timezone.now(),
         )
     except Exception:
         pass
 
 
-def _import_status_key(job_id: int) -> str:
-    return f"import_status_{job_id}"
+def job_status_payload(*, user_id: int, kind: str, job_id: int | None = None) -> dict:
+    """Estado do job mais recente, no formato que o poll da tela espera (R-20b).
 
+    Porta o contrato do cache sem mudar a forma: o que sai daqui é o mesmo dicionário que
+    saía de `cache.get(...)`, para nenhuma linha de JS precisar mudar.
 
-def _search_status_key(job_id: int) -> str:
-    return f"search_status_{job_id}"
-
-
-def _talent_pool_import_status_key(user_id: int) -> str:
-    """Chave do progresso da importação do banco de talentos, **por usuário** (R-19).
-
-    Era a string fixa `"talent_pool_import_status"`, sem `user_id`: duas contas
-    importando ao mesmo tempo sobrescreviam o progresso uma da outra, e cada uma via a
-    barra da outra. As chaves por vaga (`import_status_{job_id}`) sempre estiveram
-    certas — esta passou despercebida.
+    A diferença que justifica o item: um job `RUNNING` cujo `heartbeat_at` parou de andar
+    morreu — quase sempre no `systemctl restart` do deploy, porque as threads são `daemon`
+    e não executam o `finally`. Antes ele ficava girando "em andamento" até o cache expirar,
+    uma hora depois. Agora vira erro com instrução.
     """
-    return f"talent_pool_import_status_{user_id}"
+    filtros = {"user_id": user_id, "kind": kind}
+    if job_id is not None:
+        filtros["job_id"] = job_id
+    job = ImportJob.objects.filter(**filtros).order_by("-started_at").first()
+    if job is None:
+        return {"status": "idle"}
+
+    if job.status == ImportJob.Status.RUNNING and _esta_parado(job):
+        return {
+            "status": "error",
+            "interrupted": True,
+            "message": (
+                "Importação interrompida — o servidor foi reiniciado no meio. "
+                "Os candidatos já processados foram salvos; reinicie a importação "
+                "para continuar de onde parou."
+            ),
+        }
+
+    return job.payload or {"status": job.status.lower()}
+
+
+def _esta_parado(job: ImportJob) -> bool:
+    """Heartbeat velho demais para o job ainda estar vivo.
+
+    O limiar é generoso de propósito. O `heartbeat_at` é escrito **por lote**, não por
+    tempo: um lote vai até 10 PDFs numa única chamada ao LLM, com timeout de
+    `LLM_TIMEOUT_SECONDS` e até 4 tentativas — pode passar mais de 12 minutos sem sinal e
+    estar perfeitamente vivo. Um limiar curto trocaria um problema raro (barra girando à
+    toa) por um pior: dizer à recrutadora que uma importação viva morreu, e ela reiniciar
+    tudo — pagando o LLM duas vezes.
+    """
+    limite = getattr(settings, "IMPORT_JOB_STALE_AFTER_SECONDS", 900)
+    return (timezone.now() - job.heartbeat_at).total_seconds() > limite
 
 
 def _parecer_status_key(candidate_job_id: int) -> str:
     return f"parecer_status_{candidate_job_id}"
-
-
-def _set_import_status(job_id: int, payload: dict) -> None:
-    cache.set(_import_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_search_status(job_id: int, payload: dict) -> None:
-    cache.set(_search_status_key(job_id), payload, timeout=60 * 60)
-
-
-def _set_talent_pool_import_status(user_id: int, payload: dict) -> None:
-    cache.set(_talent_pool_import_status_key(user_id), payload, timeout=60 * 60)
 
 
 def _set_parecer_status(candidate_job_id: int, payload: dict) -> None:
@@ -149,16 +186,13 @@ def _run_import_job(
     user_id: int,
     shared_pool: bool = False,
     correlation_id: str | None = None,
+    import_job_id: int | None = None,
 ):
     ensure_correlation_id(correlation_id)
     outer_timer = Timer()
-    import_job_id = _start_import_job(
-        user_id=user_id, kind=ImportJob.Kind.VACANCY_IMPORT, job_id=job_id
-    )
     try:
 
         def progress_callback(**kwargs):
-            _set_import_status(job_id, kwargs)
             _track_progress(import_job_id, kwargs)
 
         result = import_candidates_from_folder(
@@ -171,11 +205,18 @@ def _run_import_job(
             shared_pool=shared_pool,
             progress_callback=progress_callback,
         )
-        _set_import_status(job_id, {"status": "completed", "result": result})
-        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.COMPLETED,
+            payload={"status": "completed", "result": result},
+        )
     except Exception as exc:
-        _set_import_status(job_id, {"status": "error", "message": str(exc)})
-        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.ERROR,
+            error=str(exc),
+            payload={"status": "error", "message": str(exc)},
+        )
         vacancy_candidate_import_failures_total.inc()
         log_event(
             "vacancy_candidate_import_failed",
@@ -190,14 +231,16 @@ def _run_import_job(
 
 @background_job
 def _run_talent_pool_import(
-    folder_path: Path, _is_zip: bool, user_id: int, shared_pool: bool = False
+    folder_path: Path,
+    _is_zip: bool,
+    user_id: int,
+    shared_pool: bool = False,
+    import_job_id: int | None = None,
 ):
     """Executa importação de candidatos no banco de talentos do usuário em background."""
-    import_job_id = _start_import_job(user_id=user_id, kind=ImportJob.Kind.TALENT_POOL_IMPORT)
     try:
 
         def progress_callback(**kwargs):
-            _set_talent_pool_import_status(user_id, kwargs)
             _track_progress(import_job_id, kwargs)
 
         result = import_candidates_from_folder_no_ranking(
@@ -206,11 +249,18 @@ def _run_talent_pool_import(
             shared_pool=shared_pool,
             progress_callback=progress_callback,
         )
-        _set_talent_pool_import_status(user_id, {"status": "completed", "result": result})
-        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.COMPLETED,
+            payload={"status": "completed", "result": result},
+        )
     except Exception as exc:
-        _set_talent_pool_import_status(user_id, {"status": "error", "message": str(exc)})
-        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.ERROR,
+            error=str(exc),
+            payload={"status": "error", "message": str(exc)},
+        )
     finally:
         shutil.rmtree(folder_path, ignore_errors=True)
 
@@ -223,15 +273,12 @@ def _run_search_in_pool(
     candidate_ids: list[int],
     user_id: int | None = None,
     shared_pool: bool = False,
+    import_job_id: int | None = None,
 ):
     """Executa rankeamento via LLM dos candidatos pré-aprovados no match, em background."""
-    import_job_id = _start_import_job(
-        user_id=user_id, kind=ImportJob.Kind.POOL_SEARCH, job_id=job_id
-    )
     try:
 
         def progress_callback(**kwargs):
-            _set_search_status(job_id, kwargs)
             _track_progress(import_job_id, kwargs)
 
         weights = {"skills": 40, "technologies": 35, "experience": 25}
@@ -245,11 +292,18 @@ def _run_search_in_pool(
             user_id=user_id,
             shared_pool=shared_pool,
         )
-        _set_search_status(job_id, {"status": "completed", "result": result})
-        _finish_import_job(import_job_id, status=ImportJob.Status.COMPLETED)
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.COMPLETED,
+            payload={"status": "completed", "result": result},
+        )
     except Exception as exc:
-        _set_search_status(job_id, {"status": "error", "message": str(exc)})
-        _finish_import_job(import_job_id, status=ImportJob.Status.ERROR, error=str(exc))
+        _finish_import_job(
+            import_job_id,
+            status=ImportJob.Status.ERROR,
+            error=str(exc),
+            payload={"status": "error", "message": str(exc)},
+        )
 
 
 @background_job

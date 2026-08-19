@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -27,13 +28,26 @@ CACHE_DIR.mkdir(exist_ok=True)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY", "django-insecure-334cxy+81uf%v2$k1anp9so^e497t%a%y_ax0)*#(_8b2xv28)"
-)
+# R-21: o default virou False. Esquecer de configurar passou a ser seguro por omissão —
+# antes, um ambiente sem `.env` subia com DEBUG ligado, servindo traceback e SQL a quem
+# provocasse um erro.
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
+# R-21: a chave publicada no Git deixou de ser fallback silencioso em produção.
+# Ela está no histórico do repositório desde o primeiro commit; qualquer um que leia o
+# repo consegue forjar cookie de sessão e token de CSRF de quem estiver rodando com ela.
+# Fora de DEBUG a aplicação agora **se recusa a subir** sem `DJANGO_SECRET_KEY` — falhar
+# no boot é barulhento e recuperável em um minuto; rodar com a chave conhecida é silencioso
+# e não tem sintoma nenhum até alguém abusar.
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY é obrigatória quando DEBUG=False. "
+            'Gere uma com: python -c "from django.core.management.utils import '
+            'get_random_secret_key; print(get_random_secret_key())"'
+        )
+    SECRET_KEY = "django-insecure-somente-para-desenvolvimento-local"
 
 ALLOWED_HOSTS = [
     h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()
@@ -44,8 +58,28 @@ CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
 ]
 USE_X_FORWARDED_HOST = os.getenv("USE_X_FORWARDED_HOST", "False").lower() in ("1", "true", "yes")
-if os.getenv("DJANGO_SECURE_PROXY_SSL", "True").lower() in ("1", "true", "yes"):
+
+# R-21: o default era "True" sempre, inclusive em desenvolvimento — onde não há proxy
+# nenhum e confiar num header que qualquer cliente pode mandar é gratuito.
+# Agora o default acompanha o DEBUG. Ligado fora de DEBUG **de propósito**, e não só
+# quando a variável existir: o SECURE_SSL_REDIRECT abaixo depende deste header para saber
+# que a requisição já chegou por HTTPS. Sem ele, o Nginx encaminharia em HTTP, o Django
+# redirigiria para HTTPS, e o site entraria em laço infinito de redirect.
+if os.getenv("DJANGO_SECURE_PROXY_SSL", str(not DEBUG)).lower() in ("1", "true", "yes"):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# R-21: cookies e HTTPS obrigatórios fora de DEBUG. Fecha D-7.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = True
+    # HSTS começa em 1 hora, não em 1 ano, e sobe depois de o deploy provar que está
+    # estável. O navegador **memoriza** esse prazo: publicar um ano e descobrir um
+    # problema no HTTPS deixaria a usuária sem acesso, sem nada que o servidor possa
+    # fazer para desfazer. Uma hora dá o mesmo benefício prático e expira sozinha.
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "3600"))
+    # includeSubDomains e preload ficam de fora: o primeiro derruba qualquer subdomínio
+    # que não esteja em HTTPS, o segundo é praticamente irreversível.
 
 
 # Application definition
@@ -205,6 +239,17 @@ LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
 # producao e preencher METRICS_TOKEN no .env e reiniciar o servico - nao precisa de
 # outro deploy.
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
+
+# Depois de quantos segundos sem heartbeat um job RUNNING e considerado morto (R-20b).
+# As threads sao daemon: no `systemctl restart` do deploy elas somem sem rodar o
+# `finally`, e antes disso a barra de progresso girava ate o cache expirar, uma hora
+# depois.
+# 15 minutos, e o numero e generoso de proposito. O heartbeat e escrito POR LOTE, nao por
+# tempo: um lote vai ate 10 PDFs numa unica chamada ao LLM, com LLM_TIMEOUT_SECONDS de
+# 180s e ate 4 tentativas — pode passar de 12 minutos sem sinal e estar vivo. Limiar curto
+# trocaria um problema chato (barra girando a toa) por um pior: dizer que uma importacao
+# viva morreu e fazer a recrutadora reiniciar tudo, pagando o LLM duas vezes.
+IMPORT_JOB_STALE_AFTER_SECONDS = int(os.getenv("IMPORT_JOB_STALE_AFTER_SECONDS", "900"))
 
 # Auth
 LOGIN_URL = "login"
