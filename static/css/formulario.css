@@ -1,0 +1,50 @@
+/* Formulario de vaga — criar e editar (R-28, sub-PR b).
+
+   As 9 regras abaixo estavam identicas nos dois templates. O `job_create.html` tinha
+   exatamente estas e nada mais, entao o <style> dele deixou de existir; o
+   `job_edit.html` mantem inline so o `.hint`, que e dele.
+
+   O que NAO entrou aqui, de proposito: `jobs.html` (2 regras proprias) e
+   `job_detail.html` (28) nao compartilham uma regra sequer com estes dois. Consolidar o
+   que nao se repete so criaria acoplamento entre telas que hoje sao independentes.
+
+   Atencao ao `.errorlist`: existe tambem em `auth.css`, com valores diferentes. Nao ha
+   conflito porque login e cadastro nao estendem o `base_logged.html` — as duas folhas
+   nunca sao carregadas na mesma pagina. Se algum dia forem, este comentario e o aviso. */
+.form-wrap{
+  max-width: 100%;
+  width: 100%;
+}
+.form-helper{
+  color: #0f3441;
+}
+.form-grid{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+.form-grid .full{
+  grid-column: 1 / -1;
+}
+.form-grid .span-2{
+  grid-column: span 2;
+}
+.form-grid .span-3{
+  grid-column: span 3;
+}
+.field label{
+  font-weight: 700;
+}
+.field input,
+.field select,
+.field textarea{
+  width: 100%;
+  max-width: 100%;
+}
+.errorlist{
+  list-style:none;
+  padding: 0;
+  margin: 6px 0 0;
+  color: #fecaca;
+  font-size: 12px;
+}

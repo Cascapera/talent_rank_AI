@@ -2568,9 +2568,10 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       pré-requisito: R-27
   - [x] Sub-PR a — telas de autenticação (login, cadastro) · **código pronto**, validação
         visual pendente · `static/css/tokens.css` + `static/css/auth.css`
-  - [ ] Sub-PR b — telas de vagas (jobs, job_create, job_edit, job_detail) · screenshots
-  - [ ] Sub-PR c — talentos, relatórios, dashboard, base · screenshots
-  - [x] Suíte completa verde — 7 testes novos, 393 no total, cobertura **80,36%**
+  - [x] Sub-PR b — telas de vagas · **código pronto**, validação visual pendente ·
+        `static/css/formulario.css`. **Muito menor que o previsto — ver notas**
+  - [ ] Sub-PR c — talentos, relatórios, dashboard, base · **medir antes**, ver notas
+  - [x] Suíte completa verde — 14 testes novos, 423 no total, cobertura **81,01%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado (sub-PR a)
   - [x] Implantado (sub-PR a) — **8º release (PR #74), 2026-08-19**
@@ -2611,6 +2612,41 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
     ⚠️ **Validação visual continua sendo obrigatória e é manual:** abrir `/login/` e
     `/cadastro/`, com erro de formulário na tela, em desktop e celular.
+
+    ---
+
+    **Sub-PR b (2026-08-19): o item previa ~250 linhas e são 9 regras.** Medido antes de
+    extrair, contando as regras próprias de cada template das telas de vaga:
+
+    | Template | Regras próprias | Compartilha com |
+    |---|---:|---|
+    | `jobs.html` | 2 | **nenhum** |
+    | `job_create.html` | 9 | `job_edit` (todas) |
+    | `job_edit.html` | 10 | `job_create` (9 das 10) |
+    | `job_detail.html` | 28 | **nenhum** |
+
+    **Só o formulário se repete**, e só entre criar e editar — as 9 regras do grid, campo
+    e `.errorlist`, idênticas nos dois, sem uma única divergência. `job_create.html` tinha
+    **exatamente** essas 9 e nada mais, então o `<style>` dele deixou de existir;
+    `job_edit.html` manteve inline só o `.hint`.
+
+    **`jobs.html` e `job_detail.html` ficaram de fora de propósito.** Não compartilham uma
+    regra sequer com os outros dois. Consolidar o que não se repete criaria acoplamento
+    entre telas hoje independentes, e o ganho anunciado pelo item — "mudar a identidade
+    visual passa a ser uma edição, não doze" — já foi entregue pelo `tokens.css` do
+    sub-PR a, que é onde as variáveis moram. Há teste travando essa decisão.
+
+    **Armadilha registrada:** `.errorlist` existe também no `auth.css`, com valores
+    diferentes. Não há conflito porque login e cadastro **não estendem** o
+    `base_logged.html`, então as duas folhas nunca convivem na mesma página. Está escrito
+    no cabeçalho do `formulario.css` para o dia em que alguém mudar isso.
+
+    **Equivalência provada regra a regra** contra o `git show HEAD:`, como no sub-PR a:
+    11 e 12 regras conferidas, **zero diferenças**. `collectstatic` rodado com
+    `DEBUG=False`: 4 copiados, 371 pós-processados, sem falha.
+
+    **Para o sub-PR c: medir primeiro.** A premissa de "12 templates com CSS repetido" já
+    caiu duas vezes. O comando de medição está no registro de execução deste dia.
 
 - [ ] **Onda 6 concluída** — JS e CSS fora dos templates, sem mudança visual
 
