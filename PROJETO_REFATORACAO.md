@@ -1595,9 +1595,9 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
-           R-40, R-41, **R-43** e **R-44**. 9 releases: PRs #26, #35, #46, #53, #57,
-           #62, #69, #74, **#79**. `main` em `dbd811a`.
-Progresso: 37 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-40, R-41, **R-42**, R-43 e R-44. 10 releases: PRs #26, #35, #46, #53, #57,
+           #62, #69, #74, #79, **#82**. `main` em `ebfab86`.
+Progresso: 38 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
@@ -1654,7 +1654,7 @@ Progresso: 37 itens em produção · **nada esperando release** · 1 fechado sem
 
 | Métrica | Linha de base | Hoje em produção (2026-08-19) |
 |---|---:|---:|
-| Testes | 100 | **409** |
+| Testes | 100 | **416** |
 | Cobertura real | 25% (reportada como 87,62%) | **80,56%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
@@ -2967,9 +2967,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] 7 testes novos; 416 no total, cobertura **80,56%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — importar algo que falhe e ver o nome do arquivo na tela
-  - [ ] Commitado — `<hash>`
+  - [x] Implantado — **10º release (PR #82), 2026-08-19**
+  - [~] Verificado em produção — de fora: o `job_detail.4e044125c7ef.js` servido contém
+        `listaDeErros` e `escaparHtml`. **Falta o caso real:** importar algo que falhe e
+        ver o nome do arquivo na tela. O próprio passo 5 serve, se algum PDF falhar nele.
+  - [x] Commitado — `5f2addf`
   - [ ] (depois) Preservar o nome original no rename, para o dia em que ele não for
         numerado
   - Status: **código pronto** · Notas: **o item nasceu de uma pergunta do dono do projeto,
@@ -3125,18 +3127,20 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-43** 🐛 | `_garantir_conteudo` transforma resposta vazia do LLM em falha dentro do `try` do laço, então o retry e o backoff que já existiam passam a valer para ela. `finish_reason` passa a ser lido: bloqueios saem na primeira tentativa. 6 testes novos. | **Duas. (1) O achado veio de uma importação real, não de leitura de código:** `1 erro(s)` no resumo, e o payload guardava `0005.pdf: Expecting value: line 1 column 1 (char 0)`. O mesmo arquivo, sozinho, entrou minutos depois — transitório, e **não havia retry** porque o laço só reagia a exceção da API. **(2) O characterization test do R-07 pegou um defeito pior que o original:** `generate_parecer` tolerava resposta vazia e devolvia `""`, e o chamador grava isso direto em `candidate_job.parecer` reportando `completed` — o parecer escrito era **substituído por vazio**, com a tela dizendo 'concluído'. |
 | 2026-08-19 | **R-44** 🐛 | Os 4 polls de status passam a reagendar nos dois caminhos de falha (resposta ruim e exceção), com 5s em vez de 2s. O do parecer fica como está: usa `setInterval`. 8 testes novos. | **Achado ao executar o passo 5, e ele derrota o R-20b exatamente no caso para o qual o R-20b foi feito.** Os polls se reagendavam só dentro do ramo `running`; um `fetch` que falhasse caía em `return` ou num `catch` vazio e **matava o laço para sempre**. No `systemctl restart`, o poll em voo bate num serviço fora do ar, desiste, e a tela congela no contador — mesmo depois de o backend voltar respondendo 'interrompida'. **O R-20b tinha 10 testes verdes e nenhum podia pegar isto:** eles testam o payload que o backend devolve, e o defeito é do lado que pergunta. Só apareceu porque alguém reiniciou o serviço de verdade, com a tela aberta. |
 | 2026-08-19 | **R-43, R-44 e o complemento do R-23 → produção** | 9º release (PR #79): `819441c` → `dbd811a`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.1552ff779dc8.js` servido **contém o `reagendarPoll`** — o hash bate com o conteúdo do `main`. | **O release fecha um dia em que a validação manual rendeu mais que a leitura de código.** Quatro defeitos reais em uma tarde — R-43 (candidato perdido em silêncio), o parecer sobrescrito por vazio, R-44 (tela muda no restart) e R-42 (a tela nunca diz qual arquivo falhou) —, e **nenhum deles apareceria em teste automatizado**: os três primeiros exigiam operar a tela com o servidor real, e o quarto é ausência, não erro. |
+| 2026-08-19 | **R-42** | A lista de erros entra nos **quatro** lugares que renderizam status: os dois blocos do servidor e os dois polls. Uma linha de backend faltava — durante a execução o `progress_callback` só mandava o número de erros, então a lista agora viaja junto e aparece **enquanto** a importação roda. 7 testes novos. | **O item nasceu de uma pergunta do dono, não de leitura de código:** ao ver `0005.pdf: Expecting value...`, ele perguntou *"como saber qual é o cinco? nenhum tem o número 5"*. **(1) O nome é gerado** — o `prepare_uploaded_files` renomeia todo PDF para um contador de 4 dígitos, então `0005.pdf` é 'o 5º daquele envio'. **(2) Mas no fluxo real ele já basta**, porque o exportador entrega numerado (`001.pdf`, `002.pdf`…) e o nome interno bate com o dela por coincidência sistemática — por isso 'mostrar' veio primeiro e 'preservar o nome original' ficou como melhoria. **(3) Um teste negativo quase passou por engano:** `padding-left: 18px` aparece no código do helper JS, que mora na mesma página, então a asserção acusava a fonte em vez da lista renderizada. |
+| 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
 
 ---
 
 ### ▶ Onde retomar (atualizado em 2026-08-19, depois do 9º release)
 
-**Em produção** (`main` em `dbd811a`, 9 releases): Ondas 0, 1, 2 e 5 completas, mais
+**Em produção** (`main` em `ebfab86`, 10 releases): Ondas 0, 1, 2 e 5 completas, mais
 R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
-R-40, R-41, R-43 e R-44.
+R-40, R-41, R-42, R-43 e R-44.
 
 **`develop` e `main` estão iguais — nada esperando release.**
 
-409 testes, cobertura **80,56%**. Piso do CI em 78.
+416 testes, cobertura **80,56%**. Piso do CI em 78.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3196,7 +3200,6 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-42** | achado hoje, não iniciado | mostrar na tela **qual** arquivo falhou; o dado já está no payload |
 | **R-28 b e c** | bloqueado pela validação visual do a | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
