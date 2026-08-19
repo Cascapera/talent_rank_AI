@@ -411,6 +411,7 @@
               <th>Status</th>
               <th>Pronto em</th>
               <th>Parecer</th>
+              <th>Currículo</th>
             </tr>
           </thead>
           <tbody>
@@ -560,6 +561,15 @@
                     >
                       Gerar parecer
                     </button>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>
+                  {% if link.candidate.resume_pdf %}
+                    <a href="{% url 'resume_download' link.candidate.id %}"
+                       class="btn"
+                       style="padding: 4px 10px; font-size: 12px;">Baixar PDF</a>
                   {% else %}
                     -
                   {% endif %}
