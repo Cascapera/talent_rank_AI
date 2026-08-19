@@ -2892,6 +2892,49 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **Não sei ainda com que frequência isso acontece** — 1 em 5 PDFs numa única
     importação observada não é estatística. O R-42 é o que vai tornar isso visível.
 
+- [x] **R-44** 🐛 · O poll de status morre quando o servidor reinicia
+      risco: baixo · 1h · produção: transparente · PR: ~45 linhas / 3 arquivos
+      **Achado ao executar o passo 5 da validação manual, em 2026-08-19** — e ele
+      **derrota o R-20b exatamente no caso para o qual o R-20b foi feito.**
+
+      Os quatro polls de status se reagendavam **só dentro do ramo `running`**
+      (`setTimeout(poll, 2000)`). As duas saídas de falha — `if (!resp.ok) return;` e um
+      `catch` com `// silêncio` — matavam o laço **para sempre**.
+
+      No `systemctl restart`, o poll em voo bate num serviço fora do ar (502 do Nginx ou
+      conexão recusada), desiste, e a tela congela no contador. Mesmo depois de o serviço
+      voltar e o backend passar a responder "importação interrompida", ninguém mais
+      pergunta. Só um F5 destrava.
+
+      Sintoma observado em produção: importação de 2 PDFs, restart no meio, e a tela ficou
+      em `0/2` sem nunca exibir o aviso — enquanto o banco mostrava `RUNNING` com 63s sem
+      heartbeat, que é exatamente o estado que o R-20b interpreta como morto.
+  - [x] Os 3 polls do `job_detail.js` (importação, busca pelo botão, busca na carga) e o
+        do `talent_pool.html` reagendam nos **dois** caminhos de falha
+  - [x] 5s em vez de 2s no caminho de falha — se o servidor está fora, insistir mais
+        rápido não o traz de volta mais cedo
+  - [x] O poll do parecer **não** foi mexido: usa `setInterval`, que sobrevive sozinho a
+        uma resposta ruim. Tem teste registrando isso, para ninguém "uniformizar" os
+        quatro depois e trocar um laço que funciona por outro que precisa de reagendamento
+  - [x] 8 testes novos; 409 no total, cobertura **80,56%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — repetir o passo 5: restart no meio da importação, **sem
+        dar F5**, e o aviso tem que aparecer sozinho
+  - [ ] Commitado — `<hash>`
+  - Status: **código pronto** · Notas: **o R-20b estava certo no servidor e mudo na tela.**
+
+    Vale como lição de método, não só como bug: o R-20b tinha 10 testes, todos verdes, e
+    nenhum podia pegar isto — eles testam o payload que o backend devolve, e o defeito é
+    do lado que pergunta. **Só apareceu porque alguém reiniciou o serviço de verdade, com
+    a tela aberta.** É o argumento mais forte que este projeto produziu a favor da
+    validação manual.
+
+    ⚠️ **A verificação do R-20b em produção fica pendente até este item subir.** O que foi
+    observado no passo 5 confirma o backend (a linha ficou `RUNNING` com heartbeat velho),
+    mas não o comportamento de tela, que é o que importa para quem opera.
+
 - [ ] **R-42** · Os detalhes de erro da importação nunca chegam à tela
       risco: baixo · 2h · produção: transparente
       **Achado junto com o R-43, em 2026-08-19.** O importador monta um `error_details`
