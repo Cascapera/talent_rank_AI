@@ -1610,7 +1610,8 @@ Progresso: 33 itens em produção · **nada esperando release** · 1 fechado sem
            ⚠️ **A `DJANGO_SECRET_KEY` de produção tinha 11 caracteres** (medido em
            2026-08-19; Django gera 50). Não era a chave do repositório — era outra,
            curta. Foi passada a receita de troca por `secrets.token_urlsafe(64)`;
-           **a execução não foi confirmada**. Ver "Onde retomar".
+           **a execução não foi confirmada**. Risco real avaliado no checklist do
+           R-21: **mina enterrada, não exploração hoje**.
 
            ⚠️ **O registro de execução tem um buraco:** R-18, R-19, R-20a, R-24 e R-26
            foram implantados (PR #53) e estão marcados no checklist, mas nenhum deles
@@ -2311,9 +2312,25 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         conferido em **2026-08-18**. A aplicação sobe depois do deploy.
   - [x] **Qualidade da chave conferida em 2026-08-19 — e ela reprovou.** Não é cópia da
         chave do repositório (`grep -c` = 0), mas tem **11 caracteres**; o Django gera 50.
-        Curta o bastante para força bruta valer a pena, e é o ponto cego do próprio R-21,
-        que só exige que a variável **exista**. Receita de troca (não imprime segredo, e a
-        chave nova só entra no próximo `restart`):
+        É o ponto cego do próprio R-21, que só exige que a variável **exista**.
+
+        **Qual é o risco de verdade — conferido no código em 2026-08-19, depois de eu
+        exagerar na primeira avaliação.** Neste app o `SECRET_KEY` **não assina a sessão
+        nem o CSRF**: não há `SESSION_ENGINE`, então vale o default do Django (sessão em
+        banco, `sessionid` é id aleatório procurado no `django_session`), e sem
+        `CSRF_USE_SESSIONS` o token de CSRF é um segredo aleatório no próprio cookie desde
+        o Django 4.0. Não existe URL de `password_reset` no `core/urls.py`. O que usa a
+        chave hoje é o `django.core.signing`: o cookie do `messages` e o
+        `get_session_auth_hash`. E 11 caracteres **aleatórios** seriam ~2^65 — fora de
+        alcance de força bruta.
+
+        **O problema é que 11 caracteres é comprimento de coisa digitada, não gerada.** Se
+        for uma palavra, não são 11 caracteres de entropia, é uma entrada de dicionário. E
+        vira mina enterrada: no dia em que entrar um "esqueci minha senha", o token de
+        recuperação passa a ser assinado com ela — e o R-23 pode querer URL assinada
+        (`signing.dumps`) para servir currículo. **Trocar por ser barato, não por haver
+        exploração hoje.** Receita (não imprime segredo, e a chave nova só entra no
+        próximo `restart`):
         `cd /var/www/talent_rank_ai && cp -a .env .env.bak-AAAAMMDD && sed -i '/^DJANGO_SECRET_KEY=/d' .env && .venv/bin/python -c "import secrets;print('DJANGO_SECRET_KEY='+secrets.token_urlsafe(64))" >> .env`
         — `token_urlsafe` em vez de `get_random_secret_key()` de propósito: o alfabeto do
         Django inclui `#` e `$`, que são justamente o que quebra parser de `.env`.
@@ -2905,10 +2922,9 @@ R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22 (Onda 4), R-27 (Onda 6), R-40 e R-
 ## O que fazer no começo da próxima sessão
 
 **1. Terminar a troca da `DJANGO_SECRET_KEY`, se ainda não foi feita.** A chave de
-produção tem **11 caracteres** (Django gera 50). Não é a do repositório, mas é curta o
-bastante para força bruta valer a pena — e com ela qualquer um forja sessão e CSRF sem
-interceptar nada. A receita foi passada em 2026-08-19 e **a execução não foi confirmada**.
-Conferir primeiro, sem imprimir segredo:
+produção tem **11 caracteres** (Django gera 50). A receita foi passada em 2026-08-19 e
+**a execução não foi confirmada**. É higiene barata, **não incêndio** — a avaliação de
+risco está no checklist do R-21. Conferir primeiro, sem imprimir segredo:
 
 ```
 awk '/^DJANGO_SECRET_KEY=/{sub(/^DJANGO_SECRET_KEY=/,"");print "tamanho:",length($0)}' /var/www/talent_rank_ai/.env
