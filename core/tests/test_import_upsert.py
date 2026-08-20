@@ -13,6 +13,7 @@ Estão fixados assim mesmo, de propósito: corrigir é decisão separada, em PR 
 """
 
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -243,9 +244,8 @@ class TestUpdate:
             == result["total"]
         )
 
-    def test_resume_pdf_is_resaved_even_when_nothing_changed(self, pdf_dir, user):
-        """QUIRK: o PDF é regravado em disco em toda importação, mesmo sem alteração
-        de dado. Gera arquivo novo (nome com uuid) a cada rodada."""
+    def test_resume_pdf_is_attached_when_candidate_had_none(self, pdf_dir, user):
+        """Candidato que existia sem currículo ganha o PDF ao ser reimportado."""
         existing = Candidate.objects.create(
             user=user,
             name="Ana Souza",
@@ -258,6 +258,23 @@ class TestUpdate:
 
         existing.refresh_from_db()
         assert existing.resume_pdf
+
+    def test_reimportar_o_mesmo_lote_nao_acumula_pdf_em_disco(self, pdf_dir, user, settings):
+        """QUIRK corrigido em R-31 (etapa 1).
+
+        Este teste ocupa o lugar de `test_resume_pdf_is_resaved_even_when_nothing_changed`,
+        que dizia fixar o quirk e **não fixava**: o candidato começava sem currículo, então
+        a segunda gravação nunca era exercitada e o teste passava dos dois lados da
+        correção. Reescrito de propósito, agora afirmando o comportamento novo — uma
+        reimportação do mesmo lote não deixa arquivo órfão em disco.
+        """
+        make_pdfs(pdf_dir)
+        run_import(pdf_dir, [llm_row()], user_id=user.id)
+        run_import(pdf_dir, [llm_row()], user_id=user.id)
+
+        pdfs = list(Path(settings.MEDIA_ROOT).rglob("*.pdf"))
+        assert len(pdfs) == 1
+        assert Candidate.objects.get().resume_pdf
 
     def test_summary_is_always_wiped_on_update(self, pdf_dir, user):
         """QUIRK: o payload fixa summary="" independentemente do que veio do LLM.

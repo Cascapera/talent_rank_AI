@@ -2733,16 +2733,32 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
-  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor
-  - [ ] Etapa 1: parar de gerar novos órfãos
+  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor — **continua pendente**,
+        e agora só interessa para dimensionar a etapa 2
+  - [x] **Etapa 1: parar de gerar novos órfãos** — `_save_resume_pdf` em `core/pdf.py`
   - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Suíte completa verde — **433 testes** (9 novos + 1 reescrito), cobertura **81,10%**
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] Verificado em produção — `du -sh media/resumes/` estável entre importações
   - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - Status: **etapa 1 pronta, aguardando PR** · Notas: duas defesas, nesta ordem —
+    conteúdo idêntico ao que já está gravado não regrava nada (o caso comum, reimportar o
+    mesmo lote); conteúdo diferente grava o novo **e só então** apaga o antigo, nunca o
+    contrário. Comparação por tamanho primeiro e SHA-256 depois: tamanho igual não é
+    conteúdo igual, e há teste para isso. Antes de apagar, confere se **nenhuma outra
+    linha** aponta para o mesmo arquivo — o uuid do nome torna a colisão improvável, mas
+    linha duplicada existe no banco de produção (R-09) e apagar currículo não se desfaz.
+    Falha ao apagar não interrompe importação: o pior caso é o órfão que já existia antes.
+
+    ⚠️ **O characterization test do R-05 que dizia fixar este quirk não fixava nada.**
+    `test_resume_pdf_is_resaved_even_when_nothing_changed` criava o candidato **sem**
+    currículo, então a segunda gravação nunca era exercitada — o teste passava dos dois
+    lados da correção. Reescrito como `test_reimportar_o_mesmo_lote_nao_acumula_pdf_em_disco`,
+    que importa o mesmo lote duas vezes e conta os arquivos em disco. **Como aplicar:** um
+    teste que fixa quirk precisa **falhar** quando o quirk é corrigido; se ele sobrevive à
+    correção, ele nunca testou o quirk. Conferir isso no momento de escrever, não depois.
 
 - [ ] **R-32** · Candidato sem alteração some da contabilidade
       risco: baixo · 3h · produção: transparente · PR: ~40 linhas / 3 arquivos
