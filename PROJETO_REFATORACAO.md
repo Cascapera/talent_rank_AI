@@ -1595,17 +1595,18 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
-           (Onda 6), **R-31 (etapa 1)**, R-40, R-41, **R-42**, R-43 e R-44. 12 releases:
-           PRs #26, #35, #46, #53, #57, #62, #69, #74, #79, #82, #87, **#92**.
-           `main` em `5090835`.
-Progresso: 40 itens em produção · **R-45 esperando release** (com migration) · 1 fechado sem correção
+           (Onda 6, **concluída**), **R-31 (etapa 1)**, **R-45**, R-40, R-41, **R-42**,
+           R-43 e R-44. 14 releases: PRs #26, #35, #46, #53, #57, #62, #69, #74, #79,
+           #82, #87, #92, #95, **#97**. `main` em `ae976df`.
+Progresso: 42 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
-           atualizado em 2026-08-20, depois do 12º release
+           atualizado em 2026-08-20, depois do 14º release e do fechamento do R-28
 
-           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". É a única coisa
-           que falta para ele, e agora as **quatro** telas estão em produção com o CSS
-           novo. O **R-23 fechou por inteiro** em 2026-08-19, etapa 3 inclusive.
+           ✅ **O R-28 fechou em 2026-08-20** — as quatro telas validadas na tela, desktop
+           e celular, com erro de formulário nas quatro. A validação achou um bug antigo
+           de contraste, registrado como **R-46**. O **R-23 fechou por inteiro** em
+           2026-08-19, etapa 3 inclusive.
 
            🧹 **A etapa 2 do R-31 é operação, não refatoração:** 270 órfãos / 33M já
            medidos e listados. O motivo é LGPD, não disco — ver "Onde retomar".
@@ -2572,25 +2573,41 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     1.487 → **694 linhas**. 6 testes novos travam o que uma edição distraída desfaz:
     o arquivo existir, a página apontar para ele e o JS não voltar para dentro do HTML.
 
-- [~] **R-28** · Consolidar o CSS repetido em `static/css/` (3 sub-PRs)
+- [x] **R-28** · Consolidar o CSS repetido em `static/css/` (3 sub-PRs)
       risco: médio · 1d · produção: requer cuidado · PR: ~250 linhas cada
       pré-requisito: R-27
-  - [x] Sub-PR a — telas de autenticação (login, cadastro) · **código pronto**, validação
-        visual pendente · `static/css/tokens.css` + `static/css/auth.css`
-  - [x] Sub-PR b — telas de vagas · **código pronto**, validação visual pendente ·
-        `static/css/formulario.css`. **Muito menor que o previsto — ver notas**
+  - [x] Sub-PR a — telas de autenticação (login, cadastro) · `static/css/tokens.css` +
+        `static/css/auth.css` · **validado na tela em 2026-08-20**
+  - [x] Sub-PR b — telas de vagas · `static/css/formulario.css` · **validado na tela em
+        2026-08-20**. **Muito menor que o previsto — ver notas**
   - [x] Sub-PR c — **fechado sem extração: não há o que consolidar.** Medido em
         2026-08-19, zero regras repetidas idênticas no grupo — ver notas
   - [x] Suíte completa verde — 14 testes novos, 423 no total, cobertura **81,01%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado (sub-PR a)
   - [x] Implantado (sub-PR a) — **8º release (PR #74), 2026-08-19**
-  - [~] Verificado em produção — de fora: `/login/` e `/cadastro/` em **200**, os dois CSS
+  - [x] Verificado em produção — de fora: `/login/` e `/cadastro/` em **200**, os dois CSS
         servidos com hash e a imagem de fundo reescrita para `back.febfb1a8f015.png`, 200.
-        **Falta o olho humano**, que é a única verificação que vale para CSS.
+  - [x] **Validado na tela em 2026-08-20** — as **quatro** telas (`/login/`, `/cadastro/`,
+        `/vagas/nova/`, `/vagas/<id>/editar/`), desktop e celular, **com erro de formulário
+        na tela** nas quatro. Nenhuma regressão. É a caixa que conta para item de CSS, e
+        ela chegou dois releases depois do `[x] Implantado` — ver a assimetria do R-20b.
   - [x] Commitado — `f991d24`
-  - Status: **sub-PR a em produção, validação visual pendente** · Notas: **o terreno é menor e mais irregular do que o
+  - Status: **concluído** · Notas: **o terreno é menor e mais irregular do que o
     item diz.**
+
+    🐛 **A validação achou um bug antigo, não uma regressão.** A `.errorlist` do
+    `formulario.css` é `color: #fecaca` sobre o fundo `#e0f2f7` da área logada — rosa
+    claríssimo em azul claríssimo, contraste perto de 1,2:1 contra os 4,5:1 mínimos. O
+    valor **já estava no `<style>` inline** antes do R-28 (conferido em `git show
+    <commit>^:templates/core/job_create.html`), então a extração foi fiel e o defeito é
+    anterior. Registrado como **R-46**, fora deste item.
+
+    **Duas coisas que parecem defeito e não são:** login e vaga mostram o erro com
+    aparências diferentes de propósito — são duas regras `.errorlist` distintas, e as duas
+    folhas nunca carregam na mesma página, porque login e cadastro não estendem o
+    `base_logged.html`. E a grade de 5 colunas não tem `@media` em lugar nenhum, o que
+    aperta no celular — também era assim antes da extração.
 
     **1. Não são 12 templates com tokens duplicados — são 4.** Onze templates têm
     `<style>`, mas só `base_logged`, `home`, `login` e `signup` definem `:root`; os outros
@@ -3190,12 +3207,15 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — **449 testes**, cobertura **81,57%** (era 81,10%)
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#94**, CI verde nos 3 jobs
-  - [~] Implantado — **13º release (PR #95), 2026-08-20**. A `0024` aplicou; **a `0025`
-        falhou** (`TypeError` no `FieldFile`). Sem quebra para a usuária: campo vazio nunca
-        casa com nada, a importação seguiu como antes. Corrigido na PR #96
-  - [ ] Verificado em produção — `SELECT count(*) FROM core_candidate WHERE resume_sha256
-        <> ''` tem de dar **449**; depois reimportar um lote já importado e conferir
-        `already_known` maior que zero na tela, com a cota do Gemini intocada
+  - [x] Implantado — **13º release (PR #95)** aplicou a `0024` e **falhou na `0025`**
+        (`TypeError` no `FieldFile`); sem quebra para a usuária, porque campo vazio nunca
+        casa com nada. Corrigido na PR #96 e fechado no **14º release (PR #97)**, com
+        `Applying core.0025_backfill_resume_sha256... OK`
+  - [~] Verificado em produção — **o backfill fechou em 2026-08-20**: `SELECT count(*)
+        FROM core_candidate WHERE resume_sha256 <> ''` deu **449**, os 449 candidatos com
+        currículo, nenhum ilegível. **Falta a caixa que conta:** reimportar um lote já
+        importado e ver `N já no banco` na tela, com a cota do Gemini intocada — o
+        comportamento observado, que no R-20b chegou dois releases depois do implantado
   - Status: **pronto para revisão** · Notas: **a assimetria entre os dois fluxos é decisão,
     não esquecimento.** No banco de talentos a extração é o produto inteiro — não há vaga
     para avaliar —, então reconhecer o arquivo torna a chamada dispensável. No fluxo de
@@ -3231,6 +3251,52 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     realidade e que, a partir deste item, significa outra coisa (o mesmo perfil exportado
     duas vezes). Corrigido para conteúdo distinto por índice, com teste próprio para o caso
     do lote com duplicata.
+
+- [x] **R-46** 🐛 · A mensagem de erro do formulário de vaga é ilegível
+      risco: baixo · 30min · produção: transparente · PR: ~2 linhas
+      **Achado na validação visual do R-28, em 2026-08-20.** A `.errorlist` do
+      `formulario.css` é `color: #fecaca` — rosa claríssimo — sobre o fundo `#e0f2f7` da
+      área logada, azul claríssimo. Contraste perto de **1,2:1**, contra os 4,5:1 mínimos
+      de texto normal.
+
+      **Não é regressão do R-28.** O valor já estava no `<style>` inline de
+      `job_create.html` antes da extração — conferido em `git show
+      <commit-do-R-28b>^:templates/core/job_create.html`. A extração foi fiel; o defeito é
+      anterior e ninguém tinha olhado.
+
+      **O que custa para quem opera:** ela preenche a vaga, clica em salvar, a página
+      recarrega sem salvar e a explicação está na tela em texto que não dá para ler. O
+      sintoma vira "o sistema não salva a vaga e não diz por quê".
+
+      Provável origem: o valor veio de uma paleta de tema escuro (`#fecaca` é o
+      `red-200` do Tailwind, pensado para fundo escuro). O `.errorlist` do `auth.css`, que
+      resolve o mesmo problema em card claro, usa fundo `rgba(239,68,68,0.12)` com texto
+      escuro — é o padrão a seguir.
+  - [x] Corrigir o contraste — `#fecaca` → **`#7f1d1d`**, o mesmo vermelho do
+        `.errorlist` do `auth.css`, mais `font-weight: 600`. Contraste **1,44:1 → ~9:1**
+  - [x] Conferido: `#fecaca` **não existe em mais lugar nenhum**; `job_detail.html` e
+        `jobs.html` não têm `.errorlist`, e o `.errorlist` dos templates de `registration/`
+        usa o `auth.css`, que já estava certo
+  - [x] **A caixa com fundo e borda do `auth.css` não foi copiada, de propósito** — no
+        login são poucos campos, aqui são 19 numa grade, e 19 caixas empilhadas afogariam o
+        formulário
+  - [x] 3 testes novos que **calculam o contraste de verdade** (luminância relativa WCAG)
+        em vez de comparar strings — 2 vermelhos antes
+  - [x] Suíte completa verde — **460 testes**, cobertura 81,57%
+  - [x] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] **Validado na tela** — provocar erro em nova vaga e conferir que **dá para ler**
+  - Status: **pronto para revisão** · Notas: item que só a validação manual poderia
+    produzir. **O teste que faltava não era de CSS, era de contraste.** Um teste no padrão
+    do R-28 confirmaria a regra como correta: ela existe, está na folha certa e tem o valor
+    que o template tinha. Por isso os testes novos calculam a luminância relativa e
+    comparam com o piso de 4,5:1 da WCAG — assim o defeito **tem um mundo em que falha**.
+
+    **Um deles nasceu grosseiro demais e o próprio teste avisou:** a primeira versão
+    proibia a string `#fecaca` no arquivo, e falhou porque o comentário do R-46 cita o
+    valor antigo para explicar a correção. Um teste assim proibiria documentar o motivo.
+    Corrigido para olhar a **declaração ativa** dentro do bloco `.errorlist`.
 
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
@@ -3307,22 +3373,25 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-20 | **R-31 (etapa 1) → produção e verificado** ✅ | 12º release (PR #92): `ab0b223` → `5090835`. CI 1m58s, CD 52s, sem migration e sem estático novo. De fora: home e `/login/` **200**, `/curriculos/1/` deslogado **302**, `/media/resumes/...` **404**. Medição antes: **719 arquivos em disco, 449 referenciados, 270 órfãos (33M de 80M)**; e **0 arquivos referenciados pelo banco faltando no disco** — a checagem inversa, que é a que provaria a correção ter apagado algo em uso. Depois de reimportar um PDF byte-a-byte idêntico: **719 arquivos, `diff` da listagem vazio**. | **O roteiro de verificação do plano não provaria nada.** Ele mandava comparar `du -sh` antes e depois; `du -sh` arredonda, e num diretório de 80M um PDF de ~200KB não move o número — os dois lados dariam "80M" com a correção certa **ou** errada. Trocado por `diff` de duas listagens completas de `find`, que não diz "o tamanho não mudou" e sim **quais** arquivos apareceram ou sumiram. **Como aplicar:** antes de aceitar um roteiro de verificação, conferir se a medida tem resolução para o efeito esperado — medida grossa demais devolve "passou" para os dois resultados possíveis, o que é pior que não medir, porque parece prova. Segundo achado: os 270 órfãos são **currículos de pessoas reais** sem vínculo com nenhuma linha do banco — o R-23 fechou o acesso de fora, mas retenção sem finalidade é assunto de LGPD. Isso, e não os 33M, é o que justifica a etapa 2; 33M de disco sozinho não seria prioridade nenhuma. |
 | 2026-08-20 | **R-45** ⚡ | Currículo já no banco não vai mais ao LLM na importação do banco de talentos. Campo `resume_sha256` indexado (migration `0024`) + backfill dos que já estão em disco (`0025`); `_separar_ja_importados` roda antes do laço; contador `already_known` novo, separado de `skipped`, visível nos dois pontos de render do pool. 16 testes novos, **6 vermelhos antes**; 433 → **449 testes**, cobertura **81,57%**. PR #94. | **A conta derrubou a ideia melhor.** A proposta inicial era separar extração de avaliação para reaproveitar, no fluxo de vaga, o candidato que já está no banco. Com taxa de repetição `r`, separar custa `2 − r` chamadas por PDF — abaixo de 1 exigiria `r > 1`, mais repetições que arquivos, impossível. Com os 32% medidos daria 1,68 contra 1,0 hoje. **Como aplicar:** otimização que parece óbvia merece a aritmética antes do código; aqui ela mostrou que o ganho tinha sinal trocado. Segundo achado, do mesmo tipo do R-31: o roteiro de medir por `du -sh` e o fixture `make_pdfs` estavam ambos errados por serem grossos demais — o fixture gravava **os mesmos bytes** em todos os arquivos e esperava N candidatos distintos, coisa que não existe na realidade e que a partir deste item significa outra coisa. Terceiro: 6 dos 719 PDFs **não têm texto extraível** (escaneados), o que tornaria uma dedup por texto ingênua um sumidouro de candidatos — todos colidiriam no hash da string vazia. |
 | 2026-08-20 | **R-45 — backfill quebrado em produção** 🐛 | O 13º release (PR #95) aplicou a `0024` e **falhou na `0025`**: `raiz / candidate.resume_pdf` estoura `TypeError: unsupported operand type(s) for /: 'PosixPath' and 'FieldFile'` — num modelo histórico o campo ainda é `FieldFile`, não a string do caminho. Corrigido com `values_list("id", "resume_pdf")`, que traz a coluna crua. Mais **8 testes que rodam o backfill sobre candidatos de verdade** e reproduzem o `TypeError` na versão antiga. PR #96. | **A suíte inteira estava verde, e o CI roda `migrate`.** Só que num banco recém-criado, sem nenhum candidato: o laço do backfill nunca executava. `migrate` verde no CI significa "a migration importou sem erro de sintaxe", não que o que ela faz funciona. **Terceira vez hoje que o mesmo padrão aparece** — o characterization test do R-05 criava o candidato sem currículo, o roteiro do `du -sh` não tinha resolução, e agora a data migration nunca era exercitada. **Como aplicar:** data migration pede teste que crie linhas e chame a função diretamente (`importlib.import_module` no módulo da migration, `apps` global). Achado de tabela: **o CD mentia.** O script do `ssh-action` roda sem `set -e` e o `echo "Deploy concluído com sucesso"` é incondicional — o `migrate` abortou e o CD pintou verde. Corrigido com `script_stop: true` e `set -e`; valia para todo deploy, não só este. |
+| 2026-08-20 | **R-45 (corrigido) → produção, e o CD que mentia** | 14º release (PR #97): `38c7e01` → `ae976df`. `Applying core.0025_backfill_resume_sha256... OK` — desta vez aplicou. `deploy.yml` com `script_stop: true` e `set -e`. De fora: home e `/login/` **200**, `/curriculos/1/` deslogado **302**, `/media/resumes/...` **404**. 457 testes. | **O verde do CD passou a significar alguma coisa.** Até hoje, qualquer falha de `migrate`, `pip install` ou `collectstatic` era engolida e o `echo "Deploy concluído com sucesso"` saía do mesmo jeito — o script do `ssh-action` roda sem `set -e`. Não era bug deste release; era de todos, desde sempre. Achado só porque o meu erro caiu justamente no comando que falha silenciosamente. **Como aplicar:** script de deploy sem `set -e` transforma o CD em teatro; e mensagem de sucesso incondicional no fim é a assinatura do problema. |
+| 2026-08-20 | **R-28 validado na tela** ✅ | O dono percorreu as **quatro** telas (`/login/`, `/cadastro/`, `/vagas/nova/`, `/vagas/<id>/editar/`), desktop e celular, **com erro de formulário na tela** nas quatro. Nenhuma regressão: layout, card, campos e as duas `.errorlist` como antes. **R-28 concluído**, e com ele a Onda 6. | **A validação rendeu um bug que nenhum teste acharia — e ele é antigo.** A `.errorlist` do `formulario.css` é `#fecaca` sobre o fundo `#e0f2f7` da área logada: contraste ~1,2:1, texto praticamente invisível. Conferido no histórico antes de acusar: o valor **já estava no `<style>` inline** de `job_create.html` antes da extração, então o R-28 foi fiel e o defeito é anterior. Virou **R-46**. **Como aplicar:** teste de CSS confere que a regra existe, está na folha certa e tem o valor esperado — e passa perfeitamente quando **o valor em si** é que está errado contra um fundo que teste nenhum conhece. Para item de aparência, a caixa que conta continua sendo o olho humano. Preparar o roteiro lendo o CSS antes de pedir a validação também rendeu: eu já sabia o que ele ia encontrar e o que era ruído (as duas `.errorlist` diferentes de propósito, a grade de 5 colunas sem `@media`), então ele não perdeu tempo reportando o que não era regressão. |
 
 ---
 
 ### ▶ Onde retomar (atualizado em 2026-08-20, depois do 12º release)
 
-**Em produção** (`main` em `5090835`, **12 releases**): Ondas 0, 1, 2 e 5 completas, mais
-R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a e R-28b
-(Onda 6), R-31 (etapa 1), R-40, R-41, R-42, R-43 e R-44.
+**Em produção** (`main` em `ae976df`, **14 releases**): Ondas 0, 1, 2, 5 e **6**
+completas, mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27,
+**R-28 concluído e validado na tela**, R-31 (etapa 1), **R-45**, R-40, R-41, R-42, R-43
+e R-44.
 
-**Esperando release na `develop`:** o **R-45** (PR #94) — dedup por hash na importação do
-banco de talentos. **Tem migration**: uma coluna e um backfill que lê `media/resumes/`.
+**Esperando release na `develop`:** nada — só esta documentação.
 
-**449 testes**, cobertura **81,57%**. Piso do CI em 78.
+**457 testes**, cobertura **81,57%**. Piso do CI em 78.
 
-**Sobrou uma coisa de refatoração e uma de operação:** a **validação visual do R-28**
-(quatro telas, só o dono pode fazer) e a **etapa 2 do R-31** (limpar 270 órfãos, 33M).
+**O R-28 fechou em 2026-08-20**, validado nas quatro telas. Sobraram a **etapa 2 do
+R-31** (limpar 270 órfãos, 33M — é LGPD, não disco) e o **R-46**, o bug de contraste que
+a própria validação do R-28 revelou.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3353,10 +3422,15 @@ sozinho, sem F5. **R-44 e R-20b fechados**, os dois verificados na tela.
 contra os ~12 que um lote de 10 PDFs pode levar legitimamente. Deixado em 60s, uma
 importação real com lote lento seria marcada como interrompida sem ter sido.
 
-**3. A validação visual do R-28** — agora com **quatro** telas, porque os sub-PRs b e c já
-subiram: `/login/`, `/cadastro/`, **nova vaga** e **editar vaga**, desktop e celular,
-sempre **com erro de formulário na tela** (é o que exercita a `.errorlist`, a regra que
-mais mudou de lugar). É a única coisa que falta para o R-28 ser marcado como concluído.
+**3. ~~A validação visual do R-28~~ — feita em 2026-08-20.** As quatro telas
+(`/login/`, `/cadastro/`, **nova vaga** e **editar vaga**), desktop e celular, com erro de
+formulário na tela nas quatro. Nenhuma regressão. **R-28 concluído, e com ele a Onda 6.**
+
+O roteiro foi montado lendo o CSS extraído antes de pedir, o que separou de antemão o que
+seria regressão do que seria ruído — as duas `.errorlist` com aparências diferentes de
+propósito, e a grade de 5 colunas sem `@media`, que já era assim. Sobrou um achado de
+verdade: o **R-46**, contraste ilegível na mensagem de erro da vaga, **anterior ao R-28** e
+conferido no histórico antes de ser acusado.
 
 **4. ~~Levar a etapa 1 do R-31 a produção~~ — feito em 2026-08-20, 12º release (PR #92).**
 `ab0b223` → `5090835`. Verificado pelos dois lados, e o roteiro que estava escrito aqui
@@ -3430,7 +3504,8 @@ Regras para quando for executar, porque apagar currículo não se desfaz:
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-28** | **a, b e c em produção** — só falta a validação visual | b (`formulario.css`) subiu no 11º release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica. **As quatro telas do roteiro já servem o CSS novo** |
+| **R-28** | ✅ **concluído em 2026-08-20** | as quatro telas validadas na tela, desktop e celular, com erro de formulário nas quatro. Nenhuma regressão. c **fechado sem extrair** (PR #85): não havia regra repetida idêntica no grupo. A validação rendeu o **R-46** |
+| **R-46** | **aberto** 🐛 | `.errorlist` do `formulario.css` em `#fecaca` sobre fundo `#e0f2f7` — contraste ~1,2:1. **Não é regressão**: o valor já estava no inline antes do R-28. Para ela, vira "o sistema não salva a vaga e não diz por quê" |
 | **R-31** | **etapa 1 em produção e verificada** (12º release, PR #92) | só a **etapa 2**: limpar **270 órfãos / 33M** já medidos. Não é disco, é LGPD — currículos de pessoas reais sem vínculo no banco. Quarentena antes de apagar, e nada com `mtime` recente |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
