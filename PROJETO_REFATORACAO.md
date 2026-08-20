@@ -1595,16 +1595,17 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
-           R-40, R-41, **R-43** e **R-44**. 9 releases: PRs #26, #35, #46, #53, #57,
-           #62, #69, #74, **#79**. `main` em `dbd811a`.
-Progresso: 37 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-40, R-41, **R-42**, R-43 e R-44. 10 releases: PRs #26, #35, #46, #53, #57,
+           #62, #69, #74, #79, **#82**. `main` em `ebfab86`.
+Progresso: 38 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
 
-           ⏳ **Duas coisas subiram sem estar completas, de propósito:** o botão do R-23
-           dá 404 até a etapa 1 do Nginx (seção 11.2 do `DEPLOY_LIGHTSAIL.md`), e o R-28a
-           espera validação visual. Ver "Onde retomar".
+           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". O botão do R-23
+           **deixou de dar 404 em 2026-08-19**: o `location /protected-media/` foi aplicado
+           no Nginx e o download foi confirmado em produção. **R-23 fechado por inteiro**,
+           etapa 3 inclusive.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -1654,7 +1655,7 @@ Progresso: 37 itens em produção · **nada esperando release** · 1 fechado sem
 
 | Métrica | Linha de base | Hoje em produção (2026-08-19) |
 |---|---:|---:|
-| Testes | 100 | **409** |
+| Testes | 100 | **416** |
 | Cobertura real | 25% (reportada como 87,62%) | **80,56%** (real) |
 | `pdf_extractor.py` | 2.046 linhas / 848 stmts | **deixou de existir** (R-17) |
 | `views.py` | 987 linhas | **820 linhas** (meta da Onda 2 era ≤450 — não atingida) |
@@ -2405,15 +2406,18 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
 
-- [~] **R-23** · Servir currículos em PDF por view autenticada
+- [x] **R-23** · Servir currículos em PDF por view autenticada
       risco: médio · 0,5d · produção: **requer cuidado (P-6)** · PR: ~70 linhas / 6 arquivos
   - [x] Etapa 1 escrita: view `resume_download` + `location /protected-media/` `internal;`
         documentado na seção 11.2 do `DEPLOY_LIGHTSAIL.md`, com `/media/` ainda público
   - [x] Etapa 2: **o item supunha links que não existiam** — virou link novo, ver notas
-  - [ ] Etapa 1 aplicada no Nginx (é o Guilherme quem aplica) — **é o que falta para o
-        botão funcionar**; sem ela o `X-Accel-Redirect` cai no `location /` e vira 404
-  - [ ] Etapa 2 confirmada funcionando em produção
-  - [ ] Etapa 3: `location /media/` público removido do Nginx
+  - [x] Etapa 1 aplicada no Nginx — **2026-08-19**, como snippet
+        `/etc/nginx/snippets/protected_media.conf` mais um `include` no `server` do
+        `listen 443`. `nginx -t` verde, `reload`, sem deploy
+  - [x] Etapa 2 confirmada funcionando em produção — download real feito pela interface
+  - [x] Etapa 3: **nada a remover** — não existe `location /media/` público nesta config.
+        Confirmado com `nginx -T` (config efetiva, resolve os symlinks de `sites-enabled/`)
+        e com `curl` deslogado em `/media/resumes/1/<uuid>.pdf` → **404**
   - [x] Suíte completa verde — **9 testes novos**, 386 no total, cobertura **80,06%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
@@ -2568,9 +2572,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       pré-requisito: R-27
   - [x] Sub-PR a — telas de autenticação (login, cadastro) · **código pronto**, validação
         visual pendente · `static/css/tokens.css` + `static/css/auth.css`
-  - [ ] Sub-PR b — telas de vagas (jobs, job_create, job_edit, job_detail) · screenshots
-  - [ ] Sub-PR c — talentos, relatórios, dashboard, base · screenshots
-  - [x] Suíte completa verde — 7 testes novos, 393 no total, cobertura **80,36%**
+  - [x] Sub-PR b — telas de vagas · **código pronto**, validação visual pendente ·
+        `static/css/formulario.css`. **Muito menor que o previsto — ver notas**
+  - [x] Sub-PR c — **fechado sem extração: não há o que consolidar.** Medido em
+        2026-08-19, zero regras repetidas idênticas no grupo — ver notas
+  - [x] Suíte completa verde — 14 testes novos, 423 no total, cobertura **81,01%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado (sub-PR a)
   - [x] Implantado (sub-PR a) — **8º release (PR #74), 2026-08-19**
@@ -2611,6 +2617,74 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
     ⚠️ **Validação visual continua sendo obrigatória e é manual:** abrir `/login/` e
     `/cadastro/`, com erro de formulário na tela, em desktop e celular.
+
+    ---
+
+    **Sub-PR b (2026-08-19): o item previa ~250 linhas e são 9 regras.** Medido antes de
+    extrair, contando as regras próprias de cada template das telas de vaga:
+
+    | Template | Regras próprias | Compartilha com |
+    |---|---:|---|
+    | `jobs.html` | 2 | **nenhum** |
+    | `job_create.html` | 9 | `job_edit` (todas) |
+    | `job_edit.html` | 10 | `job_create` (9 das 10) |
+    | `job_detail.html` | 28 | **nenhum** |
+
+    **Só o formulário se repete**, e só entre criar e editar — as 9 regras do grid, campo
+    e `.errorlist`, idênticas nos dois, sem uma única divergência. `job_create.html` tinha
+    **exatamente** essas 9 e nada mais, então o `<style>` dele deixou de existir;
+    `job_edit.html` manteve inline só o `.hint`.
+
+    **`jobs.html` e `job_detail.html` ficaram de fora de propósito.** Não compartilham uma
+    regra sequer com os outros dois. Consolidar o que não se repete criaria acoplamento
+    entre telas hoje independentes, e o ganho anunciado pelo item — "mudar a identidade
+    visual passa a ser uma edição, não doze" — já foi entregue pelo `tokens.css` do
+    sub-PR a, que é onde as variáveis moram. Há teste travando essa decisão.
+
+    **Armadilha registrada:** `.errorlist` existe também no `auth.css`, com valores
+    diferentes. Não há conflito porque login e cadastro **não estendem** o
+    `base_logged.html`, então as duas folhas nunca convivem na mesma página. Está escrito
+    no cabeçalho do `formulario.css` para o dia em que alguém mudar isso.
+
+    **Equivalência provada regra a regra** contra o `git show HEAD:`, como no sub-PR a:
+    11 e 12 regras conferidas, **zero diferenças**. `collectstatic` rodado com
+    `DEBUG=False`: 4 copiados, 371 pós-processados, sem falha.
+
+    ---
+
+    **Sub-PR c (2026-08-19): fechado sem extrair uma linha, e a medição é a justificativa.**
+
+    | Template | Regras próprias |
+    |---|---:|
+    | `base_logged.html` | 36 |
+    | `dashboard.html` | 6 |
+    | `talent_pool.html` | 11 |
+    | `reports.html` | 18 |
+
+    **Regras repetidas idênticas no grupo: zero.** As únicas três sobreposições são o
+    `talent_pool` **sobrescrevendo** o `base_logged` de propósito — `.table`, `.table th`
+    e `.table th, .table td`, com fonte menor, padding menor e `white-space: nowrap`. É a
+    tela que lista muitos candidatos e precisa de tabela mais densa.
+
+    Isso é **cascata intencional, não duplicação**. Consolidar ali mudaria a aparência —
+    exatamente o que o item proíbe ("se a aparência mudar, a extração errou").
+
+    ## O R-28 inteiro era menor do que o plano dizia
+
+    | Sub-PR | Previsto | Real |
+    |---|---|---|
+    | a — autenticação | ~250 linhas | **82 linhas**, 2 arquivos novos |
+    | b — vagas | ~250 linhas | **9 regras**, e só entre criar e editar |
+    | c — talentos e afins | ~250 linhas | **nada**: zero repetição |
+
+    A premissa "12 templates com `<style>` próprio" era verdadeira; a conclusão tirada
+    dela — que havia CSS repetido nos 12 — não. **Onze templates têm `<style>`, e a
+    duplicação real estava em 4 deles.** O ganho que o item prometia veio do `tokens.css`
+    do sub-PR a, que é onde as variáveis de tema moram; o resto era CSS específico de tela,
+    que continua onde deve estar.
+
+    ⚠️ **A validação visual continua pendente** para os sub-PRs a e b — é a única coisa que
+    falta para o R-28 poder ser marcado como concluído.
 
 - [ ] **Onda 6 concluída** — JS e CSS fora dos templates, sem mudança visual
 
@@ -2967,9 +3041,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] 7 testes novos; 416 no total, cobertura **80,56%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] Verificado em produção — importar algo que falhe e ver o nome do arquivo na tela
-  - [ ] Commitado — `<hash>`
+  - [x] Implantado — **10º release (PR #82), 2026-08-19**
+  - [~] Verificado em produção — de fora: o `job_detail.4e044125c7ef.js` servido contém
+        `listaDeErros` e `escaparHtml`. **Falta o caso real:** importar algo que falhe e
+        ver o nome do arquivo na tela. O próprio passo 5 serve, se algum PDF falhar nele.
+  - [x] Commitado — `5f2addf`
   - [ ] (depois) Preservar o nome original no rename, para o dia em que ele não for
         numerado
   - Status: **código pronto** · Notas: **o item nasceu de uma pergunta do dono do projeto,
@@ -3125,18 +3201,21 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-43** 🐛 | `_garantir_conteudo` transforma resposta vazia do LLM em falha dentro do `try` do laço, então o retry e o backoff que já existiam passam a valer para ela. `finish_reason` passa a ser lido: bloqueios saem na primeira tentativa. 6 testes novos. | **Duas. (1) O achado veio de uma importação real, não de leitura de código:** `1 erro(s)` no resumo, e o payload guardava `0005.pdf: Expecting value: line 1 column 1 (char 0)`. O mesmo arquivo, sozinho, entrou minutos depois — transitório, e **não havia retry** porque o laço só reagia a exceção da API. **(2) O characterization test do R-07 pegou um defeito pior que o original:** `generate_parecer` tolerava resposta vazia e devolvia `""`, e o chamador grava isso direto em `candidate_job.parecer` reportando `completed` — o parecer escrito era **substituído por vazio**, com a tela dizendo 'concluído'. |
 | 2026-08-19 | **R-44** 🐛 | Os 4 polls de status passam a reagendar nos dois caminhos de falha (resposta ruim e exceção), com 5s em vez de 2s. O do parecer fica como está: usa `setInterval`. 8 testes novos. | **Achado ao executar o passo 5, e ele derrota o R-20b exatamente no caso para o qual o R-20b foi feito.** Os polls se reagendavam só dentro do ramo `running`; um `fetch` que falhasse caía em `return` ou num `catch` vazio e **matava o laço para sempre**. No `systemctl restart`, o poll em voo bate num serviço fora do ar, desiste, e a tela congela no contador — mesmo depois de o backend voltar respondendo 'interrompida'. **O R-20b tinha 10 testes verdes e nenhum podia pegar isto:** eles testam o payload que o backend devolve, e o defeito é do lado que pergunta. Só apareceu porque alguém reiniciou o serviço de verdade, com a tela aberta. |
 | 2026-08-19 | **R-43, R-44 e o complemento do R-23 → produção** | 9º release (PR #79): `819441c` → `dbd811a`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.1552ff779dc8.js` servido **contém o `reagendarPoll`** — o hash bate com o conteúdo do `main`. | **O release fecha um dia em que a validação manual rendeu mais que a leitura de código.** Quatro defeitos reais em uma tarde — R-43 (candidato perdido em silêncio), o parecer sobrescrito por vazio, R-44 (tela muda no restart) e R-42 (a tela nunca diz qual arquivo falhou) —, e **nenhum deles apareceria em teste automatizado**: os três primeiros exigiam operar a tela com o servidor real, e o quarto é ausência, não erro. |
+| 2026-08-19 | **R-42** | A lista de erros entra nos **quatro** lugares que renderizam status: os dois blocos do servidor e os dois polls. Uma linha de backend faltava — durante a execução o `progress_callback` só mandava o número de erros, então a lista agora viaja junto e aparece **enquanto** a importação roda. 7 testes novos. | **O item nasceu de uma pergunta do dono, não de leitura de código:** ao ver `0005.pdf: Expecting value...`, ele perguntou *"como saber qual é o cinco? nenhum tem o número 5"*. **(1) O nome é gerado** — o `prepare_uploaded_files` renomeia todo PDF para um contador de 4 dígitos, então `0005.pdf` é 'o 5º daquele envio'. **(2) Mas no fluxo real ele já basta**, porque o exportador entrega numerado (`001.pdf`, `002.pdf`…) e o nome interno bate com o dela por coincidência sistemática — por isso 'mostrar' veio primeiro e 'preservar o nome original' ficou como melhoria. **(3) Um teste negativo quase passou por engano:** `padding-left: 18px` aparece no código do helper JS, que mora na mesma página, então a asserção acusava a fonte em vez da lista renderizada. |
+| 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
+| 2026-08-19 | **R-23 — etapas 1 e 3, no Nginx** | `location /protected-media/ { internal; alias /var/www/talent_rank_ai/media/; }` aplicado como snippet incluído no `server` do `listen 443`. `nginx -t` verde, `reload`, **sem deploy**. Download real confirmado pela interface. De fora e deslogado: `/media/resumes/1/<uuid>.pdf` → **404** e `/protected-media/...` → **404**. | **A etapa 3 não existia para ser feita.** A seção 11.2 mandava remover o `location /media/` público, e **ele nunca esteve nesta config** — só há `/static/` e `/`. Confirmado com `nginx -T`, não com `grep` no arquivo: `sites-enabled/` só tem symlink e o `grep -r` não segue. Ou seja, os PDFs **nunca** estiveram servidos direto do disco por aqui; o que existia era o `/media/` do helper `static()` do Django, inerte com `DEBUG=False`. **Segundo achado, e esse era um bug ao vivo:** `USE_X_ACCEL_REDIRECT` tem default `str(not DEBUG)` e o `.env` não define a chave, então ele **se ligou sozinho** quando o código do 8º release subiu. O 404 do botão não dependia de ninguém esquecer de ligar nada — a flag liga por conta própria em qualquer ambiente com `DEBUG=False`, mesmo sem Nginx preparado. Vale tornar explícita no `.env`. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19, depois do 9º release)
+### ▶ Onde retomar (atualizado em 2026-08-19, depois do 10º release)
 
-**Em produção** (`main` em `dbd811a`, 9 releases): Ondas 0, 1, 2 e 5 completas, mais
+**Em produção** (`main` em `ebfab86`, 10 releases): Ondas 0, 1, 2 e 5 completas, mais
 R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
-R-40, R-41, R-43 e R-44.
+R-40, R-41, R-42, R-43 e R-44.
 
 **`develop` e `main` estão iguais — nada esperando release.**
 
-409 testes, cobertura **80,56%**. Piso do CI em 78.
+416 testes, cobertura **80,56%**. Piso do CI em 78.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3155,23 +3234,9 @@ eles testam o payload que o backend devolve, e o defeito era do lado que pergunt
 
 ## O que fazer no começo da próxima sessão
 
-**1. A etapa 1 do Nginx — é o único item que trava três telas de uma vez.** Os botões
-"Baixar PDF" do banco de talentos, do preview da vaga e da tabela da vaga estão todos no
-ar **dando 404**, porque o `location /protected-media/` não existe. Não é regressão, é o
-estado conhecido, e o conserto é um `reload`:
-
-```
-    location /protected-media/ {
-        internal;
-        alias /var/www/talent_rank_ai/media/;
-    }
-```
-```
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Confirmado o download logado, vem a **etapa 3** — remover o `location /media/` público,
-que é o que fecha a LGPD de fato. Seção 11.2 do `DEPLOY_LIGHTSAIL.md`.
+**1. ~~A etapa 1 do Nginx~~ — feito em 2026-08-19.** Os três botões "Baixar PDF"
+voltaram, e a etapa 3 se revelou desnecessária: o `location /media/` público nunca existiu
+nesta config. **R-23 está fechado por inteiro**, LGPD inclusive. Ver o registro do dia.
 
 **2. Repetir o passo 5, que agora verifica dois itens de uma vez.** Importar, dar
 `systemctl restart` no meio, e o aviso de **interrompida** tem que aparecer **sozinho, sem
@@ -3188,7 +3253,9 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 - **R-20b (parcial)** — o banco fez a parte dele: `RUNNING` com 63s sem heartbeat depois
   do restart. Faltou a tela, que era o R-44.
 - **R-21** — HSTS, `csrftoken` com `Secure`, `/dashboard/` deslogado → 302.
-- **R-23** — `/curriculos/1/` deslogado → 302 para o login.
+- **R-23** — `/curriculos/1/` deslogado → 302 para o login. E, depois do Nginx:
+  download real pela interface, `/media/resumes/1/<uuid>.pdf` **404** de fora e deslogado,
+  `/protected-media/...` **404** (o `internal;` recusando acesso externo).
 - **R-28a** — `/login/` e `/cadastro/` em 200, CSS com hash, imagem de fundo reescrita.
 - **R-44** — o JS servido em produção contém o `reagendarPoll`.
 
@@ -3196,8 +3263,7 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-42** | achado hoje, não iniciado | mostrar na tela **qual** arquivo falhou; o dado já está no payload |
-| **R-28 b e c** | bloqueado pela validação visual do a | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
+| **R-28** | **a, b e c prontos** — só falta a validação visual | b (`formulario.css`, PR #84) esperando release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |

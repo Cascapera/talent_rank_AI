@@ -323,7 +323,14 @@ caminho interno e devolve o pedido ao Django.
 nao o `uuid` do disco). Confira tambem que a URL antiga `/media/resumes/...` **ainda**
 funciona — nesta etapa ela deve funcionar mesmo; e o que torna a volta atras barata.
 
-**Etapa 3 — so depois da 2 passar.** Remova o bloco publico:
+> **O que aconteceu de verdade (2026-08-19):** neste servidor **nao existe** `location
+> /media/` publico — a config tem so `/static/` e `/`. Confirmado com `nginx -T`, que
+> imprime a config efetiva ja resolvida (o `grep -r` em `sites-enabled/` mente, porque la
+> so ha symlink e ele nao segue). Entao a etapa 3 virou **verificacao, nao remocao**. Os
+> comandos de conferencia estao no fim desta secao e devem ser rodados mesmo assim: e o
+> `curl` que prova, nao a leitura do arquivo.
+
+**Etapa 3 — so depois da 2 passar.** Remova o bloco publico, **se ele existir**:
 
 ```
     location /media/ {
@@ -350,6 +357,19 @@ baixar passa a ser um so, e ele confere permissao.
 
 **Volta atras:** recolocar o `location /media/` e recarregar o Nginx. Os arquivos nunca
 saem do lugar no disco — nenhuma das 3 etapas move, copia ou apaga arquivo.
+
+**Armadilha que custou o botao quebrado por um dia:** `USE_X_ACCEL_REDIRECT` tem default
+`str(not DEBUG)` no `settings.py` e o `.env` nao define a chave. Ou seja, **a flag se liga
+sozinha em qualquer ambiente com `DEBUG=False`**, tenha o Nginx o `location` interno ou
+nao — e quando nao tem, todo download da 404. Se for subir este codigo em servidor novo ou
+em staging, ou a etapa 1 vem antes, ou `USE_X_ACCEL_REDIRECT=False` entra no `.env`
+explicitamente ate ela vir.
+
+**Como colar comando neste terminal:** ele quebra linha longa no meio e indenta bloco
+multi-linha, o que arruina `sed`, `python3 -c` e principalmente heredoc (o delimitador
+indentado nao fecha e o shell trava no `>`). Comandos curtos, um por vez. Para escrever
+arquivo de config, `echo 'linha' >> arquivo` repetido — foi assim que o snippet
+`/etc/nginx/snippets/protected_media.conf` entrou.
 
 ---
 
