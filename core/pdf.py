@@ -7,6 +7,7 @@ Saiu de `pdf_extractor.py` — que apesar do nome era orquestracao de importacao
 `views.py`, que fazia zipfile e diretorio temporario dentro do handler HTTP.
 """
 
+import hashlib
 import zipfile
 from pathlib import Path
 
@@ -14,11 +15,73 @@ from django.core.files import File
 
 from .models import Candidate
 
+_CHUNK = 64 * 1024
+
+
+def _digest(path: Path) -> str | None:
+    """SHA-256 do arquivo, lido em pedaços — currículo pode ter alguns MB."""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            while chunk := f.read(_CHUNK):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    """Mesmo conteúdo? Tamanho primeiro (barato), hash só quando bate.
+
+    Tamanho igual **não** é conteúdo igual: dois currículos podem ter o mesmo número de
+    bytes. O `stat` é filtro, não veredito.
+    """
+    try:
+        if a.stat().st_size != b.stat().st_size:
+            return False
+    except OSError:
+        return False
+    digest_a = _digest(a)
+    return digest_a is not None and digest_a == _digest(b)
+
 
 def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
-    """Salva ou substitui o PDF do currículo no candidato."""
-    with open(pdf_path, "rb") as f:
-        candidate.resume_pdf.save(Path(pdf_path).name, File(f), save=True)
+    """Salva ou substitui o PDF do currículo, sem deixar órfão em disco (R-31).
+
+    O nome gravado tem uuid (`resume_upload_to`), então regravar nunca sobrescreve: cria
+    arquivo novo e abandona o anterior, que fica no disco sem nenhuma referência no banco.
+    Reimportar o mesmo candidato 10 vezes deixava 10 PDFs, 9 inalcançáveis.
+
+    Duas defesas, nesta ordem:
+
+    1. conteúdo idêntico ao que já está gravado — o caso comum, reimportar o mesmo lote —
+       não grava nada e mantém o arquivo atual;
+    2. conteúdo diferente: grava o novo **e só então** apaga o antigo. Nunca o contrário —
+       se a gravação falhar no meio, o candidato fica com o currículo velho, não sem
+       nenhum.
+
+    Falha ao apagar o antigo não interrompe a importação: o pior caso é o órfão que já
+    era o comportamento anterior.
+    """
+    origem = Path(pdf_path)
+    anterior = _resume_path(candidate)
+    nome_anterior = candidate.resume_pdf.name if candidate.resume_pdf else ""
+    if anterior is not None and _same_file(anterior, origem):
+        return
+
+    with open(origem, "rb") as f:
+        candidate.resume_pdf.save(origem.name, File(f), save=True)
+
+    if anterior is None or anterior == _resume_path(candidate):
+        return
+    # O uuid do nome torna a colisão improvável, mas apagar currículo não se desfaz:
+    # se qualquer outra linha ainda aponta para este arquivo, o órfão é o mal menor.
+    if Candidate.objects.filter(resume_pdf=nome_anterior).exclude(pk=candidate.pk).exists():
+        return
+    try:
+        anterior.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _resume_path(candidate: Candidate) -> Path | None:

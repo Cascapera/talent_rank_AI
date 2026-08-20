@@ -1594,18 +1594,17 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
-           R-40, R-41, **R-42**, R-43 e R-44. 10 releases: PRs #26, #35, #46, #53, #57,
-           #62, #69, #74, #79, **#82**. `main` em `ebfab86`.
-Progresso: 38 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
+           (Onda 6), R-40, R-41, **R-42**, R-43 e R-44. 11 releases: PRs #26, #35, #46,
+           #53, #57, #62, #69, #74, #79, #82, **#87**. `main` em `ab0b223`.
+Progresso: 39 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
 
-           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". O botão do R-23
-           **deixou de dar 404 em 2026-08-19**: o `location /protected-media/` foi aplicado
-           no Nginx e o download foi confirmado em produção. **R-23 fechado por inteiro**,
-           etapa 3 inclusive.
+           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". É a única coisa
+           que falta para ele, e agora as **quatro** telas estão em produção com o CSS
+           novo. O **R-23 fechou por inteiro** em 2026-08-19, etapa 3 inclusive.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -2267,7 +2266,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
     expand, perder uma linha não custa nada; perder uma importação custa.
 
-- [~] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
+- [x] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos
       pré-requisito: **R-20a implantado e confirmado populando em produção**
   - [x] R-20a confirmado no ar e escrevendo corretamente — **2026-08-18**, importação real
@@ -2278,9 +2277,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
   - [x] Implantado — **7º release (PR #69), 2026-08-19**; migration `0023` aplicada no CD
-  - [ ] Verificado em produção — restart no meio da importação mostra "interrompido"
+  - [x] Verificado em produção — **2026-08-20**: importação real, `systemctl restart` no
+        meio, e o aviso de **interrompida** apareceu na tela **sozinho, sem F5**. Fecha
+        junto com o R-44, que era o que faltava do lado que pergunta
   - [x] Commitado — `e62af9a`
-  - Status: **em produção, verificação manual pendente** · Notas: **dois desvios da
+  - Status: **fechado e verificado em produção** · Notas: **dois desvios da
     especificação, os dois necessários.**
 
     **1. A tabela não tinha onde guardar o que a tela mostra.** O item dizia "a escrita no
@@ -2732,16 +2733,33 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
-  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor
-  - [ ] Etapa 1: parar de gerar novos órfãos
+  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor — **continua pendente**,
+        e agora só interessa para dimensionar a etapa 2
+  - [x] **Etapa 1: parar de gerar novos órfãos** — `_save_resume_pdf` em `core/pdf.py`
   - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
-  - [ ] PR aberto e revisado
+  - [x] Suíte completa verde — **433 testes** (9 novos + 1 reescrito), cobertura **81,10%**
+  - [x] Lint e format verdes
+  - [x] PR aberto e revisado — **#90**, CI verde nos 3 jobs (lint, 3.10 e 3.12),
+        mergeado em `develop`
   - [ ] Implantado
   - [ ] Verificado em produção — `du -sh media/resumes/` estável entre importações
-  - [ ] Commitado — `<hash>`
-  - Status: não iniciado · Notas:
+  - [x] Commitado — `f995cc0` · branch `fix/r-31-pdfs-orfaos`
+  - Status: **etapa 1 em `develop`, esperando release** · Notas: duas defesas, nesta ordem —
+    conteúdo idêntico ao que já está gravado não regrava nada (o caso comum, reimportar o
+    mesmo lote); conteúdo diferente grava o novo **e só então** apaga o antigo, nunca o
+    contrário. Comparação por tamanho primeiro e SHA-256 depois: tamanho igual não é
+    conteúdo igual, e há teste para isso. Antes de apagar, confere se **nenhuma outra
+    linha** aponta para o mesmo arquivo — o uuid do nome torna a colisão improvável, mas
+    linha duplicada existe no banco de produção (R-09) e apagar currículo não se desfaz.
+    Falha ao apagar não interrompe importação: o pior caso é o órfão que já existia antes.
+
+    ⚠️ **O characterization test do R-05 que dizia fixar este quirk não fixava nada.**
+    `test_resume_pdf_is_resaved_even_when_nothing_changed` criava o candidato **sem**
+    currículo, então a segunda gravação nunca era exercitada — o teste passava dos dois
+    lados da correção. Reescrito como `test_reimportar_o_mesmo_lote_nao_acumula_pdf_em_disco`,
+    que importa o mesmo lote duas vezes e conta os arquivos em disco. **Como aplicar:** um
+    teste que fixa quirk precisa **falhar** quando o quirk é corrigido; se ele sobrevive à
+    correção, ele nunca testou o quirk. Conferir isso no momento de escrever, não depois.
 
 - [ ] **R-32** · Candidato sem alteração some da contabilidade
       risco: baixo · 3h · produção: transparente · PR: ~40 linhas / 3 arquivos
@@ -2996,12 +3014,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
   - [x] Implantado — **9º release (PR #79), 2026-08-19**
-  - [~] Verificado em produção — de fora: o `job_detail.1552ff779dc8.js` servido contém o
-        `reagendarPoll` (1 definição + 6 usos). **Falta o teste de comportamento:**
-        repetir o passo 5 — restart no meio da importação, **sem dar F5** — e o aviso tem
-        que aparecer sozinho.
+  - [x] Verificado em produção — de fora: o `job_detail.1552ff779dc8.js` servido contém o
+        `reagendarPoll` (1 definição + 6 usos). E, em **2026-08-20**, o teste de
+        comportamento: restart no meio da importação, **sem F5**, e o aviso de
+        interrompida apareceu sozinho na tela.
   - [x] Commitado — `ef749ee`
-  - Status: **em produção, verificação de tela pendente** · Notas: **o R-20b estava certo
+  - Status: **fechado e verificado em produção** · Notas: **o R-20b estava certo
     no servidor e mudo na tela.**
 
     Vale como lição de método, não só como bug: o R-20b tinha 10 testes, todos verdes, e
@@ -3010,9 +3028,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     a tela aberta.** É o argumento mais forte que este projeto produziu a favor da
     validação manual.
 
-    ⚠️ **A verificação do R-20b em produção fica pendente até este item subir.** O que foi
-    observado no passo 5 confirma o backend (a linha ficou `RUNNING` com heartbeat velho),
-    mas não o comportamento de tela, que é o que importa para quem opera.
+    ✅ **Fechado em 2026-08-20, e fechou o R-20b junto.** O passo 5 repetido depois do
+    9º release mostrou o aviso de interrompida **sozinho, sem F5** — que é o comportamento
+    de tela que faltava. A primeira execução do passo 5 já confirmava o backend (a linha
+    ficava `RUNNING` com heartbeat velho); o que não existia era a tela reagir, e era
+    exatamente isso o R-44.
 
 - [x] **R-42** · Os detalhes de erro da importação nunca chegam à tela
       risco: baixo · 2h · produção: transparente
@@ -3204,18 +3224,23 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-42** | A lista de erros entra nos **quatro** lugares que renderizam status: os dois blocos do servidor e os dois polls. Uma linha de backend faltava — durante a execução o `progress_callback` só mandava o número de erros, então a lista agora viaja junto e aparece **enquanto** a importação roda. 7 testes novos. | **O item nasceu de uma pergunta do dono, não de leitura de código:** ao ver `0005.pdf: Expecting value...`, ele perguntou *"como saber qual é o cinco? nenhum tem o número 5"*. **(1) O nome é gerado** — o `prepare_uploaded_files` renomeia todo PDF para um contador de 4 dígitos, então `0005.pdf` é 'o 5º daquele envio'. **(2) Mas no fluxo real ele já basta**, porque o exportador entrega numerado (`001.pdf`, `002.pdf`…) e o nome interno bate com o dela por coincidência sistemática — por isso 'mostrar' veio primeiro e 'preservar o nome original' ficou como melhoria. **(3) Um teste negativo quase passou por engano:** `padding-left: 18px` aparece no código do helper JS, que mora na mesma página, então a asserção acusava a fonte em vez da lista renderizada. |
 | 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
 | 2026-08-19 | **R-23 — etapas 1 e 3, no Nginx** | `location /protected-media/ { internal; alias /var/www/talent_rank_ai/media/; }` aplicado como snippet incluído no `server` do `listen 443`. `nginx -t` verde, `reload`, **sem deploy**. Download real confirmado pela interface. De fora e deslogado: `/media/resumes/1/<uuid>.pdf` → **404** e `/protected-media/...` → **404**. | **A etapa 3 não existia para ser feita.** A seção 11.2 mandava remover o `location /media/` público, e **ele nunca esteve nesta config** — só há `/static/` e `/`. Confirmado com `nginx -T`, não com `grep` no arquivo: `sites-enabled/` só tem symlink e o `grep -r` não segue. Ou seja, os PDFs **nunca** estiveram servidos direto do disco por aqui; o que existia era o `/media/` do helper `static()` do Django, inerte com `DEBUG=False`. **Segundo achado, e esse era um bug ao vivo:** `USE_X_ACCEL_REDIRECT` tem default `str(not DEBUG)` e o `.env` não define a chave, então ele **se ligou sozinho** quando o código do 8º release subiu. O 404 do botão não dependia de ninguém esquecer de ligar nada — a flag liga por conta própria em qualquer ambiente com `DEBUG=False`, mesmo sem Nginx preparado. Vale tornar explícita no `.env`. |
+| 2026-08-20 | **R-28b e a documentação → produção** | 11º release (PR #87): `ebfab86` → `ab0b223`. `No migrations to apply`; `collectstatic` com **1 copiado, 133 inalterados e 366 pós-processados** — o copiado é o `formulario.css`. Conferido de fora: home e `/login/` em 200, `formulario.d5c3e774d3fd.css` em 200 (hash calculado com `git show origin/main:` por causa do CRLF local), `/curriculos/1/` deslogado → 302, e as duas URLs de currículo → 404. 423 testes, cobertura **81,03%**. | **Release sem susto, e o primeiro em que o R-23 já estava inteiro antes de subir.** O que ele destrava é a validação visual do R-28: as telas de **nova vaga** e **editar vaga** só passaram a servir o `formulario.css` extraído agora, e são duas das quatro telas do roteiro. Antes deste deploy, validar o R-28 era impossível — metade das telas ainda tinha o `<style>` inline. |
+| 2026-08-20 | **R-44 e R-20b verificados na tela** ✅ | Passo 5 repetido em produção pelo dono: importação real, `systemctl restart` no meio, **sem F5** — o aviso de **interrompida** apareceu sozinho. Fecha os dois itens de uma vez. | **O ciclo se fechou onde tinha aberto.** O passo 5 é o mesmo roteiro que **achou** o R-44 em 2026-08-19, e agora é o que o verifica. Vale registrar a assimetria: o R-20b esteve "em produção" desde o 7º release com 10 testes verdes, e mesmo assim **não funcionava para quem opera** — a tela congelava no contador. Foram dois releases (o 9º, com o R-44) e uma validação manual entre "implantado" e "funciona". **Como aplicar:** para item cujo valor só existe na tela, `[x] Implantado` não é o fim da linha; o checklist precisa de uma caixa separada para o comportamento observado, e ela é a que conta. |
+| 2026-08-20 | **R-31** (etapa 1) | `_save_resume_pdf` para de gerar órfão: conteúdo idêntico não regrava, conteúdo diferente grava o novo e só então apaga o antigo, e só se nenhuma outra linha do banco apontar para o mesmo arquivo. Comparação por tamanho e depois SHA-256. 9 testes novos + 1 characterization reescrito; 423 → **433 testes**, cobertura **81,10%**. PR #90, `f995cc0`. | **O characterization test do R-05 que dizia fixar este quirk não fixava nada.** Depois da correção a suíte inteira ficou verde — inclusive o teste chamado `test_resume_pdf_is_resaved_even_when_nothing_changed`, que deveria ter falhado. Fui ver: ele criava o candidato **sem** currículo, então a segunda gravação nunca era exercitada e ele passava dos dois lados da correção. O nome descrevia uma intenção que o corpo não cumpria. **Como aplicar:** um teste que fixa quirk precisa **falhar** quando o quirk é corrigido; se sobrevive à correção, nunca testou o quirk. Vale conferir no momento de escrever — a suíte verde onde se esperava vermelho é o sinal, e é fácil confundir com "não quebrou nada". Segundo achado, menor: a guarda contra apagar arquivo ainda referenciado por outra linha não é teoria — a duplicata do R-09 está no banco de produção, e apagar currículo não se desfaz. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19, depois do 10º release)
+### ▶ Onde retomar (atualizado em 2026-08-20, depois da etapa 1 do R-31)
 
-**Em produção** (`main` em `ebfab86`, 10 releases): Ondas 0, 1, 2 e 5 completas, mais
-R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
-R-40, R-41, R-42, R-43 e R-44.
+**Em produção** (`main` em `ab0b223`, 11 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a e R-28b
+(Onda 6), R-40, R-41, R-42, R-43 e R-44.
 
-**`develop` e `main` estão iguais — nada esperando release.**
+**Esperando release na `develop`:** a **etapa 1 do R-31** (PR #90) — o primeiro **código**
+na fila desde o 11º release; as PRs #88, #89 e esta são documentação. O deploy dela é
+transparente para a usuária: nenhuma migration, nenhum estático, nenhuma tela.
 
-416 testes, cobertura **80,56%**. Piso do CI em 78.
+433 testes, cobertura **81,10%**. Piso do CI em 78.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3238,33 +3263,55 @@ eles testam o payload que o backend devolve, e o defeito era do lado que pergunt
 voltaram, e a etapa 3 se revelou desnecessária: o `location /media/` público nunca existiu
 nesta config. **R-23 está fechado por inteiro**, LGPD inclusive. Ver o registro do dia.
 
-**2. Repetir o passo 5, que agora verifica dois itens de uma vez.** Importar, dar
-`systemctl restart` no meio, e o aviso de **interrompida** tem que aparecer **sozinho, sem
-F5**. Se aparecer, fecha R-44 e R-20b juntos. O roteiro com o limiar curto
-(`IMPORT_JOB_STALE_AFTER_SECONDS=60`, e desfazer depois) está no registro do dia.
+**2. ~~Repetir o passo 5~~ — feito em 2026-08-20.** O aviso de **interrompida** apareceu
+sozinho, sem F5. **R-44 e R-20b fechados**, os dois verificados na tela.
 
-**3. A validação visual do R-28a** — `/login/` e `/cadastro/`, desktop e celular, **com
-erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais depende dela.
+✅ **O `IMPORT_JOB_STALE_AFTER_SECONDS=60` do roteiro já foi desfeito** — conferido em
+2026-08-20, a chave não está no `.env` e vale o default de **900s (15 min)**, calibrado
+contra os ~12 que um lote de 10 PDFs pode levar legitimamente. Deixado em 60s, uma
+importação real com lote lento seria marcada como interrompida sem ter sido.
+
+**3. A validação visual do R-28** — agora com **quatro** telas, porque os sub-PRs b e c já
+subiram: `/login/`, `/cadastro/`, **nova vaga** e **editar vaga**, desktop e celular,
+sempre **com erro de formulário na tela** (é o que exercita a `.errorlist`, a regra que
+mais mudou de lugar). É a única coisa que falta para o R-28 ser marcado como concluído.
+
+**4. Levar a etapa 1 do R-31 a produção** e medir. O roteiro de verificação é curto e o
+mesmo número serve para duas coisas:
+
+```
+du -sh /var/www/talent_rank_ai/media/resumes/     # antes
+# reimportar na interface o mesmo lote que já foi importado
+du -sh /var/www/talent_rank_ai/media/resumes/     # depois — tem que estar igual
+```
+
+Antes da correção o segundo número seria maior que o primeiro. O tamanho absoluto, que já
+era o bloqueio registrado do R-31, é o que dimensiona a **etapa 2** — limpar os órfãos que
+o comportamento antigo já deixou no disco, em comando separado e depois de conferência
+manual, porque apagar currículo não se desfaz.
 
 ## Verificado em produção neste dia
 
 - **R-41** ✅ — F5 várias vezes depois de iniciar importação: **uma** linha em
   `core_importjob`, não duas. O bug que motivou o item não volta.
-- **R-20b (parcial)** — o banco fez a parte dele: `RUNNING` com 63s sem heartbeat depois
-  do restart. Faltou a tela, que era o R-44.
+- **R-20b** ✅ — o banco fazia a parte dele desde 2026-08-19 (`RUNNING` com 63s sem
+  heartbeat depois do restart); em **2026-08-20** a tela passou a reagir, com o aviso de
+  interrompida aparecendo sozinho. Fechado.
 - **R-21** — HSTS, `csrftoken` com `Secure`, `/dashboard/` deslogado → 302.
 - **R-23** — `/curriculos/1/` deslogado → 302 para o login. E, depois do Nginx:
   download real pela interface, `/media/resumes/1/<uuid>.pdf` **404** de fora e deslogado,
   `/protected-media/...` **404** (o `internal;` recusando acesso externo).
 - **R-28a** — `/login/` e `/cadastro/` em 200, CSS com hash, imagem de fundo reescrita.
-- **R-44** — o JS servido em produção contém o `reagendarPoll`.
+- **R-44** ✅ — o JS servido em produção contém o `reagendarPoll`, e em **2026-08-20** o
+  comportamento foi confirmado na tela: restart no meio da importação, sem F5, aviso
+  sozinho. Fechado.
 
 ## Backlog restante
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-28** | **a, b e c prontos** — só falta a validação visual | b (`formulario.css`, PR #84) esperando release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica |
-| **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
+| **R-28** | **a, b e c em produção** — só falta a validação visual | b (`formulario.css`) subiu no 11º release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica. **As quatro telas do roteiro já servem o CSS novo** |
+| **R-31** | **etapa 1 em `develop`** (PR #90) | subir no próximo release e conferir com `du -sh /var/www/talent_rank_ai/media/resumes/` **antes e depois** de reimportar o mesmo lote — o mesmo número dimensiona a etapa 2 (limpar os órfãos que já existem) |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 | **`DJANGO_SECRET_KEY`** | 11 caracteres | higiene barata, **não incêndio** — avaliação no checklist do R-21 |
