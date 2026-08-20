@@ -1595,13 +1595,13 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
-           (Onda 6, **concluída**), **R-31 (etapa 1)**, **R-45**, R-40, R-41, **R-42**,
-           R-43 e R-44. 14 releases: PRs #26, #35, #46, #53, #57, #62, #69, #74, #79,
-           #82, #87, #92, #95, **#97**. `main` em `ae976df`.
-Progresso: 42 itens em produção · **nada esperando release** · 1 fechado sem correção
+           (Onda 6, **concluída**), **R-31 (etapa 1)**, **R-45**, **R-46**, R-40, R-41,
+           **R-42**, R-43 e R-44. 15 releases: PRs #26, #35, #46, #53, #57, #62, #69, #74,
+           #79, #82, #87, #92, #95, #97, **#101**. `main` em `219d5bb`.
+Progresso: 43 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
-           atualizado em 2026-08-20, depois do 14º release e do fechamento do R-28
+           atualizado em 2026-08-20, depois do 15º release — R-45, R-46 e R-28 fechados
 
            ✅ **O R-28 fechou em 2026-08-20** — as quatro telas validadas na tela, desktop
            e celular, com erro de formulário nas quatro. A validação achou um bug antigo
@@ -3211,13 +3211,14 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         (`TypeError` no `FieldFile`); sem quebra para a usuária, porque campo vazio nunca
         casa com nada. Corrigido na PR #96 e fechado no **14º release (PR #97)**, com
         `Applying core.0025_backfill_resume_sha256... OK`
-  - [~] Verificado em produção — **o backfill fechou em 2026-08-20**: `SELECT count(*)
+  - [x] Verificado em produção — **o backfill fechou em 2026-08-20**: `SELECT count(*)
         FROM core_candidate WHERE resume_sha256 <> ''` deu **449**, os 449 candidatos com
-        currículo, nenhum ilegível. **Falta a caixa que conta:** reimportar um lote já
-        importado e ver `N já no banco` na tela, com a cota do Gemini intocada — o
-        comportamento observado, que no R-20b chegou dois releases depois do implantado
-  - Status: **pronto para revisão** · Notas: **a assimetria entre os dois fluxos é decisão,
-    não esquecimento.** No banco de talentos a extração é o produto inteiro — não há vaga
+        currículo, nenhum ilegível
+  - [x] **Validado na tela em 2026-08-20** — o dono reimportou um lote já importado e o
+        `N já no banco` apareceu. É a caixa que conta para item cujo valor só existe na
+        tela: no R-20b ela chegou **dois releases** depois do `[x] Implantado`
+  - Status: **concluído — em produção e validado na tela** · Notas: **a assimetria entre
+    os dois fluxos é decisão, não esquecimento.** No banco de talentos a extração é o produto inteiro — não há vaga
     para avaliar —, então reconhecer o arquivo torna a chamada dispensável. No fluxo de
     vaga o LLM **extrai e avalia contra a vaga na mesma chamada**, e a avaliação é sempre
     necessária.
@@ -3284,10 +3285,13 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         em vez de comparar strings — 2 vermelhos antes
   - [x] Suíte completa verde — **460 testes**, cobertura 81,57%
   - [x] Lint e format verdes
-  - [ ] PR aberto e revisado
-  - [ ] Implantado
-  - [ ] **Validado na tela** — provocar erro em nova vaga e conferir que **dá para ler**
-  - Status: **pronto para revisão** · Notas: item que só a validação manual poderia
+  - [x] PR aberto e revisado — **#99**, CI verde nos 3 jobs
+  - [x] Implantado — **15º release (PR #101), 2026-08-20**. `No migrations to apply`;
+        conferido no arquivo que produção serve (`formulario.09043a9054b2.css`, 200) que a
+        declaração ativa é `color: #7f1d1d; font-weight: 600`
+  - [x] **Validado na tela em 2026-08-20** — erro em nova vaga, e agora dá para ler
+  - Status: **concluído — em produção e validado na tela** · Notas: item que só a
+    validação manual poderia
     produzir. **O teste que faltava não era de CSS, era de contraste.** Um teste no padrão
     do R-28 confirmaria a regra como correta: ela existe, está na folha certa e tem o valor
     que o template tinha. Por isso os testes novos calculam a luminância relativa e
@@ -3375,23 +3379,26 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-20 | **R-45 — backfill quebrado em produção** 🐛 | O 13º release (PR #95) aplicou a `0024` e **falhou na `0025`**: `raiz / candidate.resume_pdf` estoura `TypeError: unsupported operand type(s) for /: 'PosixPath' and 'FieldFile'` — num modelo histórico o campo ainda é `FieldFile`, não a string do caminho. Corrigido com `values_list("id", "resume_pdf")`, que traz a coluna crua. Mais **8 testes que rodam o backfill sobre candidatos de verdade** e reproduzem o `TypeError` na versão antiga. PR #96. | **A suíte inteira estava verde, e o CI roda `migrate`.** Só que num banco recém-criado, sem nenhum candidato: o laço do backfill nunca executava. `migrate` verde no CI significa "a migration importou sem erro de sintaxe", não que o que ela faz funciona. **Terceira vez hoje que o mesmo padrão aparece** — o characterization test do R-05 criava o candidato sem currículo, o roteiro do `du -sh` não tinha resolução, e agora a data migration nunca era exercitada. **Como aplicar:** data migration pede teste que crie linhas e chame a função diretamente (`importlib.import_module` no módulo da migration, `apps` global). Achado de tabela: **o CD mentia.** O script do `ssh-action` roda sem `set -e` e o `echo "Deploy concluído com sucesso"` é incondicional — o `migrate` abortou e o CD pintou verde. Corrigido com `script_stop: true` e `set -e`; valia para todo deploy, não só este. |
 | 2026-08-20 | **R-45 (corrigido) → produção, e o CD que mentia** | 14º release (PR #97): `38c7e01` → `ae976df`. `Applying core.0025_backfill_resume_sha256... OK` — desta vez aplicou. `deploy.yml` com `script_stop: true` e `set -e`. De fora: home e `/login/` **200**, `/curriculos/1/` deslogado **302**, `/media/resumes/...` **404**. 457 testes. | **O verde do CD passou a significar alguma coisa.** Até hoje, qualquer falha de `migrate`, `pip install` ou `collectstatic` era engolida e o `echo "Deploy concluído com sucesso"` saía do mesmo jeito — o script do `ssh-action` roda sem `set -e`. Não era bug deste release; era de todos, desde sempre. Achado só porque o meu erro caiu justamente no comando que falha silenciosamente. **Como aplicar:** script de deploy sem `set -e` transforma o CD em teatro; e mensagem de sucesso incondicional no fim é a assinatura do problema. |
 | 2026-08-20 | **R-28 validado na tela** ✅ | O dono percorreu as **quatro** telas (`/login/`, `/cadastro/`, `/vagas/nova/`, `/vagas/<id>/editar/`), desktop e celular, **com erro de formulário na tela** nas quatro. Nenhuma regressão: layout, card, campos e as duas `.errorlist` como antes. **R-28 concluído**, e com ele a Onda 6. | **A validação rendeu um bug que nenhum teste acharia — e ele é antigo.** A `.errorlist` do `formulario.css` é `#fecaca` sobre o fundo `#e0f2f7` da área logada: contraste ~1,2:1, texto praticamente invisível. Conferido no histórico antes de acusar: o valor **já estava no `<style>` inline** de `job_create.html` antes da extração, então o R-28 foi fiel e o defeito é anterior. Virou **R-46**. **Como aplicar:** teste de CSS confere que a regra existe, está na folha certa e tem o valor esperado — e passa perfeitamente quando **o valor em si** é que está errado contra um fundo que teste nenhum conhece. Para item de aparência, a caixa que conta continua sendo o olho humano. Preparar o roteiro lendo o CSS antes de pedir a validação também rendeu: eu já sabia o que ele ia encontrar e o que era ruído (as duas `.errorlist` diferentes de propósito, a grade de 5 colunas sem `@media`), então ele não perdeu tempo reportando o que não era regressão. |
+| 2026-08-20 | **R-46 → produção** | 15º release (PR #101): `ae976df` → `219d5bb`. `No migrations to apply`; um estático muda. Conferido **no arquivo que produção serve**: `formulario.09043a9054b2.css` em 200, e a declaração ativa é `color: #7f1d1d; font-weight: 600`. O `#fecaca` que ainda aparece no arquivo está só no comentário que documenta a correção. | **Conferir o hash calculando `git show origin/main:<arquivo> \| md5sum` continua sendo o único jeito** — o checkout local é CRLF e daria outro hash. E baixar o CSS servido, em vez de deduzir do deploy verde: mostra a declaração ativa, que é o que a tela usa. |
+| 2026-08-20 | **R-45 validado na tela** ✅ | O dono reimportou um lote já importado e o `N já no banco` apareceu. **R-45 concluído.** Antes disso o backfill já tinha fechado: `SELECT count(*) ... WHERE resume_sha256 <> ''` deu **449 de 449**. | **A caixa do comportamento observado fechou no mesmo dia, e isso é a exceção.** No R-20b ela chegou dois releases depois do `[x] Implantado`, com 10 testes verdes no meio. O que encurtou aqui foi o item ter nascido de um número medido em produção — 231 cópias byte-a-byte —, então o teste de aceitação já existia antes do código: reimportar o mesmo lote e ver o contador. **Como aplicar:** item que começa com medição em produção costuma chegar com o roteiro de validação pronto; item que começa com leitura de código chega sem. |
 
 ---
 
 ### ▶ Onde retomar (atualizado em 2026-08-20, depois do 12º release)
 
-**Em produção** (`main` em `ae976df`, **14 releases**): Ondas 0, 1, 2, 5 e **6**
+**Em produção** (`main` em `219d5bb`, **15 releases**): Ondas 0, 1, 2, 5 e **6**
 completas, mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27,
-**R-28 concluído e validado na tela**, R-31 (etapa 1), **R-45**, R-40, R-41, R-42, R-43
-e R-44.
+**R-28**, R-31 (etapa 1), **R-45** e **R-46** — os quatro últimos **validados na tela**,
+não só implantados —, R-40, R-41, R-42, R-43 e R-44.
 
 **Esperando release na `develop`:** nada — só esta documentação.
 
 **457 testes**, cobertura **81,57%**. Piso do CI em 78.
 
-**O R-28 fechou em 2026-08-20**, validado nas quatro telas. Sobraram a **etapa 2 do
-R-31** (limpar 270 órfãos, 33M — é LGPD, não disco) e o **R-46**, o bug de contraste que
-a própria validação do R-28 revelou.
+**Fechados em 2026-08-20:** R-44, R-20b, R-31 etapa 1, R-45, R-28 (que fechou a Onda 6) e
+R-46. **Sobrou um item de trabalho:** a **etapa 2 do R-31** — limpar 270 órfãos, 33M, que é
+**LGPD e não disco**. Fora isso, só o item obrigatório de fechamento (troca das chaves) e
+os dois de prazo, R-34 e R-39.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3505,8 +3512,9 @@ Regras para quando for executar, porque apagar currículo não se desfaz:
 | Item | Estado | O que falta |
 |---|---|---|
 | **R-28** | ✅ **concluído em 2026-08-20** | as quatro telas validadas na tela, desktop e celular, com erro de formulário nas quatro. Nenhuma regressão. c **fechado sem extrair** (PR #85): não havia regra repetida idêntica no grupo. A validação rendeu o **R-46** |
-| **R-46** | **aberto** 🐛 | `.errorlist` do `formulario.css` em `#fecaca` sobre fundo `#e0f2f7` — contraste ~1,2:1. **Não é regressão**: o valor já estava no inline antes do R-28. Para ela, vira "o sistema não salva a vaga e não diz por quê" |
-| **R-31** | **etapa 1 em produção e verificada** (12º release, PR #92) | só a **etapa 2**: limpar **270 órfãos / 33M** já medidos. Não é disco, é LGPD — currículos de pessoas reais sem vínculo no banco. Quarentena antes de apagar, e nada com `mtime` recente |
+| **R-46** | ✅ **concluído em 2026-08-20** | `#fecaca` → `#7f1d1d`, contraste 1,44:1 → ~9:1. Em produção no 15º release e validado na tela. Os testes novos **calculam a luminância** em vez de comparar strings — no padrão antigo, um teste de CSS confirmaria a regra errada como correta |
+| **R-31** | **etapa 1 concluída** (12º release, PR #92) | só a **etapa 2**: limpar **270 órfãos / 33M** já medidos e listados. Não é disco, é LGPD — currículos de pessoas reais sem vínculo no banco. Quarentena antes de apagar, nada com `mtime` recente, e nenhuma importação `RUNNING` viva. **É o único item de trabalho que sobrou** |
+| **R-45** | ✅ **concluído em 2026-08-20** | dedup por hash no banco de talentos. Backfill **449 de 449**, e o `N já no banco` confirmado na tela. Corta ~91% das reimportações; os 9% que escapam estão medidos e documentados |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 | **`DJANGO_SECRET_KEY`** | 11 caracteres | higiene barata, **não incêndio** — avaliação no checklist do R-21 |
