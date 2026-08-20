@@ -45,6 +45,23 @@ def _same_file(a: Path, b: Path) -> bool:
     return digest_a is not None and digest_a == _digest(b)
 
 
+def _atualizar_hash(candidate: Candidate, path: Path | None) -> None:
+    """Mantém `resume_sha256` igual ao arquivo que está gravado (R-45).
+
+    Escreve só quando muda, para não gerar UPDATE a cada reimportação de conteúdo
+    idêntico — que é justamente o caso comum. Arquivo ilegível deixa o campo como está:
+    hash errado é pior que hash ausente, porque faria a importação **pular** um currículo
+    que nunca foi importado.
+    """
+    if path is None:
+        return
+    digest = _digest(path)
+    if digest is None or candidate.resume_sha256 == digest:
+        return
+    candidate.resume_sha256 = digest
+    candidate.save(update_fields=["resume_sha256"])
+
+
 def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
     """Salva ou substitui o PDF do currículo, sem deixar órfão em disco (R-31).
 
@@ -67,10 +84,13 @@ def _save_resume_pdf(candidate: Candidate, pdf_path: Path) -> None:
     anterior = _resume_path(candidate)
     nome_anterior = candidate.resume_pdf.name if candidate.resume_pdf else ""
     if anterior is not None and _same_file(anterior, origem):
+        # Nada a gravar, mas o candidato pode ser anterior ao R-45 e estar sem hash.
+        _atualizar_hash(candidate, anterior)
         return
 
     with open(origem, "rb") as f:
         candidate.resume_pdf.save(origem.name, File(f), save=True)
+    _atualizar_hash(candidate, _resume_path(candidate))
 
     if anterior is None or anterior == _resume_path(candidate):
         return

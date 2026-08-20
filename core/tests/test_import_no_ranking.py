@@ -45,10 +45,18 @@ def pdf_dir(tmp_path, settings):
 
 
 def make_pdfs(folder, count):
+    """Currículos de candidatos **diferentes**, portanto de conteúdo diferente.
+
+    O conteúdo variar por índice não é detalhe: desde o R-45 a importação reconhece pelo
+    SHA-256 um currículo que já está no banco e não o manda ao LLM. Este fixture gravava
+    os mesmos bytes em todos os arquivos e esperava N candidatos distintos — uma
+    combinação que não existe na realidade, e que a partir do R-45 significa outra coisa
+    (o mesmo perfil exportado duas vezes). Para esse caso há teste próprio.
+    """
     paths = []
     for i in range(count):
         p = folder / f"{i:04d}.pdf"
-        p.write_bytes(b"%PDF-1.4 fake")
+        p.write_bytes(f"%PDF-1.4 curriculo do candidato {i}".encode())
         paths.append(p)
     return paths
 

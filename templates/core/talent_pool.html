@@ -197,6 +197,10 @@
           {% if import_status.result %}
             <div style="margin-top: 6px; font-size: 12px; color: var(--muted);">
               {{ import_status.result.created }} criados, {{ import_status.result.updated }} atualizados, {{ import_status.result.unchanged|default:0 }} sem alteração, {{ import_status.result.skipped }} ignorados
+              {% if import_status.result.already_known %}
+                {# R-45: so aparece quando ha o que mostrar. "0 ja no banco" e ruido. #}
+                , {{ import_status.result.already_known }} já no banco
+              {% endif %}
               {% if import_status.result.errors %}
                 <span style="color: #d32f2f;">, {{ import_status.result.errors }} erro(s)</span>
               {% endif %}
@@ -503,10 +507,15 @@
             const updated = result.updated || 0;
             const unchanged = result.unchanged || 0;
             const skipped = result.skipped || 0;
+            const alreadyKnown = result.already_known || 0;
             const errors = result.errors || 0;
             let html = `<strong style="color: var(--primary);">Importação concluída.</strong>`;
             html += `<div style="margin-top: 6px; font-size: 12px; color: var(--muted);">`;
             html += `${created} criados, ${updated} atualizados, ${unchanged} sem alteração, ${skipped} ignorados`;
+            // R-45: so aparece quando ha o que mostrar. "0 ja no banco" e ruido.
+            if (alreadyKnown > 0) {
+              html += `, ${alreadyKnown} já no banco`;
+            }
             if (errors > 0) {
               html += ` <span style="color: #d32f2f;">, ${errors} erro(s)</span>`;
             }
