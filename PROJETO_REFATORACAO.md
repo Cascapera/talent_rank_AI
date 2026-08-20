@@ -1602,9 +1602,10 @@ Progresso: 38 itens em produção · **nada esperando release** · 1 fechado sem
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
 
-           ⏳ **Duas coisas subiram sem estar completas, de propósito:** o botão do R-23
-           dá 404 até a etapa 1 do Nginx (seção 11.2 do `DEPLOY_LIGHTSAIL.md`), e o R-28a
-           espera validação visual. Ver "Onde retomar".
+           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". O botão do R-23
+           **deixou de dar 404 em 2026-08-19**: o `location /protected-media/` foi aplicado
+           no Nginx e o download foi confirmado em produção. **R-23 fechado por inteiro**,
+           etapa 3 inclusive.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -2405,15 +2406,18 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     aberto sem token configurado) — é o que garante que o deploy sozinho não derruba
     scraper nenhum.
 
-- [~] **R-23** · Servir currículos em PDF por view autenticada
+- [x] **R-23** · Servir currículos em PDF por view autenticada
       risco: médio · 0,5d · produção: **requer cuidado (P-6)** · PR: ~70 linhas / 6 arquivos
   - [x] Etapa 1 escrita: view `resume_download` + `location /protected-media/` `internal;`
         documentado na seção 11.2 do `DEPLOY_LIGHTSAIL.md`, com `/media/` ainda público
   - [x] Etapa 2: **o item supunha links que não existiam** — virou link novo, ver notas
-  - [ ] Etapa 1 aplicada no Nginx (é o Guilherme quem aplica) — **é o que falta para o
-        botão funcionar**; sem ela o `X-Accel-Redirect` cai no `location /` e vira 404
-  - [ ] Etapa 2 confirmada funcionando em produção
-  - [ ] Etapa 3: `location /media/` público removido do Nginx
+  - [x] Etapa 1 aplicada no Nginx — **2026-08-19**, como snippet
+        `/etc/nginx/snippets/protected_media.conf` mais um `include` no `server` do
+        `listen 443`. `nginx -t` verde, `reload`, sem deploy
+  - [x] Etapa 2 confirmada funcionando em produção — download real feito pela interface
+  - [x] Etapa 3: **nada a remover** — não existe `location /media/` público nesta config.
+        Confirmado com `nginx -T` (config efetiva, resolve os symlinks de `sites-enabled/`)
+        e com `curl` deslogado em `/media/resumes/1/<uuid>.pdf` → **404**
   - [x] Suíte completa verde — **9 testes novos**, 386 no total, cobertura **80,06%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
@@ -3199,10 +3203,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-43, R-44 e o complemento do R-23 → produção** | 9º release (PR #79): `819441c` → `dbd811a`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.1552ff779dc8.js` servido **contém o `reagendarPoll`** — o hash bate com o conteúdo do `main`. | **O release fecha um dia em que a validação manual rendeu mais que a leitura de código.** Quatro defeitos reais em uma tarde — R-43 (candidato perdido em silêncio), o parecer sobrescrito por vazio, R-44 (tela muda no restart) e R-42 (a tela nunca diz qual arquivo falhou) —, e **nenhum deles apareceria em teste automatizado**: os três primeiros exigiam operar a tela com o servidor real, e o quarto é ausência, não erro. |
 | 2026-08-19 | **R-42** | A lista de erros entra nos **quatro** lugares que renderizam status: os dois blocos do servidor e os dois polls. Uma linha de backend faltava — durante a execução o `progress_callback` só mandava o número de erros, então a lista agora viaja junto e aparece **enquanto** a importação roda. 7 testes novos. | **O item nasceu de uma pergunta do dono, não de leitura de código:** ao ver `0005.pdf: Expecting value...`, ele perguntou *"como saber qual é o cinco? nenhum tem o número 5"*. **(1) O nome é gerado** — o `prepare_uploaded_files` renomeia todo PDF para um contador de 4 dígitos, então `0005.pdf` é 'o 5º daquele envio'. **(2) Mas no fluxo real ele já basta**, porque o exportador entrega numerado (`001.pdf`, `002.pdf`…) e o nome interno bate com o dela por coincidência sistemática — por isso 'mostrar' veio primeiro e 'preservar o nome original' ficou como melhoria. **(3) Um teste negativo quase passou por engano:** `padding-left: 18px` aparece no código do helper JS, que mora na mesma página, então a asserção acusava a fonte em vez da lista renderizada. |
 | 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
+| 2026-08-19 | **R-23 — etapas 1 e 3, no Nginx** | `location /protected-media/ { internal; alias /var/www/talent_rank_ai/media/; }` aplicado como snippet incluído no `server` do `listen 443`. `nginx -t` verde, `reload`, **sem deploy**. Download real confirmado pela interface. De fora e deslogado: `/media/resumes/1/<uuid>.pdf` → **404** e `/protected-media/...` → **404**. | **A etapa 3 não existia para ser feita.** A seção 11.2 mandava remover o `location /media/` público, e **ele nunca esteve nesta config** — só há `/static/` e `/`. Confirmado com `nginx -T`, não com `grep` no arquivo: `sites-enabled/` só tem symlink e o `grep -r` não segue. Ou seja, os PDFs **nunca** estiveram servidos direto do disco por aqui; o que existia era o `/media/` do helper `static()` do Django, inerte com `DEBUG=False`. **Segundo achado, e esse era um bug ao vivo:** `USE_X_ACCEL_REDIRECT` tem default `str(not DEBUG)` e o `.env` não define a chave, então ele **se ligou sozinho** quando o código do 8º release subiu. O 404 do botão não dependia de ninguém esquecer de ligar nada — a flag liga por conta própria em qualquer ambiente com `DEBUG=False`, mesmo sem Nginx preparado. Vale tornar explícita no `.env`. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19, depois do 9º release)
+### ▶ Onde retomar (atualizado em 2026-08-19, depois do 10º release)
 
 **Em produção** (`main` em `ebfab86`, 10 releases): Ondas 0, 1, 2 e 5 completas, mais
 R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
@@ -3229,23 +3234,9 @@ eles testam o payload que o backend devolve, e o defeito era do lado que pergunt
 
 ## O que fazer no começo da próxima sessão
 
-**1. A etapa 1 do Nginx — é o único item que trava três telas de uma vez.** Os botões
-"Baixar PDF" do banco de talentos, do preview da vaga e da tabela da vaga estão todos no
-ar **dando 404**, porque o `location /protected-media/` não existe. Não é regressão, é o
-estado conhecido, e o conserto é um `reload`:
-
-```
-    location /protected-media/ {
-        internal;
-        alias /var/www/talent_rank_ai/media/;
-    }
-```
-```
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Confirmado o download logado, vem a **etapa 3** — remover o `location /media/` público,
-que é o que fecha a LGPD de fato. Seção 11.2 do `DEPLOY_LIGHTSAIL.md`.
+**1. ~~A etapa 1 do Nginx~~ — feito em 2026-08-19.** Os três botões "Baixar PDF"
+voltaram, e a etapa 3 se revelou desnecessária: o `location /media/` público nunca existiu
+nesta config. **R-23 está fechado por inteiro**, LGPD inclusive. Ver o registro do dia.
 
 **2. Repetir o passo 5, que agora verifica dois itens de uma vez.** Importar, dar
 `systemctl restart` no meio, e o aviso de **interrompida** tem que aparecer **sozinho, sem
@@ -3262,7 +3253,9 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 - **R-20b (parcial)** — o banco fez a parte dele: `RUNNING` com 63s sem heartbeat depois
   do restart. Faltou a tela, que era o R-44.
 - **R-21** — HSTS, `csrftoken` com `Secure`, `/dashboard/` deslogado → 302.
-- **R-23** — `/curriculos/1/` deslogado → 302 para o login.
+- **R-23** — `/curriculos/1/` deslogado → 302 para o login. E, depois do Nginx:
+  download real pela interface, `/media/resumes/1/<uuid>.pdf` **404** de fora e deslogado,
+  `/protected-media/...` **404** (o `internal;` recusando acesso externo).
 - **R-28a** — `/login/` e `/cadastro/` em 200, CSS com hash, imagem de fundo reescrita.
 - **R-44** — o JS servido em produção contém o `reagendarPoll`.
 
@@ -3270,7 +3263,7 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-28 b e c** | bloqueado pela validação visual do a | b = telas de vagas; c = talentos, relatórios, dashboard e o `base_logged` usando o `tokens.css` |
+| **R-28** | **a, b e c prontos** — só falta a validação visual | b (`formulario.css`, PR #84) esperando release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
