@@ -3207,12 +3207,15 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Suíte completa verde — **449 testes**, cobertura **81,57%** (era 81,10%)
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#94**, CI verde nos 3 jobs
-  - [~] Implantado — **13º release (PR #95), 2026-08-20**. A `0024` aplicou; **a `0025`
-        falhou** (`TypeError` no `FieldFile`). Sem quebra para a usuária: campo vazio nunca
-        casa com nada, a importação seguiu como antes. Corrigido na PR #96
-  - [ ] Verificado em produção — `SELECT count(*) FROM core_candidate WHERE resume_sha256
-        <> ''` tem de dar **449**; depois reimportar um lote já importado e conferir
-        `already_known` maior que zero na tela, com a cota do Gemini intocada
+  - [x] Implantado — **13º release (PR #95)** aplicou a `0024` e **falhou na `0025`**
+        (`TypeError` no `FieldFile`); sem quebra para a usuária, porque campo vazio nunca
+        casa com nada. Corrigido na PR #96 e fechado no **14º release (PR #97)**, com
+        `Applying core.0025_backfill_resume_sha256... OK`
+  - [~] Verificado em produção — **o backfill fechou em 2026-08-20**: `SELECT count(*)
+        FROM core_candidate WHERE resume_sha256 <> ''` deu **449**, os 449 candidatos com
+        currículo, nenhum ilegível. **Falta a caixa que conta:** reimportar um lote já
+        importado e ver `N já no banco` na tela, com a cota do Gemini intocada — o
+        comportamento observado, que no R-20b chegou dois releases depois do implantado
   - Status: **pronto para revisão** · Notas: **a assimetria entre os dois fluxos é decisão,
     não esquecimento.** No banco de talentos a extração é o produto inteiro — não há vaga
     para avaliar —, então reconhecer o arquivo torna a chamada dispensável. No fluxo de
