@@ -33,14 +33,23 @@ def preencher(apps, schema_editor):
     Candidate = apps.get_model("core", "Candidate")
     raiz = Path(settings.MEDIA_ROOT)
 
-    pendentes = Candidate.objects.exclude(resume_pdf="").filter(resume_sha256="")
+    # `values_list` de propósito: num modelo histórico `candidate.resume_pdf` ainda é um
+    # `FieldFile`, não a string do caminho — foi assim que a primeira versão desta
+    # migration quebrou em produção, com `PosixPath / FieldFile`. Pedindo a coluna crua
+    # vem `str`, e o caminho se monta sem depender do descritor do campo.
+    pendentes = (
+        Candidate.objects.filter(resume_sha256="")
+        .exclude(resume_pdf="")
+        .exclude(resume_pdf__isnull=True)
+        .values_list("id", "resume_pdf")
+    )
+
     atualizados = []
-    for candidate in pendentes.only("id", "resume_pdf", "resume_sha256").iterator():
-        digest = _digest(raiz / candidate.resume_pdf)
+    for pk, nome in pendentes.iterator():
+        digest = _digest(raiz / nome)
         if digest is None:
             continue
-        candidate.resume_sha256 = digest
-        atualizados.append(candidate)
+        atualizados.append(Candidate(id=pk, resume_sha256=digest))
         if len(atualizados) >= 200:
             Candidate.objects.bulk_update(atualizados, ["resume_sha256"])
             atualizados = []

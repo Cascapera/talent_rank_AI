@@ -18,7 +18,13 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
+          # `script_stop` aborta no primeiro comando que falhar. Sem isto o script segue
+          # em frente e o `echo` final é incondicional: em 2026-08-20 o backfill do R-45
+          # estourou um TypeError, o `migrate` abortou, e o deploy imprimiu "concluído com
+          # sucesso" e pintou o CD de verde. O erro só apareceu para quem abriu o log.
+          script_stop: true
           script: |
+            set -e
             cd /var/www/talent_rank_ai
             source .venv/bin/activate
             git pull origin main
