@@ -2758,8 +2758,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         719 arquivos. Destes, **449 referenciados no banco e 270 órfãos, somando 33M**
         (41% do diretório). É o número que dimensiona a etapa 2
   - [x] **Etapa 1: parar de gerar novos órfãos** — `_save_resume_pdf` em `core/pdf.py`
-  - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual —
-        **270 arquivos / 33M**, lista reproduzível pelo roteiro de medição abaixo
+  - [x] Etapa 2: **`python manage.py limpar_curriculos_orfaos`** — **270 arquivos / 33M**
+        medidos. **Não apaga:** move para `_quarentena_r31`, fora de `media/` e no mesmo
+        filesystem (o `mv` vira rename, não copia 33M), com manifesto CSV e `--restaurar`.
+        Sem `--mover` só lista. 14 testes, concentrados no que **não** pode ser tocado
+  - [ ] Etapa 2 executada em produção — rodar sem flag primeiro e conferir a lista
   - [x] Suíte completa verde — **433 testes** (9 novos + 1 reescrito), cobertura **81,10%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#90**, CI verde nos 3 jobs (lint, 3.10 e 3.12),
