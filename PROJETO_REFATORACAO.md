@@ -3246,10 +3246,10 @@ nesta config. **R-23 está fechado por inteiro**, LGPD inclusive. Ver o registro
 **2. ~~Repetir o passo 5~~ — feito em 2026-08-20.** O aviso de **interrompida** apareceu
 sozinho, sem F5. **R-44 e R-20b fechados**, os dois verificados na tela.
 
-⚠️ **Conferir se o `IMPORT_JOB_STALE_AFTER_SECONDS=60` foi desfeito no `.env`.** O roteiro
-do passo 5 baixava o limiar para o teste caber em um minuto; deixado em 60s, uma
-importação real com lote lento é marcada como interrompida sem ter sido. O padrão é 15
-min, calibrado contra os ~12 que um lote de 10 PDFs pode levar legitimamente.
+✅ **O `IMPORT_JOB_STALE_AFTER_SECONDS=60` do roteiro já foi desfeito** — conferido em
+2026-08-20, a chave não está no `.env` e vale o default de **900s (15 min)**, calibrado
+contra os ~12 que um lote de 10 PDFs pode levar legitimamente. Deixado em 60s, uma
+importação real com lote lento seria marcada como interrompida sem ter sido.
 
 **3. A validação visual do R-28a** — `/login/` e `/cadastro/`, desktop e celular, **com
 erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais depende dela.
