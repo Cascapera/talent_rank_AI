@@ -2266,7 +2266,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     **termina normalmente** mesmo quando o banco recusa a criação da linha. Numa etapa
     expand, perder uma linha não custa nada; perder uma importação custa.
 
-- [~] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
+- [x] **R-20b** · Estado do job no banco — leitura do banco e remoção do cache
       risco: médio · 0,75d · produção: **requer cuidado (P-4)** · PR: ~80 linhas / 3 arquivos
       pré-requisito: **R-20a implantado e confirmado populando em produção**
   - [x] R-20a confirmado no ar e escrevendo corretamente — **2026-08-18**, importação real
@@ -2277,9 +2277,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
   - [x] Implantado — **7º release (PR #69), 2026-08-19**; migration `0023` aplicada no CD
-  - [ ] Verificado em produção — restart no meio da importação mostra "interrompido"
+  - [x] Verificado em produção — **2026-08-20**: importação real, `systemctl restart` no
+        meio, e o aviso de **interrompida** apareceu na tela **sozinho, sem F5**. Fecha
+        junto com o R-44, que era o que faltava do lado que pergunta
   - [x] Commitado — `e62af9a`
-  - Status: **em produção, verificação manual pendente** · Notas: **dois desvios da
+  - Status: **fechado e verificado em produção** · Notas: **dois desvios da
     especificação, os dois necessários.**
 
     **1. A tabela não tinha onde guardar o que a tela mostra.** O item dizia "a escrita no
@@ -2995,12 +2997,12 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
   - [x] Lint e format verdes
   - [x] PR aberto e revisado
   - [x] Implantado — **9º release (PR #79), 2026-08-19**
-  - [~] Verificado em produção — de fora: o `job_detail.1552ff779dc8.js` servido contém o
-        `reagendarPoll` (1 definição + 6 usos). **Falta o teste de comportamento:**
-        repetir o passo 5 — restart no meio da importação, **sem dar F5** — e o aviso tem
-        que aparecer sozinho.
+  - [x] Verificado em produção — de fora: o `job_detail.1552ff779dc8.js` servido contém o
+        `reagendarPoll` (1 definição + 6 usos). E, em **2026-08-20**, o teste de
+        comportamento: restart no meio da importação, **sem F5**, e o aviso de
+        interrompida apareceu sozinho na tela.
   - [x] Commitado — `ef749ee`
-  - Status: **em produção, verificação de tela pendente** · Notas: **o R-20b estava certo
+  - Status: **fechado e verificado em produção** · Notas: **o R-20b estava certo
     no servidor e mudo na tela.**
 
     Vale como lição de método, não só como bug: o R-20b tinha 10 testes, todos verdes, e
@@ -3009,9 +3011,11 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     a tela aberta.** É o argumento mais forte que este projeto produziu a favor da
     validação manual.
 
-    ⚠️ **A verificação do R-20b em produção fica pendente até este item subir.** O que foi
-    observado no passo 5 confirma o backend (a linha ficou `RUNNING` com heartbeat velho),
-    mas não o comportamento de tela, que é o que importa para quem opera.
+    ✅ **Fechado em 2026-08-20, e fechou o R-20b junto.** O passo 5 repetido depois do
+    9º release mostrou o aviso de interrompida **sozinho, sem F5** — que é o comportamento
+    de tela que faltava. A primeira execução do passo 5 já confirmava o backend (a linha
+    ficava `RUNNING` com heartbeat velho); o que não existia era a tela reagir, e era
+    exatamente isso o R-44.
 
 - [x] **R-42** · Os detalhes de erro da importação nunca chegam à tela
       risco: baixo · 2h · produção: transparente
@@ -3204,6 +3208,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
 | 2026-08-19 | **R-23 — etapas 1 e 3, no Nginx** | `location /protected-media/ { internal; alias /var/www/talent_rank_ai/media/; }` aplicado como snippet incluído no `server` do `listen 443`. `nginx -t` verde, `reload`, **sem deploy**. Download real confirmado pela interface. De fora e deslogado: `/media/resumes/1/<uuid>.pdf` → **404** e `/protected-media/...` → **404**. | **A etapa 3 não existia para ser feita.** A seção 11.2 mandava remover o `location /media/` público, e **ele nunca esteve nesta config** — só há `/static/` e `/`. Confirmado com `nginx -T`, não com `grep` no arquivo: `sites-enabled/` só tem symlink e o `grep -r` não segue. Ou seja, os PDFs **nunca** estiveram servidos direto do disco por aqui; o que existia era o `/media/` do helper `static()` do Django, inerte com `DEBUG=False`. **Segundo achado, e esse era um bug ao vivo:** `USE_X_ACCEL_REDIRECT` tem default `str(not DEBUG)` e o `.env` não define a chave, então ele **se ligou sozinho** quando o código do 8º release subiu. O 404 do botão não dependia de ninguém esquecer de ligar nada — a flag liga por conta própria em qualquer ambiente com `DEBUG=False`, mesmo sem Nginx preparado. Vale tornar explícita no `.env`. |
 | 2026-08-20 | **R-28b e a documentação → produção** | 11º release (PR #87): `ebfab86` → `ab0b223`. `No migrations to apply`; `collectstatic` com **1 copiado, 133 inalterados e 366 pós-processados** — o copiado é o `formulario.css`. Conferido de fora: home e `/login/` em 200, `formulario.d5c3e774d3fd.css` em 200 (hash calculado com `git show origin/main:` por causa do CRLF local), `/curriculos/1/` deslogado → 302, e as duas URLs de currículo → 404. 423 testes, cobertura **81,03%**. | **Release sem susto, e o primeiro em que o R-23 já estava inteiro antes de subir.** O que ele destrava é a validação visual do R-28: as telas de **nova vaga** e **editar vaga** só passaram a servir o `formulario.css` extraído agora, e são duas das quatro telas do roteiro. Antes deste deploy, validar o R-28 era impossível — metade das telas ainda tinha o `<style>` inline. |
+| 2026-08-20 | **R-44 e R-20b verificados na tela** ✅ | Passo 5 repetido em produção pelo dono: importação real, `systemctl restart` no meio, **sem F5** — o aviso de **interrompida** apareceu sozinho. Fecha os dois itens de uma vez. | **O ciclo se fechou onde tinha aberto.** O passo 5 é o mesmo roteiro que **achou** o R-44 em 2026-08-19, e agora é o que o verifica. Vale registrar a assimetria: o R-20b esteve "em produção" desde o 7º release com 10 testes verdes, e mesmo assim **não funcionava para quem opera** — a tela congelava no contador. Foram dois releases (o 9º, com o R-44) e uma validação manual entre "implantado" e "funciona". **Como aplicar:** para item cujo valor só existe na tela, `[x] Implantado` não é o fim da linha; o checklist precisa de uma caixa separada para o comportamento observado, e ela é a que conta. |
 
 ---
 
@@ -3238,10 +3243,13 @@ eles testam o payload que o backend devolve, e o defeito era do lado que pergunt
 voltaram, e a etapa 3 se revelou desnecessária: o `location /media/` público nunca existiu
 nesta config. **R-23 está fechado por inteiro**, LGPD inclusive. Ver o registro do dia.
 
-**2. Repetir o passo 5, que agora verifica dois itens de uma vez.** Importar, dar
-`systemctl restart` no meio, e o aviso de **interrompida** tem que aparecer **sozinho, sem
-F5**. Se aparecer, fecha R-44 e R-20b juntos. O roteiro com o limiar curto
-(`IMPORT_JOB_STALE_AFTER_SECONDS=60`, e desfazer depois) está no registro do dia.
+**2. ~~Repetir o passo 5~~ — feito em 2026-08-20.** O aviso de **interrompida** apareceu
+sozinho, sem F5. **R-44 e R-20b fechados**, os dois verificados na tela.
+
+✅ **O `IMPORT_JOB_STALE_AFTER_SECONDS=60` do roteiro já foi desfeito** — conferido em
+2026-08-20, a chave não está no `.env` e vale o default de **900s (15 min)**, calibrado
+contra os ~12 que um lote de 10 PDFs pode levar legitimamente. Deixado em 60s, uma
+importação real com lote lento seria marcada como interrompida sem ter sido.
 
 **3. A validação visual do R-28a** — `/login/` e `/cadastro/`, desktop e celular, **com
 erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais depende dela.
@@ -3250,14 +3258,17 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 
 - **R-41** ✅ — F5 várias vezes depois de iniciar importação: **uma** linha em
   `core_importjob`, não duas. O bug que motivou o item não volta.
-- **R-20b (parcial)** — o banco fez a parte dele: `RUNNING` com 63s sem heartbeat depois
-  do restart. Faltou a tela, que era o R-44.
+- **R-20b** ✅ — o banco fazia a parte dele desde 2026-08-19 (`RUNNING` com 63s sem
+  heartbeat depois do restart); em **2026-08-20** a tela passou a reagir, com o aviso de
+  interrompida aparecendo sozinho. Fechado.
 - **R-21** — HSTS, `csrftoken` com `Secure`, `/dashboard/` deslogado → 302.
 - **R-23** — `/curriculos/1/` deslogado → 302 para o login. E, depois do Nginx:
   download real pela interface, `/media/resumes/1/<uuid>.pdf` **404** de fora e deslogado,
   `/protected-media/...` **404** (o `internal;` recusando acesso externo).
 - **R-28a** — `/login/` e `/cadastro/` em 200, CSS com hash, imagem de fundo reescrita.
-- **R-44** — o JS servido em produção contém o `reagendarPoll`.
+- **R-44** ✅ — o JS servido em produção contém o `reagendarPoll`, e em **2026-08-20** o
+  comportamento foi confirmado na tela: restart no meio da importação, sem F5, aviso
+  sozinho. Fechado.
 
 ## Backlog restante
 
