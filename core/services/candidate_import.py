@@ -33,7 +33,7 @@ from ..metrics import (
 )
 from ..models import Candidate, CandidateJob
 from ..observability import Timer, log_event
-from ..pdf import _pdf_files_in, _resume_path, _save_resume_pdf
+from ..pdf import _digest, _pdf_files_in, _resume_path, _save_resume_pdf
 
 # Campos de texto do candidato: None nunca chega ao banco neles, vira "".
 _TEXT_FIELDS = (
@@ -87,6 +87,56 @@ def _find_candidate(linkedin_url: str, user_id, shared_pool: bool) -> Candidate 
     return qs.first()
 
 
+def _separar_ja_importados(
+    pdf_files: list[Path], *, user_id, shared_pool: bool
+) -> tuple[list[Path], list[Path]]:
+    """Divide os PDFs em `(novos, ja_no_banco)` comparando o SHA-256 do arquivo (R-45).
+
+    Roda **antes** de qualquer chamada ao LLM: é o ponto inteiro do item. O hash é a única
+    chave utilizável aqui — `linkedin_url` só se conhece depois de extrair, que é a
+    chamada que se quer evitar.
+
+    Duas fontes de "já conhecido", nesta ordem:
+
+    1. um candidato do escopo já tem esse hash gravado;
+    2. um PDF anterior **do mesmo lote** tinha o mesmo conteúdo — a recrutadora exporta o
+       mesmo perfil em buscas diferentes e os dois arquivos caem na mesma pasta.
+
+    Arquivo ilegível volta como novo, nunca como conhecido: seguir o fluxo normal custa
+    uma chamada de LLM, enquanto pular por engano perde o candidato em silêncio.
+    """
+    digests: dict[Path, str] = {}
+    for pdf_file in pdf_files:
+        digest = _digest(pdf_file)
+        if digest is not None:
+            digests[pdf_file] = digest
+
+    if shared_pool or not user_id:
+        qs = Candidate.objects.all()
+    else:
+        qs = Candidate.objects.filter(user_id=user_id)
+    conhecidos = set(
+        qs.filter(resume_sha256__in=set(digests.values()))
+        .exclude(resume_sha256="")
+        .values_list("resume_sha256", flat=True)
+    )
+
+    novos: list[Path] = []
+    ja_no_banco: list[Path] = []
+    vistos_no_lote: set[str] = set()
+    for pdf_file in pdf_files:
+        digest = digests.get(pdf_file)
+        if digest is None:
+            novos.append(pdf_file)
+            continue
+        if digest in conhecidos or digest in vistos_no_lote:
+            ja_no_banco.append(pdf_file)
+            continue
+        vistos_no_lote.add(digest)
+        novos.append(pdf_file)
+    return novos, ja_no_banco
+
+
 def _upsert_candidate(
     data: dict, *, user_id, shared_pool: bool, pdf_path: Path
 ) -> tuple[Candidate, str]:
@@ -99,7 +149,8 @@ def _upsert_candidate(
     "unchanged". "unchanged" é o candidato que já existia e no qual nenhum campo mudou:
     hoje ele não entra em nenhum contador do chamador.
 
-    O PDF é sempre (re)gravado, inclusive quando nada mudou.
+    O PDF só é regravado quando o conteúdo difere do que já está em disco (R-31); em
+    qualquer caso o `resume_sha256` é mantido em dia (R-45).
     """
     payload = _candidate_payload(data)
     candidate = _find_candidate(payload["linkedin_url"], user_id, shared_pool)
@@ -147,6 +198,7 @@ def _process_in_batches(
     batch_size=10,
     is_incomplete=None,
     persist_error_label="Erro ao salvar",
+    known_items=None,
 ) -> tuple[dict, int]:
     """Percorre `items` em lotes, caindo para item a item quando o lote falha.
 
@@ -163,17 +215,25 @@ def _process_in_batches(
         on_batch_end(batch_label, persisted)
         on_persist_error(batch_label, error_msg)
 
+    `known_items` (R-45): itens reconhecidos **antes** do laço como já presentes no banco.
+    Não vão ao LLM; entram no total e no contador `already_known`, e são reportados de
+    saída para a tela não parecer travada enquanto os demais processam.
+
     Devolve `(resultado, processados)`. O callback final de conclusão fica por conta
     de quem chama: os dois fluxos divergem nele.
     """
-    total = len(items)
+    known_items = list(known_items or [])
+    # O total é o que a recrutadora selecionou, não o que sobrou depois do filtro: ela
+    # escolheu 10 arquivos e o contador tem que terminar em 10.
+    total = len(items) + len(known_items)
     created = updated = unchanged = skipped = errors = processed = 0
+    already_known = 0
     error_details: list[str] = []
 
     if progress_callback:
         progress_callback(total=total, processed=0, current=None, status="running")
 
-    total_batches = (total + batch_size - 1) // batch_size
+    total_batches = (len(items) + batch_size - 1) // batch_size
 
     def report(batch_label, item, suffix=""):
         if progress_callback:
@@ -196,7 +256,20 @@ def _process_in_batches(
         def is_incomplete(data) -> bool:
             return not data.get("name") or not data.get("linkedin_url", "")
 
-    for batch_start in range(0, total, batch_size):
+    for item in known_items:
+        already_known += 1
+        processed += 1
+        if progress_callback:
+            progress_callback(
+                total=total,
+                processed=processed,
+                current=f"{item.name} (já no banco)",
+                status="running",
+                errors=errors,
+                error_details=list(error_details),
+            )
+
+    for batch_start in range(0, len(items), batch_size):
         batch = items[batch_start : batch_start + batch_size]
         batch_label = f"{(batch_start // batch_size) + 1}/{total_batches}"
 
@@ -245,7 +318,7 @@ def _process_in_batches(
                 on_batch_end(batch_label, persisted)
 
             # Aguarda entre lotes (menos tempo já que processa 10 de uma vez)
-            if batch_start + batch_size < total:
+            if batch_start + batch_size < len(items):
                 time.sleep(1)
 
         except Exception:
@@ -300,9 +373,13 @@ def _process_in_batches(
         # R-32: "unchanged" e o candidato que ja existia e no qual nenhum campo mudou.
         # Antes ele nao entrava em contador nenhum, e a conta da importacao nao fechava:
         # 10 PDFs podiam virar "3 criados, 2 atualizados" sem explicar os outros 5.
-        # Agora created + updated + unchanged + skipped + errors == total.
+        # Agora created + updated + unchanged + skipped + already_known + errors == total.
         "unchanged": unchanged,
         "skipped": skipped,
+        # R-45: currículo idêntico a um que já está no banco. Contador separado de
+        # `skipped` de propósito — aquele é "o LLM não devolveu nome nem URL", que a
+        # recrutadora precisa investigar; este é trabalho poupado, e não pede nada dela.
+        "already_known": already_known,
         "errors": errors,
         "total": total,
         "error_details": error_details[:10],
@@ -464,8 +541,15 @@ def import_candidates_from_folder_no_ranking(
     shared_pool: bool = False,
     progress_callback=None,
 ) -> dict:
-    """Importa candidatos sem rankeamento (banco de talentos), vinculados ao user_id."""
+    """Importa candidatos sem rankeamento (banco de talentos), vinculados ao user_id.
+
+    R-45: currículo cujo conteúdo já está no banco não vai ao LLM. Aqui a extração é o
+    produto inteiro — não há vaga para avaliar —, então reconhecer o arquivo torna a
+    chamada dispensável. O fluxo de vaga não faz isso de propósito: lá o LLM extrai e
+    avalia na mesma chamada, e a avaliação contra a vaga é sempre necessária.
+    """
     pdf_files = _pdf_files_in(folder_path)
+    novos, ja_no_banco = _separar_ja_importados(pdf_files, user_id=user_id, shared_pool=shared_pool)
 
     def persist_fn(data, pdf_file):
         _candidate, outcome = _upsert_candidate(
@@ -474,11 +558,12 @@ def import_candidates_from_folder_no_ranking(
         return outcome
 
     result, processed = _process_in_batches(
-        pdf_files,
+        novos,
         batch_fn=lambda batch, _label: extract_candidates_batch_no_ranking(batch),
         single_fn=lambda pdf_file, _label: extract_candidate_no_ranking(pdf_file),
         persist_fn=persist_fn,
         progress_callback=progress_callback,
+        known_items=ja_no_banco,
     )
 
     if progress_callback:

@@ -434,6 +434,7 @@ class TestFolder:
             "updated": 0,
             "unchanged": 0,
             "skipped": 0,
+            "already_known": 0,
             "errors": 0,
             "total": 0,
             "error_details": [],

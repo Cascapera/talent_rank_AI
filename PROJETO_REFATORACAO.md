@@ -1595,16 +1595,20 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
-           (Onda 6), R-40, R-41, **R-42**, R-43 e R-44. 11 releases: PRs #26, #35, #46,
-           #53, #57, #62, #69, #74, #79, #82, **#87**. `main` em `ab0b223`.
-Progresso: 39 itens em produção · **nada esperando release** · 1 fechado sem correção
+           (Onda 6), **R-31 (etapa 1)**, R-40, R-41, **R-42**, R-43 e R-44. 12 releases:
+           PRs #26, #35, #46, #53, #57, #62, #69, #74, #79, #82, #87, **#92**.
+           `main` em `5090835`.
+Progresso: 40 itens em produção · **R-45 esperando release** (com migration) · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
-           atualizado em 2026-08-19, fim do dia
+           atualizado em 2026-08-20, depois do 12º release
 
            ⏳ **O R-28 espera validação visual** — ver "Onde retomar". É a única coisa
            que falta para ele, e agora as **quatro** telas estão em produção com o CSS
            novo. O **R-23 fechou por inteiro** em 2026-08-19, etapa 3 inclusive.
+
+           🧹 **A etapa 2 do R-31 é operação, não refatoração:** 270 órfãos / 33M já
+           medidos e listados. O motivo é LGPD, não disco — ver "Onde retomar".
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -2733,18 +2737,22 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 - [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
-  - [ ] Confirmado o tamanho atual de `media/resumes/` no servidor — **continua pendente**,
-        e agora só interessa para dimensionar a etapa 2
+  - [x] Confirmado o tamanho atual de `media/resumes/` no servidor — **80M em 2026-08-20**,
+        719 arquivos. Destes, **449 referenciados no banco e 270 órfãos, somando 33M**
+        (41% do diretório). É o número que dimensiona a etapa 2
   - [x] **Etapa 1: parar de gerar novos órfãos** — `_save_resume_pdf` em `core/pdf.py`
-  - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual
+  - [ ] Etapa 2 (separada): limpar os já existentes, após conferência manual —
+        **270 arquivos / 33M**, lista reproduzível pelo roteiro de medição abaixo
   - [x] Suíte completa verde — **433 testes** (9 novos + 1 reescrito), cobertura **81,10%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#90**, CI verde nos 3 jobs (lint, 3.10 e 3.12),
         mergeado em `develop`
-  - [ ] Implantado
-  - [ ] Verificado em produção — `du -sh media/resumes/` estável entre importações
+  - [x] Implantado — **12º release, 2026-08-20**, `main` em `5090835`
+  - [x] **Verificado em produção (comportamento observado)** — reimportação de um PDF
+        byte-a-byte idêntico **não criou arquivo nenhum**: 719 antes, 719 depois, e o
+        `diff` da listagem completa saiu vazio. Ver "O `du -sh` do plano não provaria nada"
   - [x] Commitado — `f995cc0` · branch `fix/r-31-pdfs-orfaos`
-  - Status: **etapa 1 em `develop`, esperando release** · Notas: duas defesas, nesta ordem —
+  - Status: **etapa 1 em produção e verificada** · Notas: duas defesas, nesta ordem —
     conteúdo idêntico ao que já está gravado não regrava nada (o caso comum, reimportar o
     mesmo lote); conteúdo diferente grava o novo **e só então** apaga o antigo, nunca o
     contrário. Comparação por tamanho primeiro e SHA-256 depois: tamanho igual não é
@@ -3155,6 +3163,72 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     restart — que é exatamente o que o R-20b resolve com o `heartbeat_at`. Feita agora,
     uma linha `RUNNING` órfã de um deploy antigo travaria a importação para sempre.
 
+- [x] **R-45** ⚡ · Currículo já importado paga uma extração de LLM para dar o mesmo resultado
+      risco: baixo · 3h · produção: requer migration (uma coluna e um backfill)
+      **Medido em produção em 2026-08-20**, depois de o dono levantar a assimetria entre os
+      dois fluxos de importação: dos **719 PDFs em disco, 231 (32%) eram cópia byte-a-byte**
+      de outro já presente. Cada um custou uma chamada ao Gemini para produzir exatamente o
+      mesmo candidato — e cota do Gemini é recurso escasso aqui, com a chave atual ainda
+      esperando troca.
+
+      **A chave tem de ser o hash do arquivo.** `linkedin_url` seria a chave natural, mas
+      só se conhece **depois** de extrair o PDF — que é justamente a chamada que se quer
+      evitar. O SHA-256 se calcula do arquivo, antes de qualquer LLM. O `_digest` do R-31
+      já o calculava e jogava fora.
+  - [x] Campo `Candidate.resume_sha256` indexado, migration `0024`
+  - [x] Backfill dos currículos já em disco, migration `0025` — sem ele a dedup só valeria
+        para importações futuras, e são os 449 candidatos existentes que ela reimporta
+  - [x] `_save_resume_pdf` mantém o hash em dia, **inclusive no caminho de conteúdo
+        idêntico do R-31** — que retorna cedo e era por onde o candidato antigo passaria
+        sem nunca ganhar hash
+  - [x] **Só o banco de talentos deduplica** — ver a assimetria nas notas
+  - [x] Contador `already_known` separado de `skipped`, e a conta continua fechando:
+        `created + updated + unchanged + skipped + already_known + errors == total`
+  - [x] Aparece nos **dois** lugares que renderizam o resumo do pool (bloco do servidor e
+        JS do poll), e só quando é maior que zero
+  - [x] 16 testes novos, **6 vermelhos antes** da correção (conferido revertendo o desvio)
+  - [x] Suíte completa verde — **449 testes**, cobertura **81,57%** (era 81,10%)
+  - [x] Lint e format verdes
+  - [ ] PR aberto e revisado
+  - [ ] Implantado
+  - [ ] Verificado em produção — reimportar um lote já importado e conferir `already_known`
+        maior que zero na tela, com a cota do Gemini intocada
+  - Status: **pronto para revisão** · Notas: **a assimetria entre os dois fluxos é decisão,
+    não esquecimento.** No banco de talentos a extração é o produto inteiro — não há vaga
+    para avaliar —, então reconhecer o arquivo torna a chamada dispensável. No fluxo de
+    vaga o LLM **extrai e avalia contra a vaga na mesma chamada**, e a avaliação é sempre
+    necessária.
+
+    ⚠️ **Separar extração de avaliação para reaproveitar o candidato do banco foi
+    considerado e descartado por aritmética.** Com taxa de repetição `r`, separar custa
+    `2 − r` chamadas por PDF: candidato novo passa de 1 para 2, repetido cai para 1. Para
+    ficar abaixo de 1 seria preciso `r > 1` — mais repetições que arquivos, impossível por
+    construção. Com os 32% medidos: 1,68 contra 1,0 hoje, **68% mais caro**. A ideia
+    parecia boa e a conta a derrubou.
+
+    **9% das repetições escapam, e sabemos quais.** Medindo o texto extraído dos 719
+    arquivos: 459 conteúdos distintos por texto contra 488 por bytes, ou seja **23 casos de
+    mesmo currículo com bytes diferentes**. São exports do mesmo perfil em momentos
+    diferentes — `/CreationDate` distinto, compressão variando 2 bytes, `/ID` de documento
+    único. Dedup por hash de texto pegaria os 23, ao custo de `pypdf` virar dependência
+    real (hoje está no servidor por herança do R-03, sem uso) e de abrir cada PDF. Ficou
+    para depois, por decisão do dono: 91% do ganho com risco quase zero primeiro.
+
+    ⚠️ **A dedup por texto tem uma armadilha que a medição revelou:** 6 dos 719 arquivos
+    **não têm texto extraível** — currículos escaneados como imagem. Numa dedup por texto
+    ingênua os seis dariam hash de string vazia e colapsariam em **um único candidato**,
+    com currículos sumindo na importação sem erro nenhum. Se um dia isso for feito, precisa
+    de piso de tamanho e queda para o hash de bytes.
+
+    **Arquivo ilegível volta como novo, nunca como conhecido.** Errar para o lado caro
+    custa uma chamada de LLM; errar para o outro perde um candidato em silêncio.
+
+    **O fixture de teste que virou mentira:** `make_pdfs` gravava os **mesmos bytes** em
+    todos os arquivos e esperava N candidatos distintos — combinação que não existe na
+    realidade e que, a partir deste item, significa outra coisa (o mesmo perfil exportado
+    duas vezes). Corrigido para conteúdo distinto por índice, com teste próprio para o caso
+    do lote com duplicata.
+
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 
 ---
@@ -3227,20 +3301,24 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-20 | **R-28b e a documentação → produção** | 11º release (PR #87): `ebfab86` → `ab0b223`. `No migrations to apply`; `collectstatic` com **1 copiado, 133 inalterados e 366 pós-processados** — o copiado é o `formulario.css`. Conferido de fora: home e `/login/` em 200, `formulario.d5c3e774d3fd.css` em 200 (hash calculado com `git show origin/main:` por causa do CRLF local), `/curriculos/1/` deslogado → 302, e as duas URLs de currículo → 404. 423 testes, cobertura **81,03%**. | **Release sem susto, e o primeiro em que o R-23 já estava inteiro antes de subir.** O que ele destrava é a validação visual do R-28: as telas de **nova vaga** e **editar vaga** só passaram a servir o `formulario.css` extraído agora, e são duas das quatro telas do roteiro. Antes deste deploy, validar o R-28 era impossível — metade das telas ainda tinha o `<style>` inline. |
 | 2026-08-20 | **R-44 e R-20b verificados na tela** ✅ | Passo 5 repetido em produção pelo dono: importação real, `systemctl restart` no meio, **sem F5** — o aviso de **interrompida** apareceu sozinho. Fecha os dois itens de uma vez. | **O ciclo se fechou onde tinha aberto.** O passo 5 é o mesmo roteiro que **achou** o R-44 em 2026-08-19, e agora é o que o verifica. Vale registrar a assimetria: o R-20b esteve "em produção" desde o 7º release com 10 testes verdes, e mesmo assim **não funcionava para quem opera** — a tela congelava no contador. Foram dois releases (o 9º, com o R-44) e uma validação manual entre "implantado" e "funciona". **Como aplicar:** para item cujo valor só existe na tela, `[x] Implantado` não é o fim da linha; o checklist precisa de uma caixa separada para o comportamento observado, e ela é a que conta. |
 | 2026-08-20 | **R-31** (etapa 1) | `_save_resume_pdf` para de gerar órfão: conteúdo idêntico não regrava, conteúdo diferente grava o novo e só então apaga o antigo, e só se nenhuma outra linha do banco apontar para o mesmo arquivo. Comparação por tamanho e depois SHA-256. 9 testes novos + 1 characterization reescrito; 423 → **433 testes**, cobertura **81,10%**. PR #90, `f995cc0`. | **O characterization test do R-05 que dizia fixar este quirk não fixava nada.** Depois da correção a suíte inteira ficou verde — inclusive o teste chamado `test_resume_pdf_is_resaved_even_when_nothing_changed`, que deveria ter falhado. Fui ver: ele criava o candidato **sem** currículo, então a segunda gravação nunca era exercitada e ele passava dos dois lados da correção. O nome descrevia uma intenção que o corpo não cumpria. **Como aplicar:** um teste que fixa quirk precisa **falhar** quando o quirk é corrigido; se sobrevive à correção, nunca testou o quirk. Vale conferir no momento de escrever — a suíte verde onde se esperava vermelho é o sinal, e é fácil confundir com "não quebrou nada". Segundo achado, menor: a guarda contra apagar arquivo ainda referenciado por outra linha não é teoria — a duplicata do R-09 está no banco de produção, e apagar currículo não se desfaz. |
+| 2026-08-20 | **R-31 (etapa 1) → produção e verificado** ✅ | 12º release (PR #92): `ab0b223` → `5090835`. CI 1m58s, CD 52s, sem migration e sem estático novo. De fora: home e `/login/` **200**, `/curriculos/1/` deslogado **302**, `/media/resumes/...` **404**. Medição antes: **719 arquivos em disco, 449 referenciados, 270 órfãos (33M de 80M)**; e **0 arquivos referenciados pelo banco faltando no disco** — a checagem inversa, que é a que provaria a correção ter apagado algo em uso. Depois de reimportar um PDF byte-a-byte idêntico: **719 arquivos, `diff` da listagem vazio**. | **O roteiro de verificação do plano não provaria nada.** Ele mandava comparar `du -sh` antes e depois; `du -sh` arredonda, e num diretório de 80M um PDF de ~200KB não move o número — os dois lados dariam "80M" com a correção certa **ou** errada. Trocado por `diff` de duas listagens completas de `find`, que não diz "o tamanho não mudou" e sim **quais** arquivos apareceram ou sumiram. **Como aplicar:** antes de aceitar um roteiro de verificação, conferir se a medida tem resolução para o efeito esperado — medida grossa demais devolve "passou" para os dois resultados possíveis, o que é pior que não medir, porque parece prova. Segundo achado: os 270 órfãos são **currículos de pessoas reais** sem vínculo com nenhuma linha do banco — o R-23 fechou o acesso de fora, mas retenção sem finalidade é assunto de LGPD. Isso, e não os 33M, é o que justifica a etapa 2; 33M de disco sozinho não seria prioridade nenhuma. |
+| 2026-08-20 | **R-45** ⚡ | Currículo já no banco não vai mais ao LLM na importação do banco de talentos. Campo `resume_sha256` indexado (migration `0024`) + backfill dos que já estão em disco (`0025`); `_separar_ja_importados` roda antes do laço; contador `already_known` novo, separado de `skipped`, visível nos dois pontos de render do pool. 16 testes novos, **6 vermelhos antes**; 433 → **449 testes**, cobertura **81,57%**. PR #94. | **A conta derrubou a ideia melhor.** A proposta inicial era separar extração de avaliação para reaproveitar, no fluxo de vaga, o candidato que já está no banco. Com taxa de repetição `r`, separar custa `2 − r` chamadas por PDF — abaixo de 1 exigiria `r > 1`, mais repetições que arquivos, impossível. Com os 32% medidos daria 1,68 contra 1,0 hoje. **Como aplicar:** otimização que parece óbvia merece a aritmética antes do código; aqui ela mostrou que o ganho tinha sinal trocado. Segundo achado, do mesmo tipo do R-31: o roteiro de medir por `du -sh` e o fixture `make_pdfs` estavam ambos errados por serem grossos demais — o fixture gravava **os mesmos bytes** em todos os arquivos e esperava N candidatos distintos, coisa que não existe na realidade e que a partir deste item significa outra coisa. Terceiro: 6 dos 719 PDFs **não têm texto extraível** (escaneados), o que tornaria uma dedup por texto ingênua um sumidouro de candidatos — todos colidiriam no hash da string vazia. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-20, depois da etapa 1 do R-31)
+### ▶ Onde retomar (atualizado em 2026-08-20, depois do 12º release)
 
-**Em produção** (`main` em `ab0b223`, 11 releases): Ondas 0, 1, 2 e 5 completas, mais
+**Em produção** (`main` em `5090835`, **12 releases**): Ondas 0, 1, 2 e 5 completas, mais
 R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a e R-28b
-(Onda 6), R-40, R-41, R-42, R-43 e R-44.
+(Onda 6), R-31 (etapa 1), R-40, R-41, R-42, R-43 e R-44.
 
-**Esperando release na `develop`:** a **etapa 1 do R-31** (PR #90) — o primeiro **código**
-na fila desde o 11º release; as PRs #88, #89 e esta são documentação. O deploy dela é
-transparente para a usuária: nenhuma migration, nenhum estático, nenhuma tela.
+**Esperando release na `develop`:** o **R-45** (PR #94) — dedup por hash na importação do
+banco de talentos. **Tem migration**: uma coluna e um backfill que lê `media/resumes/`.
 
-433 testes, cobertura **81,10%**. Piso do CI em 78.
+**449 testes**, cobertura **81,57%**. Piso do CI em 78.
+
+**Sobrou uma coisa de refatoração e uma de operação:** a **validação visual do R-28**
+(quatro telas, só o dono pode fazer) e a **etapa 2 do R-31** (limpar 270 órfãos, 33M).
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3276,20 +3354,58 @@ subiram: `/login/`, `/cadastro/`, **nova vaga** e **editar vaga**, desktop e cel
 sempre **com erro de formulário na tela** (é o que exercita a `.errorlist`, a regra que
 mais mudou de lugar). É a única coisa que falta para o R-28 ser marcado como concluído.
 
-**4. Levar a etapa 1 do R-31 a produção** e medir. O roteiro de verificação é curto e o
-mesmo número serve para duas coisas:
+**4. ~~Levar a etapa 1 do R-31 a produção~~ — feito em 2026-08-20, 12º release (PR #92).**
+`ab0b223` → `5090835`. Verificado pelos dois lados, e o roteiro que estava escrito aqui
+teve de ser trocado antes de servir para alguma coisa.
+
+### O `du -sh` do plano não provaria nada
+
+O roteiro registrado mandava comparar `du -sh media/resumes/` antes e depois de reimportar
+o mesmo lote. **`du -sh` arredonda.** Num diretório de **80M**, um PDF de ~200KB não move
+o número: os dois lados dariam "80M" com a correção certa **ou** com ela errada. A medida
+não tinha resolução para o efeito que devia detectar.
+
+Trocado por `diff` de duas listagens completas de `find`, que não responde "o tamanho
+mudou?" e sim **quais arquivos** apareceram ou sumiram:
 
 ```
-du -sh /var/www/talent_rank_ai/media/resumes/     # antes
-# reimportar na interface o mesmo lote que já foi importado
-du -sh /var/www/talent_rank_ai/media/resumes/     # depois — tem que estar igual
+find /var/www/talent_rank_ai/media/resumes -type f -printf '%P\n' | LC_ALL=C sort > /tmp/disco.txt
+python manage.py dbshell -- -t -A -c "SELECT resume_pdf FROM core_candidate WHERE resume_pdf <> ''" | sed 's|^resumes/||' | LC_ALL=C sort -u > /tmp/banco.txt
+comm -23 /tmp/disco.txt /tmp/banco.txt > /tmp/orfaos.txt   # em disco, sem dono no banco
+comm -13 /tmp/disco.txt /tmp/banco.txt                     # no banco, sumido do disco: TEM que dar 0
 ```
 
-Antes da correção o segundo número seria maior que o primeiro. O tamanho absoluto, que já
-era o bloqueio registrado do R-31, é o que dimensiona a **etapa 2** — limpar os órfãos que
-o comportamento antigo já deixou no disco, em comando separado e depois de conferência
-manual, porque apagar currículo não se desfaz.
+**Como aplicar:** antes de aceitar um roteiro de verificação, conferir se a medida tem
+resolução para o efeito esperado. Medida grossa demais devolve "passou" para os dois
+resultados possíveis — o que é pior que não medir, porque **parece** prova.
 
+**Resultado (2026-08-20, depois do deploy):**
+
+| Medida | Antes | Depois de reimportar PDF byte-a-byte idêntico |
+|---|---|---|
+| Arquivos em disco | 719 | **719** — `diff` da listagem **vazio** |
+| Referenciados no banco | 449 | **449** — `diff` vazio, nenhum ponteiro trocado |
+| Órfãos | 270 (33M) | 270 |
+| **Referenciados sumidos do disco** | **0** ✅ | **0** ✅ |
+
+O `0` da última linha é o que mais importava: a correção passou a **apagar** arquivo, e
+essa é a checagem que pegaria se ela tivesse apagado algo em uso.
+
+### 5. A etapa 2 do R-31 — 270 órfãos, 33M
+
+**41% do diretório é lixo.** E o que justifica limpar não são os 33M: são **270 currículos
+de pessoas reais** — nome, telefone, histórico — retidos no disco sem vínculo com nenhuma
+linha do banco. O R-23 fechou o acesso de fora, então não estão expostos, mas **retenção
+sem finalidade é assunto de LGPD**. 33M de disco sozinho não seria prioridade nenhuma.
+
+Regras para quando for executar, porque apagar currículo não se desfaz:
+
+- **mover para quarentena antes de apagar**, para fora de `media/` e no mesmo filesystem
+  (o `mv` vira rename, não copia 33M);
+- **não incluir arquivo com `mtime` recente** — protege contra uma importação em voo cujo
+  `INSERT` ainda não apareceu no banco quando o `find` rodou;
+- **conferir que não há importação `RUNNING` com heartbeat vivo** antes de começar;
+- só apagar de verdade depois de alguns dias com a aplicação em uso normal.
 ## Verificado em produção neste dia
 
 - **R-41** ✅ — F5 várias vezes depois de iniciar importação: **uma** linha em
@@ -3311,7 +3427,7 @@ manual, porque apagar currículo não se desfaz.
 | Item | Estado | O que falta |
 |---|---|---|
 | **R-28** | **a, b e c em produção** — só falta a validação visual | b (`formulario.css`) subiu no 11º release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica. **As quatro telas do roteiro já servem o CSS novo** |
-| **R-31** | **etapa 1 em `develop`** (PR #90) | subir no próximo release e conferir com `du -sh /var/www/talent_rank_ai/media/resumes/` **antes e depois** de reimportar o mesmo lote — o mesmo número dimensiona a etapa 2 (limpar os órfãos que já existem) |
+| **R-31** | **etapa 1 em produção e verificada** (12º release, PR #92) | só a **etapa 2**: limpar **270 órfãos / 33M** já medidos. Não é disco, é LGPD — currículos de pessoas reais sem vínculo no banco. Quarentena antes de apagar, e nada com `mtime` recente |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 | **`DJANGO_SECRET_KEY`** | 11 caracteres | higiene barata, **não incêndio** — avaliação no checklist do R-21 |
