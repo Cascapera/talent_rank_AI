@@ -115,6 +115,12 @@ class Candidate(models.Model):
         null=True,
         help_text="PDF do currículo do candidato. Usado para avaliação mais precisa quando vinculado a uma vaga.",
     )
+    # R-45: SHA-256 do PDF gravado, para reconhecer um currículo já importado **antes** de
+    # qualquer chamada ao LLM. Medido em produção em 2026-08-20: 231 dos 719 arquivos (32%)
+    # eram cópia byte-a-byte de outro já presente, cada um custando uma extração à toa.
+    # A chave não pode ser `linkedin_url`: para conhecê-la é preciso extrair o PDF, que é
+    # justamente a chamada que se quer evitar. Vazio em candidato sem currículo.
+    resume_sha256 = models.CharField(max_length=64, blank=True, default="", db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
