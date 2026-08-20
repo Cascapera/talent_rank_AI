@@ -3249,7 +3249,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     duas vezes). Corrigido para conteúdo distinto por índice, com teste próprio para o caso
     do lote com duplicata.
 
-- [ ] **R-46** 🐛 · A mensagem de erro do formulário de vaga é ilegível
+- [x] **R-46** 🐛 · A mensagem de erro do formulário de vaga é ilegível
       risco: baixo · 30min · produção: transparente · PR: ~2 linhas
       **Achado na validação visual do R-28, em 2026-08-20.** A `.errorlist` do
       `formulario.css` é `color: #fecaca` — rosa claríssimo — sobre o fundo `#e0f2f7` da
@@ -3269,18 +3269,31 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
       `red-200` do Tailwind, pensado para fundo escuro). O `.errorlist` do `auth.css`, que
       resolve o mesmo problema em card claro, usa fundo `rgba(239,68,68,0.12)` com texto
       escuro — é o padrão a seguir.
-  - [ ] Corrigir o contraste em `static/css/formulario.css`
-  - [ ] Conferir se `job_detail.html` e `jobs.html` têm o mesmo valor herdado
-  - [ ] Teste de CSS no padrão do R-28 (a regra existe e tem o valor esperado)
-  - [ ] Suíte completa verde
-  - [ ] Lint e format verdes
+  - [x] Corrigir o contraste — `#fecaca` → **`#7f1d1d`**, o mesmo vermelho do
+        `.errorlist` do `auth.css`, mais `font-weight: 600`. Contraste **1,44:1 → ~9:1**
+  - [x] Conferido: `#fecaca` **não existe em mais lugar nenhum**; `job_detail.html` e
+        `jobs.html` não têm `.errorlist`, e o `.errorlist` dos templates de `registration/`
+        usa o `auth.css`, que já estava certo
+  - [x] **A caixa com fundo e borda do `auth.css` não foi copiada, de propósito** — no
+        login são poucos campos, aqui são 19 numa grade, e 19 caixas empilhadas afogariam o
+        formulário
+  - [x] 3 testes novos que **calculam o contraste de verdade** (luminância relativa WCAG)
+        em vez de comparar strings — 2 vermelhos antes
+  - [x] Suíte completa verde — **460 testes**, cobertura 81,57%
+  - [x] Lint e format verdes
   - [ ] PR aberto e revisado
   - [ ] Implantado
   - [ ] **Validado na tela** — provocar erro em nova vaga e conferir que **dá para ler**
-  - Status: **aberto** · Notas: item que só a validação manual poderia produzir. Nenhum
-    teste de CSS pegaria: a regra existe, está na folha certa e tem o valor que o template
-    tinha antes. O que está errado é o valor em si, contra um fundo que nenhum teste
-    conhece.
+  - Status: **pronto para revisão** · Notas: item que só a validação manual poderia
+    produzir. **O teste que faltava não era de CSS, era de contraste.** Um teste no padrão
+    do R-28 confirmaria a regra como correta: ela existe, está na folha certa e tem o valor
+    que o template tinha. Por isso os testes novos calculam a luminância relativa e
+    comparam com o piso de 4,5:1 da WCAG — assim o defeito **tem um mundo em que falha**.
+
+    **Um deles nasceu grosseiro demais e o próprio teste avisou:** a primeira versão
+    proibia a string `#fecaca` no arquivo, e falhou porque o comentário do R-46 cita o
+    valor antigo para explicar a correção. Um teste assim proibiria documentar o motivo.
+    Corrigido para olhar a **declaração ativa** dentro do bloco `.errorlist`.
 
 - [ ] **Onda 7 concluída** — quirks resolvidos, `pdf_extractor` coberto de ponta a ponta
 

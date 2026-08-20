@@ -41,10 +41,24 @@
   width: 100%;
   max-width: 100%;
 }
+/* R-46: era `color: #fecaca` — rosa claro de paleta de tema escuro (`red-200` do
+   Tailwind) — sobre o `.card` da area logada, que e `rgba(255,255,255,0.92)`. Contraste
+   de ~1,4:1 contra os 4,5:1 minimos: a recrutadora salvava a vaga, a pagina voltava sem
+   salvar e o motivo estava na tela em texto que nao dava para ler.
+
+   O valor veio junto do `<style>` inline de `job_create.html`, entao o R-28 so herdou.
+   Achado na validacao visual do R-28, em 2026-08-20 — nenhum teste pegaria: a regra
+   existe, esta na folha certa e tem o valor que o template tinha.
+
+   `#7f1d1d` e o mesmo vermelho escuro do `.errorlist` do `auth.css`, que resolve o mesmo
+   problema em card claro. A caixa com fundo e borda de la NAO entra aqui de proposito: no
+   login sao poucos campos, aqui sao 19 numa grade, e 19 caixas empilhadas afogariam o
+   formulario. Texto compacto e legivel resolve. */
 .errorlist{
   list-style:none;
   padding: 0;
   margin: 6px 0 0;
-  color: #fecaca;
+  color: #7f1d1d;
   font-size: 12px;
+  font-weight: 600;
 }
