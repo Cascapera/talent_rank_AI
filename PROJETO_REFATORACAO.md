@@ -1594,18 +1594,17 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
-           R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a** (Onda 6),
-           R-40, R-41, **R-42**, R-43 e R-44. 10 releases: PRs #26, #35, #46, #53, #57,
-           #62, #69, #74, #79, **#82**. `main` em `ebfab86`.
-Progresso: 38 itens em produção · **nada esperando release** · 1 fechado sem correção
+           R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
+           (Onda 6), R-40, R-41, **R-42**, R-43 e R-44. 11 releases: PRs #26, #35, #46,
+           #53, #57, #62, #69, #74, #79, #82, **#87**. `main` em `ab0b223`.
+Progresso: 39 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
            atualizado em 2026-08-19, fim do dia
 
-           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". O botão do R-23
-           **deixou de dar 404 em 2026-08-19**: o `location /protected-media/` foi aplicado
-           no Nginx e o download foi confirmado em produção. **R-23 fechado por inteiro**,
-           etapa 3 inclusive.
+           ⏳ **O R-28 espera validação visual** — ver "Onde retomar". É a única coisa
+           que falta para ele, e agora as **quatro** telas estão em produção com o CSS
+           novo. O **R-23 fechou por inteiro** em 2026-08-19, etapa 3 inclusive.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -3204,18 +3203,19 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-19 | **R-42** | A lista de erros entra nos **quatro** lugares que renderizam status: os dois blocos do servidor e os dois polls. Uma linha de backend faltava — durante a execução o `progress_callback` só mandava o número de erros, então a lista agora viaja junto e aparece **enquanto** a importação roda. 7 testes novos. | **O item nasceu de uma pergunta do dono, não de leitura de código:** ao ver `0005.pdf: Expecting value...`, ele perguntou *"como saber qual é o cinco? nenhum tem o número 5"*. **(1) O nome é gerado** — o `prepare_uploaded_files` renomeia todo PDF para um contador de 4 dígitos, então `0005.pdf` é 'o 5º daquele envio'. **(2) Mas no fluxo real ele já basta**, porque o exportador entrega numerado (`001.pdf`, `002.pdf`…) e o nome interno bate com o dela por coincidência sistemática — por isso 'mostrar' veio primeiro e 'preservar o nome original' ficou como melhoria. **(3) Um teste negativo quase passou por engano:** `padding-left: 18px` aparece no código do helper JS, que mora na mesma página, então a asserção acusava a fonte em vez da lista renderizada. |
 | 2026-08-19 | **R-42 → produção** | 10º release (PR #82): `dbd811a` → `ebfab86`. `No migrations to apply`; `collectstatic` com 1 copiado e 363 pós-processados. Verificado de fora: home e `/login/` em 200, e o `job_detail.4e044125c7ef.js` servido contém `listaDeErros` e `escaparHtml`. | Nenhuma surpresa — quarto release seguido com o mesmo perfil (sem migration, um estático novo com hash). **O que este release melhora é o próximo teste:** quando o passo 5 for repetido, qualquer PDF que falhe no caminho aparece **com nome** na tela, em vez de virar um número solto. |
 | 2026-08-19 | **R-23 — etapas 1 e 3, no Nginx** | `location /protected-media/ { internal; alias /var/www/talent_rank_ai/media/; }` aplicado como snippet incluído no `server` do `listen 443`. `nginx -t` verde, `reload`, **sem deploy**. Download real confirmado pela interface. De fora e deslogado: `/media/resumes/1/<uuid>.pdf` → **404** e `/protected-media/...` → **404**. | **A etapa 3 não existia para ser feita.** A seção 11.2 mandava remover o `location /media/` público, e **ele nunca esteve nesta config** — só há `/static/` e `/`. Confirmado com `nginx -T`, não com `grep` no arquivo: `sites-enabled/` só tem symlink e o `grep -r` não segue. Ou seja, os PDFs **nunca** estiveram servidos direto do disco por aqui; o que existia era o `/media/` do helper `static()` do Django, inerte com `DEBUG=False`. **Segundo achado, e esse era um bug ao vivo:** `USE_X_ACCEL_REDIRECT` tem default `str(not DEBUG)` e o `.env` não define a chave, então ele **se ligou sozinho** quando o código do 8º release subiu. O 404 do botão não dependia de ninguém esquecer de ligar nada — a flag liga por conta própria em qualquer ambiente com `DEBUG=False`, mesmo sem Nginx preparado. Vale tornar explícita no `.env`. |
+| 2026-08-20 | **R-28b e a documentação → produção** | 11º release (PR #87): `ebfab86` → `ab0b223`. `No migrations to apply`; `collectstatic` com **1 copiado, 133 inalterados e 366 pós-processados** — o copiado é o `formulario.css`. Conferido de fora: home e `/login/` em 200, `formulario.d5c3e774d3fd.css` em 200 (hash calculado com `git show origin/main:` por causa do CRLF local), `/curriculos/1/` deslogado → 302, e as duas URLs de currículo → 404. 423 testes, cobertura **81,03%**. | **Release sem susto, e o primeiro em que o R-23 já estava inteiro antes de subir.** O que ele destrava é a validação visual do R-28: as telas de **nova vaga** e **editar vaga** só passaram a servir o `formulario.css` extraído agora, e são duas das quatro telas do roteiro. Antes deste deploy, validar o R-28 era impossível — metade das telas ainda tinha o `<style>` inline. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-19, depois do 10º release)
+### ▶ Onde retomar (atualizado em 2026-08-20, depois do 11º release)
 
-**Em produção** (`main` em `ebfab86`, 10 releases): Ondas 0, 1, 2 e 5 completas, mais
-R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a (Onda 6),
-R-40, R-41, R-42, R-43 e R-44.
+**Em produção** (`main` em `ab0b223`, 11 releases): Ondas 0, 1, 2 e 5 completas, mais
+R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28a e R-28b
+(Onda 6), R-40, R-41, R-42, R-43 e R-44.
 
 **`develop` e `main` estão iguais — nada esperando release.**
 
-416 testes, cobertura **80,56%**. Piso do CI em 78.
+423 testes, cobertura **81,03%**. Piso do CI em 78.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3263,7 +3263,7 @@ erro de formulário na tela**. É ela que libera os sub-PRs b e c, e nada mais d
 
 | Item | Estado | O que falta |
 |---|---|---|
-| **R-28** | **a, b e c prontos** — só falta a validação visual | b (`formulario.css`, PR #84) esperando release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica |
+| **R-28** | **a, b e c em produção** — só falta a validação visual | b (`formulario.css`) subiu no 11º release; c **fechado sem extrair** (PR #85): `base_logged`, `dashboard`, `talent_pool` e `reports` não têm regra repetida idêntica. **As quatro telas do roteiro já servem o CSS novo** |
 | **R-31** | bloqueado | `du -sh /var/www/talent_rank_ai/media/resumes/` para dimensionar |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
