@@ -152,14 +152,43 @@ cd /var/www/talent_rank_ai
 python3.13 -m venv .venv313
 .venv313/bin/pip install --upgrade pip
 .venv313/bin/pip install -r requirements-dev.txt
-.venv313/bin/python -m pytest -q
 ```
 
-A suíte roda do `requirements-dev.txt` porque é ele que traz o `pytest` — e ele começa
+E a suíte, **obrigatoriamente fora de `/var/www/talent_rank_ai`** (ver "O `.env` contamina
+a suíte", abaixo — descoberto na execução):
+
+```
+cd /tmp
+git clone -q /var/www/talent_rank_ai talent_test
+cd /tmp/talent_test
+/var/www/talent_rank_ai/.venv313/bin/python -m pytest -q
+/var/www/talent_rank_ai/.venv313/bin/python -m pytest -q --override-ini=filterwarnings=default
+```
+
+A suíte instala do `requirements-dev.txt` porque é ele que traz o `pytest` — e ele começa
 com `-r requirements.txt`, então instala junto tudo o que produção usa.
 
-⚠️ **Não rodar `manage.py` com o `.venv313` apontando para o banco de produção** além do
-que a suíte faz sozinha: ela usa o `settings_test`, com banco próprio.
+⚠️ **Não rodar `manage.py` com o `.venv313`** apontando para o banco de produção: a suíte
+usa `settings_test`, com SQLite em memória, e não encosta no PostgreSQL.
+
+### O `.env` contamina a suíte — achado em 2026-08-21
+
+A primeira execução, feita de dentro de `/var/www/talent_rank_ai`, deu **85 falhas e 389
+passes**. Não era o 3.13: `talent_query/settings.py:22` faz
+`load_dotenv(BASE_DIR / ".env", override=True)`, e **`override=True` faz o arquivo vencer
+as variáveis de ambiente**. O `.env` de produção entrou na suíte inteira — `DJANGO_DEBUG`
+False, `ALLOWED_HOSTS` real, e o `USE_X_ACCEL_REDIRECT` ligando sozinho pelo default
+`str(not DEBUG)`. As falhas se concentraram exatamente onde isso importa:
+`test_resume_download`, `test_static_storage` e as views.
+
+O `setdefault` do `settings_test` existe para evitar isso e **não tem chance** contra
+`override=True`. E o CI nunca poderia mostrar o problema: lá não existe `.env`, então o
+`load_dotenv` não acha arquivo nenhum.
+
+**Como aplicar:** rodar a suíte de dentro do diretório de produção é medir o ambiente
+errado. O clone descartável em `/tmp` custa 10 segundos e dá o resultado limpo. Nunca
+renomear o `.env` para contornar — o systemd o lê como `EnvironmentFile` e o próximo
+restart derrubaria a aplicação. Virou o achado **R-47**.
 
 ### [O-02] Trocar o venv — janela de ~10 min com o serviço parado
 
@@ -281,13 +310,21 @@ mídia tocado.
 
 ### O-01 — 3.13 no servidor e suíte no venv de teste
 
-- [ ] **O-01** · servidor · sem downtime · risco: baixo
-  - [ ] PPA adicionado e `python3.13 --version` respondendo
-  - [ ] `.venv313` criado, `pip install -r requirements-dev.txt` sem erro
-  - [ ] **474 testes verdes no servidor**, dentro do `.venv313`
-  - [ ] Suíte rodada de novo **com o filtro desligado** e a lista de `DeprecationWarning`
-        registrada aqui — é o mapa do próximo upgrade, e hoje ninguém sabe o que tem nela
-  - Status: não iniciado · Notas:
+- [x] **O-01** · servidor · sem downtime · risco: baixo
+  - [x] PPA adicionado — **Python 3.13.15**, ao lado do 3.10.12, que segue sendo o
+        `python3` do sistema. O `apt` só listou **NEW packages**, nada removido
+  - [x] `.venv313` criado, `pip install -r requirements-dev.txt` **sem compilar nada**:
+        `psycopg_binary`, `pydantic_core`, `cffi` e `coverage` vieram como wheel `cp313`, e
+        o `cryptography` como `cp311-abi3` (ABI estável, roda no 3.13 por construção)
+  - [x] **474 testes verdes no servidor**, em 3m02s — depois de descobrir que precisam
+        rodar fora de `/var/www/talent_rank_ai` (ver o achado R-47 acima)
+  - [x] Suíte rodada com o filtro desligado — **nenhum `DeprecationWarning` do Python**.
+        Apareceram um `RemovedInDjango60Warning` (**R-48**) e um `ResourceWarning` de
+        arquivo não fechado em `test_resume_download`, provável artefato de fixture
+  - Status: **concluído em 2026-08-21** · Notas: o `needrestart` pediu confirmação de
+    reinício de daemons durante o `apt` — a lista **não** incluía `talent_rank_ai`,
+    `nginx` nem `postgresql`; só serviços de sistema. Reiniciar o `ssh.service` não
+    derruba sessão aberta.
 
 ### O-02 — Troca do venv (janela)
 
@@ -322,14 +359,14 @@ mídia tocado.
 
 ## 10. Suposições e o que não foi verificado
 
-- **Não verificado:** que o deadsnakes publica `python3.13` para `jammy` (22.04). É o
-  esperado, mas quem confirma é o `apt` no O-01. Se não houver, o alvo cai para o que o
-  PPA oferecer, e a matriz do CI já provou 3.12 também.
-- **Não verificado:** o tempo real de `pip install` no servidor. Estimei ~5 min pelo
-  tamanho das wheels; se demorar muito mais, é sinal de estar **compilando** em vez de
-  baixar wheel — e aí vale parar e olhar, porque compilar significa que faltou wheel
-  para 3.13 e o pacote foi construído na hora, o que muda o binário em relação ao que o
+- ✅ **Verificado em 2026-08-21:** o deadsnakes publica `python3.13` para `jammy` —
+  instalou **3.13.15**.
+- ✅ **Verificado em 2026-08-21:** nada foi compilado. Todos os pacotes com extensão C
+  vieram como wheel pronta para `cp313`, então o binário é o mesmo tipo de artefato que o
   CI testou.
+- ⚠️ **Descoberto na execução, e não previsto aqui:** a suíte não roda limpa de dentro do
+  diretório de produção, por causa do `override=True` no `load_dotenv`. Custou uma
+  execução de 3 minutos e 85 falhas que pareciam do 3.13. Ver R-47.
 - **Suposição:** ninguém consome `/metrics/` externamente (confirmado na rotação das
   chaves em 2026-08-21), então o restart não quebra coletor nenhum.
 - **Fora do escopo:** o fim do suporte do **Ubuntu 22.04 em abril/2027**. É o próximo

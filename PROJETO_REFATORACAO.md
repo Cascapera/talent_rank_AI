@@ -3571,6 +3571,8 @@ Regras para quando for executar, porque apagar currículo não se desfaz:
 | **R-31** | ✅ **concluído em 2026-08-21** | etapa 1 no 12º release, etapa 2 executada depois do 16º: **270 órfãos / 32.3M** na quarentena, `media/resumes/` de 80M para ~47M, e **0 referenciados faltando no disco**. Falta só **apagar a quarentena de vez**, adiado de propósito para depois de alguns dias com a aplicação em uso normal |
 | **R-45** | ✅ **concluído em 2026-08-20** | dedup por hash no banco de talentos. Backfill **449 de 449**, e o `N já no banco` confirmado na tela. Corta ~91% das reimportações; os 9% que escapam estão medidos e documentados |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
+| **R-47** | 🆕 achado em 2026-08-21 | `settings.py:22` usa `load_dotenv(..., override=True)`, então o `.env` vence as variáveis de ambiente e **contamina a suíte** rodada de dentro do diretório de produção (85 falhas que pareciam do Python 3.13). O CI nunca mostraria: lá não existe `.env`. Correção candidata: `override=False`, que é a convenção e faria o `setdefault` do `settings_test` funcionar. Contorno de hoje: rodar a suíte num clone em `/tmp` |
+| **R-48** | 🆕 achado em 2026-08-21 | `RemovedInDjango60Warning`: o esquema default do `URLField` passa de `http` para `https` no Django 6.0 — **mudança silenciosa** que toca o `linkedin_url`. Chave transicional: `FORMS_URLFIELD_ASSUME_HTTPS = True`. É o mapa do próximo upgrade de Django, que o R-34 destrava (Django 6.0 exige Python 3.12+) |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
 | **`DJANGO_SECRET_KEY`** | 11 caracteres | higiene barata, **não incêndio** — avaliação no checklist do R-21 |
 
