@@ -3394,14 +3394,37 @@ completas, mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-
 **R-28**, R-31 (etapa 1), **R-45** e **R-46** — os quatro últimos **validados na tela**,
 não só implantados —, R-40, R-41, R-42, R-43 e R-44.
 
-**Esperando release na `develop`:** nada — só esta documentação.
+**Esperando release na `develop`:** a **etapa 2 do R-31** (PR #103) — o management command
+`limpar_curriculos_orfaos`. Sem migration, sem estático, sem tela: só um arquivo novo. O
+deploy **não executa nada** — o comando é manual, e sem `--mover` ele só lista.
 
-**457 testes**, cobertura **81,57%**. Piso do CI em 78.
+**474 testes**, cobertura **82,17%**. Piso do CI em 78.
 
 **Fechados em 2026-08-20:** R-44, R-20b, R-31 etapa 1, R-45, R-28 (que fechou a Onda 6) e
-R-46. **Sobrou um item de trabalho:** a **etapa 2 do R-31** — limpar 270 órfãos, 33M, que é
-**LGPD e não disco**. Fora isso, só o item obrigatório de fechamento (troca das chaves) e
-os dois de prazo, R-34 e R-39.
+R-46. A **etapa 2 do R-31** está **escrita e em `develop`**, faltando o release e a
+execução. Fora isso, só o item obrigatório de fechamento (troca das chaves) e os dois de
+prazo, R-34 e R-39.
+
+## ▶ Primeira coisa a fazer em 2026-08-21
+
+**16º release** (a etapa 2 do R-31), e então o roteiro em três tempos — **o primeiro não
+toca em nada**:
+
+```
+cd /var/www/talent_rank_ai && source .venv/bin/activate
+python manage.py limpar_curriculos_orfaos                 # so lista
+du -sh /var/www/talent_rank_ai/media/resumes/             # esperado: 80M
+python manage.py limpar_curriculos_orfaos --mover         # move para a quarentena
+du -sh /var/www/talent_rank_ai/media/resumes/             # esperado: ~47M
+```
+
+Esperado na listagem: **270 arquivos, ~33M**. Se o número divergir muito do medido em
+2026-08-20, **parar e investigar antes de mover** — divergência grande significa que
+alguma coisa mudou o disco ou o banco no meio, e a lista deixou de ser a que foi conferida.
+
+Se qualquer coisa parecer errada depois de mover, `--restaurar` devolve tudo pelo
+manifesto. **Nada é apagado por este comando** — a remoção definitiva é decisão separada,
+depois de alguns dias com a aplicação em uso normal.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
