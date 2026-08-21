@@ -216,3 +216,34 @@ Se preferir, defina as variaveis diretamente no cron em vez de usar `.env`.
 - **Custos**: RDS, EB e Route 53 geram custo. Domínio registrado na AWS também. Monitore o **Billing** e use o **Free Tier** quando se aplicar.
 
 Se quiser, na próxima etapa podemos detalhar apenas a parte do domínio (Route 53 + ACM) ou apenas o primeiro deploy no EB, passo a passo na sua conta.
+
+---
+
+## Configuração de produção que só existe no servidor (2026-08-21)
+
+O unit do systemd **não está versionado** — ele vive só em
+`/etc/systemd/system/talent_rank_ai.service` da instância. Se a máquina for recriada, isto
+aqui precisa ser refeito à mão, e não é óbvio:
+
+```
+ExecStart=/var/www/talent_rank_ai/.venv/bin/gunicorn \
+  --workers 1 --worker-class gthread --threads 4 \
+  --bind 127.0.0.1:8000 \
+  talent_query.wsgi:application
+```
+
+**Por que 1 worker e não o `2 × vCPU + 1` de manual:** a instância tem **416 MiB de RAM** e
+roda o PostgreSQL junto. Cada worker do gunicorn custa 120–180 MB de RSS depois da primeira
+requisição real (Django + `google-genai` + `pydantic` + `cryptography`), então **dois não
+cabem** — em 2026-08-21 três workers derrubaram o site por OOM logo depois de um reboot.
+Thread não paga esse preço, e o trabalho aqui é quase todo espera pelo Gemini, que é I/O.
+
+⛔ **Não acrescentar `--max-requests`:** as importações rodam em thread `daemon` dentro do
+worker, e reciclar o processo mata a importação da usuária no meio.
+
+**Swap:** existe um `/swapfile` de 2 GB. Ele **estava no disco e desativado** até
+2026-08-21; agora está em `/etc/fstab` como `/swapfile none swap sw 0 0`. Conferir com
+`free -h` depois de qualquer recriação da máquina.
+
+**Python:** produção roda **3.13** (deadsnakes PPA, Ubuntu 22.04), venv em
+`/var/www/talent_rank_ai/.venv`. Ver `UPGRADE_PYTHON_3.13.md`.
