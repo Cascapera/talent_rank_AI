@@ -1,6 +1,7 @@
 # Ambiente e secrets
 .env
 .venv/
+.venv*/
 venv/
 env/
 
