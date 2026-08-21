@@ -1595,21 +1595,25 @@ mostra que já aconteceu uma vez neste projeto, em escala menor.
 ```
 Status: em andamento — **Ondas 0, 1, 2 e 5 EM PRODUÇÃO**, mais R-18, R-19,
            R-20a, R-20b (Onda 3), R-21, R-22, **R-23** (Onda 4), R-27, **R-28a e R-28b**
-           (Onda 6, **concluída**), **R-31 (etapa 1)**, **R-45**, **R-46**, R-40, R-41,
-           **R-42**, R-43 e R-44. 15 releases: PRs #26, #35, #46, #53, #57, #62, #69, #74,
-           #79, #82, #87, #92, #95, #97, **#101**. `main` em `219d5bb`.
-Progresso: 43 itens em produção · **nada esperando release** · 1 fechado sem correção
+           (Onda 6, **concluída**), **R-31 (etapas 1 e 2)**, **R-45**, **R-46**, R-40,
+           R-41, **R-42**, R-43 e R-44. 16 releases: PRs #26, #35, #46, #53, #57, #62,
+           #69, #74, #79, #82, #87, #92, #95, #97, #101, **#105**. `main` em `4fba3df`.
+Progresso: 44 itens em produção · **nada esperando release** · 1 fechado sem correção
            (R-29, decisão de produto) · 2 achados registrados (**R-39** aberto,
            **R-40** já em produção)
-           atualizado em 2026-08-20, depois do 15º release — R-45, R-46 e R-28 fechados
+           atualizado em 2026-08-21, depois do 16º release — **o backlog de trabalho
+           acabou**: o R-31 fechou com a etapa 2 executada em produção
 
            ✅ **O R-28 fechou em 2026-08-20** — as quatro telas validadas na tela, desktop
            e celular, com erro de formulário nas quatro. A validação achou um bug antigo
            de contraste, registrado como **R-46**. O **R-23 fechou por inteiro** em
            2026-08-19, etapa 3 inclusive.
 
-           🧹 **A etapa 2 do R-31 é operação, não refatoração:** 270 órfãos / 33M já
-           medidos e listados. O motivo é LGPD, não disco — ver "Onde retomar".
+           ✅ **A etapa 2 do R-31 foi executada em 2026-08-21:** 270 órfãos (32.3M)
+           movidos para a quarentena, `media/resumes/` de 80M para ~47M, e **0 arquivos
+           referenciados pelo banco faltando no disco**. O motivo era LGPD, não disco.
+           **Nada foi apagado** — a remoção definitiva da quarentena é decisão à parte,
+           adiada de propósito para depois de alguns dias com a aplicação em uso.
 
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
@@ -2752,7 +2756,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
     fechando uma janela de corrida em que um poll via `completed` sem `result` e a tela
     mostrava tudo zerado. Estimativa corrigida de 2h para 30min.
 
-- [ ] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
+- [x] **R-31** · PDFs órfãos acumulam no disco a cada reimportação
       risco: médio · 3h · produção: requer cuidado · PR: ~30 linhas / 2 arquivos
   - [x] Confirmado o tamanho atual de `media/resumes/` no servidor — **80M em 2026-08-20**,
         719 arquivos. Destes, **449 referenciados no banco e 270 órfãos, somando 33M**
@@ -2762,7 +2766,13 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         medidos. **Não apaga:** move para `_quarentena_r31`, fora de `media/` e no mesmo
         filesystem (o `mv` vira rename, não copia 33M), com manifesto CSV e `--restaurar`.
         Sem `--mover` só lista. 14 testes, concentrados no que **não** pode ser tocado
-  - [ ] Etapa 2 executada em produção — rodar sem flag primeiro e conferir a lista
+  - [x] **Etapa 2 executada em produção — 2026-08-21**, depois do 16º release. Sem flag,
+        listou **270 órfãos / 32.3M** — o mesmo número medido em 2026-08-20 — e **não
+        abortou**, logo não havia importação `RUNNING` com heartbeat vivo. Com `--mover`,
+        os 270 foram para `_quarentena_r31` com manifesto CSV. Conferido pelo dono:
+        `media/resumes/` **80M → ~47M**, quarentena **~33M**, **449 arquivos restantes**
+        e `comm -13` de banco contra disco em **0** — nenhum currículo referenciado
+        sumiu. **Nada apagado**; a quarentena espera decisão à parte
   - [x] Suíte completa verde — **433 testes** (9 novos + 1 reescrito), cobertura **81,10%**
   - [x] Lint e format verdes
   - [x] PR aberto e revisado — **#90**, CI verde nos 3 jobs (lint, 3.10 e 3.12),
@@ -2772,7 +2782,9 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
         byte-a-byte idêntico **não criou arquivo nenhum**: 719 antes, 719 depois, e o
         `diff` da listagem completa saiu vazio. Ver "O `du -sh` do plano não provaria nada"
   - [x] Commitado — `f995cc0` · branch `fix/r-31-pdfs-orfaos`
-  - Status: **etapa 1 em produção e verificada** · Notas: duas defesas, nesta ordem —
+  - Status: **concluído em 2026-08-21** — etapa 1 em produção e verificada (12º release),
+    etapa 2 executada (16º release), com a quarentena aguardando a decisão de apagar de
+    vez · Notas: duas defesas, nesta ordem —
     conteúdo idêntico ao que já está gravado não regrava nada (o caso comum, reimportar o
     mesmo lote); conteúdo diferente grava o novo **e só então** apaga o antigo, nunca o
     contrário. Comparação por tamanho primeiro e SHA-256 depois: tamanho igual não é
@@ -3384,47 +3396,54 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 | 2026-08-20 | **R-28 validado na tela** ✅ | O dono percorreu as **quatro** telas (`/login/`, `/cadastro/`, `/vagas/nova/`, `/vagas/<id>/editar/`), desktop e celular, **com erro de formulário na tela** nas quatro. Nenhuma regressão: layout, card, campos e as duas `.errorlist` como antes. **R-28 concluído**, e com ele a Onda 6. | **A validação rendeu um bug que nenhum teste acharia — e ele é antigo.** A `.errorlist` do `formulario.css` é `#fecaca` sobre o fundo `#e0f2f7` da área logada: contraste ~1,2:1, texto praticamente invisível. Conferido no histórico antes de acusar: o valor **já estava no `<style>` inline** de `job_create.html` antes da extração, então o R-28 foi fiel e o defeito é anterior. Virou **R-46**. **Como aplicar:** teste de CSS confere que a regra existe, está na folha certa e tem o valor esperado — e passa perfeitamente quando **o valor em si** é que está errado contra um fundo que teste nenhum conhece. Para item de aparência, a caixa que conta continua sendo o olho humano. Preparar o roteiro lendo o CSS antes de pedir a validação também rendeu: eu já sabia o que ele ia encontrar e o que era ruído (as duas `.errorlist` diferentes de propósito, a grade de 5 colunas sem `@media`), então ele não perdeu tempo reportando o que não era regressão. |
 | 2026-08-20 | **R-46 → produção** | 15º release (PR #101): `ae976df` → `219d5bb`. `No migrations to apply`; um estático muda. Conferido **no arquivo que produção serve**: `formulario.09043a9054b2.css` em 200, e a declaração ativa é `color: #7f1d1d; font-weight: 600`. O `#fecaca` que ainda aparece no arquivo está só no comentário que documenta a correção. | **Conferir o hash calculando `git show origin/main:<arquivo> \| md5sum` continua sendo o único jeito** — o checkout local é CRLF e daria outro hash. E baixar o CSS servido, em vez de deduzir do deploy verde: mostra a declaração ativa, que é o que a tela usa. |
 | 2026-08-20 | **R-45 validado na tela** ✅ | O dono reimportou um lote já importado e o `N já no banco` apareceu. **R-45 concluído.** Antes disso o backfill já tinha fechado: `SELECT count(*) ... WHERE resume_sha256 <> ''` deu **449 de 449**. | **A caixa do comportamento observado fechou no mesmo dia, e isso é a exceção.** No R-20b ela chegou dois releases depois do `[x] Implantado`, com 10 testes verdes no meio. O que encurtou aqui foi o item ter nascido de um número medido em produção — 231 cópias byte-a-byte —, então o teste de aceitação já existia antes do código: reimportar o mesmo lote e ver o contador. **Como aplicar:** item que começa com medição em produção costuma chegar com o roteiro de validação pronto; item que começa com leitura de código chega sem. |
+| 2026-08-21 | **R-31 etapa 2 → produção** | 16º release (PR #105): `219d5bb` → `4fba3df`. CI verde nos 3 jobs; CD em **50s**, com `No migrations to apply` e `collectstatic` de **0 copiados, 134 inalterados, 366 pós-processados** — nenhum estático mudou, como previsto. Sobe só o management command `limpar_curriculos_orfaos`; o deploy **não executa nada**. | **Comando novo não existe em produção antes do release, e o erro parece outra coisa.** A primeira tentativa de rodar deu `Unknown command: 'limpar_curriculos_orfaos'` — não era comando quebrado nem deploy falho: era o `main` ainda em `219d5bb`, com o PR #103 parado na `develop`. **Como aplicar:** o Django devolve a mesma mensagem para "não existe" e para "ainda não subiu"; antes de investigar o comando, conferir em que commit o servidor está. |
+| 2026-08-21 | **R-31 etapa 2 executada — 270 órfãos na quarentena** ✅ | Sem flag: **270 órfãos, 32.3M**, o mesmo número do dia anterior, e sem abortar — logo nenhuma importação `RUNNING` viva. Com `--mover`: os 270 para `_quarentena_r31`, fora de `media/` e no mesmo filesystem (o `mv` vira rename), com manifesto CSV. Conferido pelo dono: `media/resumes/` **80M → ~47M**, quarentena **~33M**, **449 arquivos restantes**, e `comm -13` de banco contra disco em **0**. **Nada apagado.** | **A conferência que conta não é a que mostra o efeito, é a que mostraria o estrago.** Os dois `du` só provam que alguma coisa saiu do lugar — dariam o mesmo número se o comando tivesse levado junto um arquivo em uso. O que fecha o item é o `0` do `comm -13`: nenhum currículo referenciado pelo banco faltando no disco. Mesma família da lição do `du -sh` sem resolução, no 12º release. Segundo ponto: o item nasceu de **medição em produção** — 270 órfãos contados antes de existir código —, e de novo a validação fechou **no mesmo dia** do release, como no R-45 e ao contrário do R-20b. |
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-20, depois do 12º release)
+### ▶ Onde retomar (atualizado em 2026-08-21, depois do 16º release)
 
-**Em produção** (`main` em `219d5bb`, **15 releases**): Ondas 0, 1, 2, 5 e **6**
-completas, mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27,
-**R-28**, R-31 (etapa 1), **R-45** e **R-46** — os quatro últimos **validados na tela**,
+**Em produção** (`main` em `4fba3df`, **16 releases**): Ondas 0, 1, 2, 5 e **6** completas,
+mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28, **R-31
+(etapas 1 e 2)**, R-45 e R-46 — todos esses **validados na tela ou medidos em produção**,
 não só implantados —, R-40, R-41, R-42, R-43 e R-44.
 
-**Esperando release na `develop`:** a **etapa 2 do R-31** (PR #103) — o management command
-`limpar_curriculos_orfaos`. Sem migration, sem estático, sem tela: só um arquivo novo. O
-deploy **não executa nada** — o comando é manual, e sem `--mover` ele só lista.
+**Nada esperando release.** `develop` e `main` no mesmo ponto. **474 testes**, cobertura
+**82,17%**, piso do CI em 78.
 
-**474 testes**, cobertura **82,17%**. Piso do CI em 78.
+**Fechado em 2026-08-21:** a **etapa 2 do R-31**, executada em produção — 270 órfãos
+(32.3M) na quarentena, `media/resumes/` de 80M para ~47M, **449 arquivos restantes** e
+**0 referenciados faltando no disco**. Com ela **acabou o backlog de trabalho do
+refactor**: o que sobra é uma decisão adiada, um item obrigatório de fechamento e dois de
+prazo.
 
-**Fechados em 2026-08-20:** R-44, R-20b, R-31 etapa 1, R-45, R-28 (que fechou a Onda 6) e
-R-46. A **etapa 2 do R-31** está **escrita e em `develop`**, faltando o release e a
-execução. Fora isso, só o item obrigatório de fechamento (troca das chaves) e os dois de
-prazo, R-34 e R-39.
+## ▶ Primeira coisa a fazer na próxima sessão
 
-## ▶ Primeira coisa a fazer em 2026-08-21
+**Não há item de código pendente.** Em ordem de valor:
 
-**16º release** (a etapa 2 do R-31), e então o roteiro em três tempos — **o primeiro não
-toca em nada**:
+**1. Apagar a quarentena de vez** — `/var/www/talent_rank_ai/_quarentena_r31`, 270
+arquivos / 33M, movidos em 2026-08-21. Foi decidido esperar alguns dias com a aplicação em
+uso normal antes de apagar, e **uso normal quer dizer a Bruna trabalhando** — ela volta
+~**02/09**. Esperar ela usar por alguns dias é o que dá sentido à espera: é o uso dela que
+revelaria um arquivo que fazia falta. Até lá, `limpar_curriculos_orfaos --restaurar` desfaz
+tudo pelo manifesto. Para apagar: `rm -rf /var/www/talent_rank_ai/_quarentena_r31` — e aí
+não se desfaz.
 
-```
-cd /var/www/talent_rank_ai && source .venv/bin/activate
-python manage.py limpar_curriculos_orfaos                 # so lista
-du -sh /var/www/talent_rank_ai/media/resumes/             # esperado: 80M
-python manage.py limpar_curriculos_orfaos --mover         # move para a quarentena
-du -sh /var/www/talent_rank_ai/media/resumes/             # esperado: ~47M
-```
+**2. ⛔ Trocar as chaves expostas** (`GEMINI_API_KEY` e `METRICS_TOKEN`) — item obrigatório
+de fechamento, ver a seção própria. É o que impede declarar o refactor encerrado.
 
-Esperado na listagem: **270 arquivos, ~33M**. Se o número divergir muito do medido em
-2026-08-20, **parar e investigar antes de mover** — divergência grande significa que
-alguma coisa mudou o disco ou o banco no meio, e a lista deixou de ser a que foi conferida.
+**3. `DJANGO_SECRET_KEY`** de 11 caracteres — higiene barata, receita pronta no checklist
+do R-21. Não é incêndio.
 
-Se qualquer coisa parecer errada depois de mover, `--restaurar` devolve tudo pelo
-manifesto. **Nada é apagado por este comando** — a remoção definitiva é decisão separada,
-depois de alguns dias com a aplicação em uso normal.
+**4. R-34** — Python 3.10 → 3.12, vence em **outubro/2026**. É projeto novo, não item de
+refactor: matriz de CI já roda 3.12 como aviso, então o portão existe.
+
+**5. R-39** — métricas zeram a cada restart e são por worker. Achado registrado, não
+compromisso.
+
+**O que não fazer:** abrir item novo de refatoração sem medir antes. O R-28 mostrou que o
+plano superestimava (250 linhas previstas por sub-PR, 82 reais) e o R-45 mostrou que a
+aritmética derruba a otimização que parece óbvia.
 
 ## O dia em que a validação manual valeu mais que a leitura de código
 
@@ -3539,7 +3558,7 @@ Regras para quando for executar, porque apagar currículo não se desfaz:
 |---|---|---|
 | **R-28** | ✅ **concluído em 2026-08-20** | as quatro telas validadas na tela, desktop e celular, com erro de formulário nas quatro. Nenhuma regressão. c **fechado sem extrair** (PR #85): não havia regra repetida idêntica no grupo. A validação rendeu o **R-46** |
 | **R-46** | ✅ **concluído em 2026-08-20** | `#fecaca` → `#7f1d1d`, contraste 1,44:1 → ~9:1. Em produção no 15º release e validado na tela. Os testes novos **calculam a luminância** em vez de comparar strings — no padrão antigo, um teste de CSS confirmaria a regra errada como correta |
-| **R-31** | **etapa 1 concluída** (12º release, PR #92) | só a **etapa 2**: limpar **270 órfãos / 33M** já medidos e listados. Não é disco, é LGPD — currículos de pessoas reais sem vínculo no banco. Quarentena antes de apagar, nada com `mtime` recente, e nenhuma importação `RUNNING` viva. **É o único item de trabalho que sobrou** |
+| **R-31** | ✅ **concluído em 2026-08-21** | etapa 1 no 12º release, etapa 2 executada depois do 16º: **270 órfãos / 32.3M** na quarentena, `media/resumes/` de 80M para ~47M, e **0 referenciados faltando no disco**. Falta só **apagar a quarentena de vez**, adiado de propósito para depois de alguns dias com a aplicação em uso normal |
 | **R-45** | ✅ **concluído em 2026-08-20** | dedup por hash no banco de talentos. Backfill **449 de 449**, e o `N já no banco` confirmado na tela. Corta ~91% das reimportações; os 9% que escapam estão medidos e documentados |
 | **R-39** | achado, não compromisso | métricas zeram a cada restart e são por worker |
 | **R-34** | prazo | Python 3.10 → 3.12, vence em **outubro/2026** |
