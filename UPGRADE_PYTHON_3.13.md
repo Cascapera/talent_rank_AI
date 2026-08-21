@@ -214,10 +214,17 @@ sudo systemctl start talent_rank_ai
 systemctl is-active talent_rank_ai
 ```
 
-O `check --deploy` tem que sair com **2 avisos**, os mesmos de sempre
-(`SECURE_HSTS_INCLUDE_SUBDOMAINS` e `SECURE_HSTS_PRELOAD`, recusas conscientes do R-21).
-Número diferente disso é sinal de que algo mudou de configuração, e aí é rollback antes
-de investigar.
+O `check --deploy` sai com **3 avisos**: `SECURE_HSTS_INCLUDE_SUBDOMAINS` e
+`SECURE_HSTS_PRELOAD` (recusas conscientes do R-21) e **`security.W009`, a
+`DJANGO_SECRET_KEY` de 11 caracteres**, que é o item de higiene adiado.
+
+⚠️ **A linha de base escrita aqui dizia 2, e estava errada** — o "5 → 2" veio do registro
+do R-21, e a chave curta só foi descoberta **depois**, em 2026-08-19. Na execução, o 3
+apareceu e pareceu regressão do 3.13 por um instante. Resolvido medindo: o mesmo
+`check --deploy` rodado com o venv antigo (`.venv310/bin/python`, que continua funcionando
+para isso porque `bin/python` é symlink e o prefixo se resolve pelo caminho) deu **3
+também**. **Como aplicar:** linha de base copiada de registro antigo envelhece sem avisar;
+quando o número diverge, medir o estado anterior antes de acusar a mudança nova.
 
 **Aproveitar a janela para o reboot pendente** (`*** System restart required ***`, visto
 em 2026-08-21): `sudo reboot` depois da verificação, com o serviço já validado em 3.13.
@@ -328,15 +335,61 @@ mídia tocado.
 
 ### O-02 — Troca do venv (janela)
 
-- [ ] **O-02** · servidor · ~10 min parado · risco: médio
-  - [ ] Nenhum job `RUNNING` e nenhum merge em `main` pendente
-  - [ ] `.venv` → `.venv310`, `.venv` novo em 3.13
-  - [ ] `pip install -r requirements.txt` sem erro
-  - [ ] `check --deploy` com **2 avisos**, os conhecidos
-  - [ ] Serviço `active` e `.venv/bin/python --version` em 3.13
-  - [ ] Reboot pendente aproveitado
-  - [ ] **Verificado em produção (comportamento observado)** — importação real pela tela
-  - Status: não iniciado · Notas:
+- [x] **O-02** · servidor · risco: médio · **executado em 2026-08-21**
+  - [x] Job `RUNNING` conferido — havia **um**, com heartbeat de 19/08 (1 dia e 18 h),
+        muito além do corte de 900 s. Morto, resíduo de teste, não importação viva
+  - [x] `.venv` → `.venv310`, `.venv` novo em 3.13, `pip install` sem erro
+  - [x] `check --deploy` com **3 avisos** — e o mesmo 3 no venv antigo, ver acima
+  - [x] Serviço `active`, e o processo no ar confirmado em `/usr/bin/python3.13`
+        (`readlink -f /proc/$MainPID/exe`)
+  - [x] De fora: home **200**, `/curriculos/1/` deslogado **302**, `/metrics/` **401**
+  - [x] Reboot aproveitado — e foi ele que abriu o incidente abaixo
+  - [x] **Verificado em produção (comportamento observado)** — importação real pela tela,
+        depois da correção de memória: sem OOM, consumo subindo só **35 MB**
+  - Status: **concluído em 2026-08-21** · Notas: ver "O reboot que derrubou o site"
+
+### O reboot que derrubou o site — e por que não foi o 3.13
+
+Depois do `reboot`, **502**. O serviço subiu sozinho no boot (14:26:38, ou seja, o unit
+está `enabled`), atendeu, e 90 segundos depois morreu:
+`talent_rank_ai.service: Failed with result 'oom-kill'`.
+
+**A máquina tem 416 MiB de RAM e rodava 3 workers do gunicorn.** Cada worker carrega
+Django + `google-genai` + `pydantic` + `cryptography` e fica em 120–180 MB de RSS depois
+de atender a primeira requisição de verdade — quando as páginas deixam de ser
+compartilhadas com o master por *copy-on-write*. Três disso, mais o PostgreSQL na mesma
+máquina, não cabem em 416. **Foi o `login` que estourou:** primeira requisição real depois
+do boot, cada worker tocou suas próprias páginas.
+
+**O upgrade não causou; expôs.** A margem já era negativa — o que faltava era alguém
+reiniciar o servidor e usar a aplicação logo em seguida. Provado pela ordem dos fatos: às
+14:22, ainda antes do reboot, o mesmo 3.13 com os mesmos 3 workers respondia 200/302/401.
+
+**As três correções, em ordem de execução:**
+
+1. **Swap ligado.** O `mkswap` avisou `wiping old swap signature` e reportou **2 GiB**:
+   já existia um `/swapfile` de 2 GB na máquina, **desativado e ausente do `/etc/fstab`**.
+   Proteção instalada e nunca ligada. Agora ativa e persistida.
+2. **3 → 2 workers.** Não bastou: a importação seguinte matou os dois (`961`, `962`) e o
+   substituto (`976`). Com swap ativo — a alocação de uma importação é rápida demais, e o
+   kernel mata em vez de paginar.
+3. **1 worker com 4 threads** (`--worker-class gthread`). Memória custa **por processo**;
+   thread compartilha os módulos já carregados e paga só a pilha. E é a ferramenta certa
+   aqui: o tempo da aplicação é quase todo **esperando o Gemini**, que é I/O, e thread
+   bloqueada em rede solta o GIL. O trabalho pesado de CPU saiu no R-03, quando o parser
+   de PDF foi removido.
+
+**Resultado:** ocioso caiu de **284 MB para 195 MB**; a importação real subiu para 230 MB
+e **completou**. Nenhum OOM depois das 14:57.
+
+⛔ **O que NÃO foi feito, de propósito:** `--max-requests` para reciclar worker e conter
+crescimento de memória. É a recomendação padrão para máquina apertada e aqui **mataria
+importação em andamento** — elas rodam em thread `daemon` dentro do worker, e reciclar o
+processo derruba a thread. Mesmo estrago que o R-44 tratou.
+
+**A lição que vale mais:** os `curl` de 200, 302 e 401 passaram **enquanto a aplicação
+estava a 90 segundos de morrer**. Requisição leve não mede memória. A caixa "verificado em
+produção" só fecha com o fluxo real — e neste app o fluxo real é importar currículo.
 
 ### U-03 — Repositório alinhado ao runtime
 
