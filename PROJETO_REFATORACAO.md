@@ -1618,8 +1618,10 @@ Progresso: 44 itens em produção · **nada esperando release** · 1 fechado sem
            🪟 **Janela de 15 dias sem usuária** (até ~2026-09-02) — ver "Onde retomar".
            Os itens antes bloqueados por risco de interromper a usuária ficam viáveis.
 
-           ⚠️ **Pendência operacional:** `GEMINI_API_KEY` e `METRICS_TOKEN` apareceram
-           em texto claro durante a verificação e **precisam ser rotacionados**.
+           ✅ **Chaves rotacionadas em 2026-08-21:** `GEMINI_API_KEY` e `METRICS_TOKEN`
+           trocadas, a antiga do Gemini revogada no AI Studio, e as duas verificadas
+           (200 na API do Google; 401/200 no `/metrics/`). **Era o último item
+           obrigatório de fechamento do refactor.**
 
            ⚠️ **A `DJANGO_SECRET_KEY` de produção tinha 11 caracteres** (medido em
            2026-08-19; Django gera 50). Não era a chave do repositório — era outra,
@@ -3401,7 +3403,7 @@ no deploy — o procedimento de cada um está na seção 9 (P-1 a P-7) e referen
 
 ---
 
-### ▶ Onde retomar (atualizado em 2026-08-21, depois do 16º release)
+### ▶ Onde retomar (atualizado em 2026-08-21 — **refactor encerrado**)
 
 **Em produção** (`main` em `4fba3df`, **16 releases**): Ondas 0, 1, 2, 5 e **6** completas,
 mais R-18, R-19, R-20a, R-20b (Onda 3), R-21, R-22, R-23 (Onda 4), R-27, R-28, **R-31
@@ -3413,13 +3415,19 @@ não só implantados —, R-40, R-41, R-42, R-43 e R-44.
 
 **Fechado em 2026-08-21:** a **etapa 2 do R-31**, executada em produção — 270 órfãos
 (32.3M) na quarentena, `media/resumes/` de 80M para ~47M, **449 arquivos restantes** e
-**0 referenciados faltando no disco**. Com ela **acabou o backlog de trabalho do
-refactor**: o que sobra é uma decisão adiada, um item obrigatório de fechamento e dois de
-prazo.
+**0 referenciados faltando no disco**. E, no mesmo dia, a **rotação das chaves expostas**,
+que era o item obrigatório de fechamento.
+
+🏁 **O refactor está encerrado.** Duas ressalvas ficam registradas, não escondidas: a meta
+do `views.py` não bateu (~700 linhas contra as ≤450 do plano, e o que sobrou é handler HTTP
+de verdade), e o **R-29 segue fechado sem correção** por decisão de produto — reimportar
+candidato ainda sobrescreve o resumo escrito à mão. **Reabrir se a Bruna relatar perda**:
+a decisão foi tomada sem ela, que é quem opera.
 
 ## ▶ Primeira coisa a fazer na próxima sessão
 
-**Não há item de código pendente.** Em ordem de valor:
+**Não há item de código pendente, nem item obrigatório em aberto.** O que sobrou é uma
+decisão adiada e dois itens de prazo:
 
 **1. Apagar a quarentena de vez** — `/var/www/talent_rank_ai/_quarentena_r31`, 270
 arquivos / 33M, movidos em 2026-08-21. Foi decidido esperar alguns dias com a aplicação em
@@ -3429,8 +3437,10 @@ revelaria um arquivo que fazia falta. Até lá, `limpar_curriculos_orfaos --rest
 tudo pelo manifesto. Para apagar: `rm -rf /var/www/talent_rank_ai/_quarentena_r31` — e aí
 não se desfaz.
 
-**2. ⛔ Trocar as chaves expostas** (`GEMINI_API_KEY` e `METRICS_TOKEN`) — item obrigatório
-de fechamento, ver a seção própria. É o que impede declarar o refactor encerrado.
+**2. ~~Trocar as chaves expostas~~ — feito em 2026-08-21.** `GEMINI_API_KEY` e
+`METRICS_TOKEN` trocadas no `.env`, `restart`, a antiga do Gemini revogada no AI Studio, e
+as duas verificadas: **200** da API do Google e o par do R-22 refeito (**401** sem token,
+**200** com). Ver a seção de fechamento.
 
 **3. `DJANGO_SECRET_KEY`** de 11 caracteres — higiene barata, receita pronta no checklist
 do R-21. Não é incêndio.
@@ -3569,14 +3579,38 @@ Regras para quando for executar, porque apagar currículo não se desfaz:
 Deploy a qualquer hora. É ela que torna gratuitos o botão quebrado esperando o Nginx e o
 restart do teste do passo 5.
 
-## ⛔ Item obrigatório de fechamento do refactor
+## ✅ Item obrigatório de fechamento — CUMPRIDO em 2026-08-21
 
-`GEMINI_API_KEY` e `METRICS_TOKEN` foram expostos em texto claro em 2026-08-18 e valem como
-**comprometidos**. Decisão do dono do projeto (2026-08-18): a troca acontece **no fim do
-refactor**, junto com a entrada da chave de produção final. Até lá, a chave atual é
-descartável — consumo estranho na cota do Gemini é ela.
+`GEMINI_API_KEY` e `METRICS_TOKEN` foram expostos em texto claro em 2026-08-18 e valiam como
+**comprometidos**. A troca ficou para o fim do refactor, por decisão do dono (2026-08-18), e
+**foi executada em 2026-08-21**: as duas chaves novas no `.env`, `restart`, e a chave antiga
+do Gemini **revogada no AI Studio** — é a revogação, não a troca, que tira a chave exposta de
+circulação. O backup `.env.bak-20260821`, feito antes de editar, guarda as chaves velhas em
+texto claro e deve ser apagado assim que a verificação fecha.
 
-**Não encerrar o projeto sem isto:**
+**Verificado, e não deduzido:** `200` da API do Google com a chave nova
+(`x-goog-api-key` contra `/v1beta/models`, sem gastar cota nem tocar em dado), e o par do
+R-22 refeito — **401** sem token e **200** com o token novo. O 200 do `/metrics/` prova duas
+coisas de uma vez: o token novo vale, e o `restart` de fato recarregou o `.env` (o processo
+lê o arquivo só na inicialização; sem reiniciar, a aplicação seguiria com a chave antiga em
+memória).
+
+⚠️ **A chave nova do AI Studio tem formato novo:** `AQ.` seguido de ~50 caracteres, **53 no
+total** — e não os 39 do formato antigo `AIza…`. Conferir comprimento como sanidade quase deu
+falso alarme. A forma foi conferida sem revelar o segredo, mascarando alfanumérico com `x` no
+`awk` (`[xx.xxx…]`), e quem decidiu foi o `curl`: **só o Google diz se a chave vale**, arquivo
+certo e chave ativa são coisas diferentes.
+
+**A ordem que evitou derrubar produção:** chave nova em uso e provada **antes** de revogar a
+antiga. O contrário é indisponibilidade garantida entre uma coisa e outra.
+
+**Conferido antes de começar:** as duas chaves só existiam no `.env` do servidor —
+`core/llm_extractor.py` e `talent_query/settings.py` leem do ambiente, o GitHub Actions só
+guarda `SSH_HOST`, `SSH_USER` e `SSH_PRIVATE_KEY`, e o CI não usa nenhuma das duas. Rotação
+sem deploy e sem tocar no repo. **Como aplicar:** antes de rotacionar, procurar todos os
+lugares onde o segredo vive; trocar só um deixa metade rotacionada e o vazamento de pé.
+
+**A receita que estava escrita aqui (mantida por registro):**
 
 ```
 cd /var/www/talent_rank_ai && source .venv/bin/activate
@@ -3589,7 +3623,10 @@ sudo systemctl restart talent_rank_ai
 E, ao trocar o `METRICS_TOKEN`, refazer o par de `curl` do R-22 — 401 sem token, 200 com.
 
 **Lição do episódio, para não repetir:** nunca pedir `cat`/`tail` de arquivo de ambiente.
-Pedir `grep CHAVE_ESPECIFICA`, ou só o comprimento com `awk`.
+Pedir `grep CHAVE_ESPECIFICA`, ou só o comprimento com `awk`. Na execução de 2026-08-21 isso
+se manteve do começo ao fim: a chave nova entrou pelo `nano`, para não passar pelo histórico
+do shell, e os `curl` leram o valor do próprio `.env` para uma variável descartada com
+`unset` logo depois. **Nenhum segredo apareceu na tela em nenhum momento.**
 
 ---
 
