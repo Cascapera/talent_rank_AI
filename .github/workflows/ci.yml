@@ -29,12 +29,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # 3.10 é o que roda em produção (Ubuntu do Lightsail) — é o portão real.
-    # 3.12 roda junto para provar que o upgrade futuro está limpo, antes do
-    # fim do suporte do 3.10 em outubro/2026.
+    # 3.12 e 3.13 rodam junto para provar o upgrade do R-34 antes do fim do
+    # suporte do 3.10 em outubro/2026. O 3.13 entrou em 2026-08-21 para o alvo
+    # ser decidido por número e não por palpite: se passar, o servidor vai
+    # direto para ele e o prazo seguinte sai de outubro/2028 para outubro/2029.
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.10", "3.12", "3.13"]
     name: test (py${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
