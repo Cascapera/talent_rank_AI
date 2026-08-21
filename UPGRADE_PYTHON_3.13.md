@@ -59,25 +59,16 @@ verificação que se faz **antes**, não depois de o serviço não subir.
 | 3.12 | 474 | 78% | ✅ |
 | **3.13** | 474 | 78% | ✅ **(PR #108, 2026-08-21)** |
 
-E o mais informativo: **o conjunto de warnings do 3.13 é idêntico ao do 3.10**. Só o
-`UserWarning: No directory at: .../staticfiles/`, que é artefato do ambiente de teste e
-já existia. **Nenhum `DeprecationWarning` novo** — que é o mapa gratuito do próximo
-upgrade, e neste caso o mapa está em branco.
+⚠️ **O que essa evidência NÃO cobre:** o `pyproject.toml:47` tem
+`filterwarnings = ["ignore::DeprecationWarning", "ignore::PendingDeprecationWarning"]`.
+Os warnings exibidos nos três jobs são idênticos (só o `UserWarning` de `staticfiles`,
+artefato do ambiente de teste) — **mas a suíte esconde as depreciações por configuração**,
+então essa comparação não poderia mostrar diferença nenhuma. É o mesmo padrão que este
+projeto já registrou quatro vezes: o instrumento passa nos dois mundos.
 
-### O ambiente que sobe junto
-
-| Camada | Hoje | Depois |
-|---|---|---|
-| SO | **Ubuntu 22.04.5 LTS** (fim do suporte padrão: abril/2027) | inalterado |
-| Python do sistema | 3.10.12 (nativo do 22.04) | inalterado — o 3.13 entra **ao lado**, via PPA |
-| Venv da aplicação | `/var/www/talent_rank_ai/.venv` | **mesmo caminho**, reconstruído em 3.13 |
-| systemd | `ExecStart=/var/www/talent_rank_ai/.venv/bin/gunicorn` | **não muda** |
-| `deploy.yml` | `source .venv/bin/activate` | **não muda** |
-
-**O 22.04 não traz 3.13 no apt padrão** — nem 3.12. Entra pelo PPA **deadsnakes**, que é
-o caminho padrão para isso. A alternativa seria `do-release-upgrade` para o 24.04, que
-troca o sistema operacional inteiro para resolver uma versão de Python, e ainda assim
-entregaria 3.12, não 3.13. Risco desproporcional, descartada.
+**Por isso o O-01 ganhou um passo:** rodar a suíte no servidor, no 3.13, com o filtro
+desligado (`--override-ini`). A lista que sair dali é o mapa gratuito do próximo upgrade
+— e, se vier vazia, aí sim a afirmação vale.
 
 ## 3. Mapa de impacto (Fase 1)
 
@@ -134,7 +125,9 @@ Reversão:        remover a entrada da matriz
 Esforço:         5 min
 ```
 
-**Resultado:** 3.13 verde, 474 testes, mesmos warnings do 3.10.
+**Resultado:** 3.13 verde, 474 testes. Os warnings **exibidos** batem com os do 3.10 —
+mas ver a seção acima: a suíte ignora depreciação por configuração, então isso não é
+evidência de que não há nenhuma. Quem responde é o O-01.
 
 ### [O-01] Instalar 3.13 e provar no servidor — sem downtime
 
@@ -281,7 +274,8 @@ mídia tocado.
 - [x] **U-01** · 1 arquivo · compatível com a versão atual · risco: nenhum
   - [x] `3.13` na matriz
   - [x] Os 3 jobs verdes — 474 testes, cobertura acima do piso
-  - [x] Warnings comparados com o 3.10 — **idênticos**
+  - [x] Warnings **exibidos** comparados com o 3.10 — idênticos, mas o filtro do
+        `pyproject` esconde depreciação: a checagem de verdade é a do O-01
   - [x] Mergeado — PR #108, `ec359f8`
   - Status: **concluído em 2026-08-21**
 
@@ -291,7 +285,8 @@ mídia tocado.
   - [ ] PPA adicionado e `python3.13 --version` respondendo
   - [ ] `.venv313` criado, `pip install -r requirements-dev.txt` sem erro
   - [ ] **474 testes verdes no servidor**, dentro do `.venv313`
-  - [ ] Warnings conferidos — sem `DeprecationWarning` novo
+  - [ ] Suíte rodada de novo **com o filtro desligado** e a lista de `DeprecationWarning`
+        registrada aqui — é o mapa do próximo upgrade, e hoje ninguém sabe o que tem nela
   - Status: não iniciado · Notas:
 
 ### O-02 — Troca do venv (janela)
